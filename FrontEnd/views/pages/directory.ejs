@@ -1,0 +1,121 @@
+<%- include('../partials/layout-start') %>
+<div class="mb-8 flex flex-wrap items-start justify-between gap-4">
+  <div>
+    <div class="flex items-center gap-3 mb-3">
+      <span class="h-8 w-1 rounded-full bg-[#c4a56a]" aria-hidden="true"></span>
+      <h1 class="font-extrabold leading-tight text-[#14283f] text-[32px]">دليل الموظفين</h1>
+    </div>
+    <p class="leading-8 max-w-3xl text-[#526579] text-[16px]">ابحث عن الزملاء واستعرض بياناتهم الوظيفية ضمن الحسابات المتاحة لك حسب الهيكل الإداري.</p>
+  </div>
+  <a href="/register" class="inline-flex items-center gap-2 rounded-xl px-5 py-3 font-bold text-white" style="background: rgb(23,105,163);"><i data-lucide="user-plus" class="w-5 h-5" aria-hidden="true"></i>إنشاء حساب جديد</a>
+</div>
+
+<section id="departments" class="rounded-2xl border border-[#e3e9ef] bg-white p-5 sm:p-6 shadow-[0_10px_35px_#14283f09] mb-6" aria-label="البحث والتصفية">
+  <div>
+    <label for="search" class="block font-bold mb-2 text-[#14283f] text-[16px]">البحث في الدليل</label>
+    <div class="relative">
+      <i data-lucide="search" class="absolute right-4 top-1/2 -translate-y-1/2 text-[#64748b] w-5 h-5 pointer-events-none"></i>
+      <input id="search" class="field !pr-12 text-[#14283f] text-[16px]" type="search" autocomplete="off" placeholder="ابحث عن موظف أو إدارة أو قسم">
+    </div>
+  </div>
+  <div class="border-t border-[#e3e9ef] mt-5 pt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    <% [
+      { id: 'department', label: 'الإدارة / المكتب', all: 'كل الإدارات والمكاتب', list: options.managements },
+      { id: 'section', label: 'القسم', all: 'كل الأقسام', list: options.sections }
+    ].forEach(f => { %>
+      <div>
+        <label for="<%= f.id %>" class="block font-semibold mb-1.5 text-[#243b53] text-[16px]"><%= f.label %></label>
+        <select id="<%= f.id %>" class="field"><option value=""><%= f.all %></option><% f.list.forEach(v => { %><option><%= v %></option><% }) %></select>
+      </div>
+    <% }) %>
+    <div>
+      <label for="status" class="block font-semibold mb-1.5 text-[#243b53] text-[16px]">حالة الاتصال</label>
+      <select id="status" class="field"><option value="">كل الحالات</option><option value="online">متصل الآن</option><option value="offline">غير متصل</option></select>
+    </div>
+  </div>
+  <div class="flex flex-wrap items-center justify-between gap-3 mt-5">
+    <button id="reset" type="button" class="rounded-lg px-4 py-2 border border-[#ccd9e5] hover:bg-[#eaf1f7] transition-colors font-bold bg-white text-[#1769a3] text-[16px]">إعادة ضبط الفلاتر</button>
+    <p class="font-bold text-[#243b53]" role="status" aria-live="polite"><span class="text-[16px]">النتائج المطابقة:</span> <span id="count"><%= employees.length %></span></p>
+  </div>
+</section>
+
+<section class="rounded-xl border border-[#d9e6ee] px-5 py-4 mb-7 flex items-start gap-3" style="background: rgb(237,245,250);">
+  <i data-lucide="shield-check" class="w-5 h-5 shrink-0 text-[#1769a3] mt-1" aria-hidden="true"></i>
+  <p class="leading-7 text-[#27455b] text-[16px]">تظهر هنا فقط الحسابات التي اخترتها عند إنشاء حسابك، ولا يمكنك التواصل مع غيرها. البيانات تجريبية للمعاينة.</p>
+</section>
+
+<div id="loading" class="hidden flex items-center gap-2 mb-4 text-[#1769a3]" role="status">
+  <i data-lucide="loader-circle" class="spin w-4 h-4" aria-hidden="true"></i><span class="text-[16px]">جارٍ تحديث النتائج…</span>
+</div>
+
+<section aria-label="بطاقات الموظفين">
+  <div id="cards" class="grid md:grid-cols-2 2xl:grid-cols-3 gap-5">
+    <% employees.forEach(e => { %>
+    <article class="employee rounded-2xl border border-[#e3e9ef] p-5 shadow-sm bg-white"
+      data-name="<%= e.name %>" data-department="<%= e.management %>" data-section="<%= e.section %>"
+      data-unit="<%= e.unitName %>" data-status="<%= e.status %>">
+      <div class="flex gap-4 items-start">
+        <%- include('../partials/avatar', { person: e, cls: 'w-16 h-16 rounded-xl' }) %>
+        <div class="min-w-0">
+          <h2 class="font-bold leading-snug text-[#14283f] text-[18px]"><%= e.name %></h2>
+          </div>
+      </div>
+      <div class="border-t border-[#e3e9ef] mt-5 pt-4 space-y-2">
+        <p class="text-[#526579] text-[14px]">الإدارة / المكتب: <%= e.management || '—' %></p>
+        <p class="text-[#526579] text-[14px]">الوحدة: <%= e.unitName || '—' %></p>
+      </div>
+      <div class="flex justify-between items-center gap-2 mt-5">
+        <span class="<%= e.status %> flex items-center gap-2 text-sm font-bold"><span class="status-dot"></span><span class="text-[16px]"><%= e.status === 'online' ? 'متصل الآن' : 'غير متصل' %></span></span>
+        <button data-id="<%= e.id %>" type="button" class="contact rounded-lg px-5 py-2 font-bold hover:brightness-110 text-white" style="background: rgb(23,105,163);" aria-label="خيارات التواصل مع <%= e.name %>">اتصال</button>
+      </div>
+    </article>
+    <% }) %>
+  </div>
+  <div id="empty" class="<%= employees.length ? 'hidden' : '' %> text-center rounded-2xl border border-dashed border-[#cbd7e2] p-10 mt-4 bg-white">
+    <div class="mx-auto mb-4 w-12 h-12 rounded-full bg-[#eaf1f7] flex items-center justify-center text-[#1769a3]"><i data-lucide="search-x" aria-hidden="true"></i></div>
+    <h2 class="font-bold text-[#14283f] text-[24px]">لا توجد نتائج مطابقة</h2>
+    <p class="mt-2 mb-5 text-[#64748b] text-[16px]"><%= employees.length ? 'جرّب كلمات بحث أخرى أو غيّر التصفية.' : 'لا توجد حسابات متاحة لك حاليًا. يمكنك اختيار حسابات من «الإعدادات» عند توفرها.' %></p>
+    <button id="empty-reset" type="button" class="rounded-lg px-5 py-2 font-bold hover:brightness-110 text-white" style="background: rgb(23,105,163);">إعادة ضبط البحث والتصفية</button>
+  </div>
+</section>
+
+<div id="modal" class="modal-backdrop hidden fixed inset-0 z-50 flex items-center justify-center p-4" aria-hidden="true">
+  <div role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-description" class="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h2 id="modal-title" class="font-bold text-[#14283f] text-[24px]">خيارات التواصل</h2>
+        <p id="modal-name" class="font-bold text-[#1769a3] mt-2"></p>
+      </div>
+      <button id="modal-close" type="button" aria-label="إغلاق النافذة" class="p-2 rounded-lg hover:bg-[#eaf1f7]"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <p id="modal-description" class="mt-4 leading-7 text-[#526579] text-[16px]">اختر إجراءً لمعاينة التفاعل. لا تُجرى مكالمات ولا تُرسل رسائل فعلية من هذه الصفحة.</p>
+    <div class="grid grid-cols-2 gap-3 mt-6">
+      <button id="call-action" type="button" class="rounded-lg py-3 px-2 font-bold hover:brightness-110 text-white" style="background: rgb(23,105,163);">بدء مكالمة</button>
+      <button id="message-action" type="button" class="rounded-lg py-3 px-2 font-bold hover:bg-[#eaf1f7] bg-white text-[#1769a3]">إرسال رسالة</button>
+    </div>
+    <p id="modal-feedback" class="mt-4 text-sm text-[#1769a3] font-semibold" aria-live="polite"></p>
+  </div>
+</div>
+
+<% if (kitchens.length) { %>
+<section id="kitchens" class="mt-9" aria-label="المطابخ المرتبطة بحسابك">
+  <div class="flex items-center gap-3 mb-4">
+    <span class="h-8 w-1 rounded-full bg-[#c4a56a]" aria-hidden="true"></span>
+    <h2 class="font-bold text-[#14283f] text-[24px]">المطابخ المرتبطة بحسابك</h2>
+  </div>
+  <p class="text-[#526579] text-[14px] mb-4">مرتبطة تلقائيًا بموقعك في الهيكل الإداري، ولا تحتاج اختيارها.</p>
+  <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+    <% kitchens.forEach(k => { %>
+      <article class="rounded-2xl border border-[#e9dcc2] bg-[#fbf6ec] p-5 flex items-center gap-4">
+        <%- include('../partials/avatar', { person: k, cls: 'w-14 h-14 rounded-xl' }) %>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-bold text-[#5b4515] text-[16px]"><%= k.name %></h3>
+          <p class="text-[#8a7a54] text-[13px]"><%= k.path %></p>
+        </div>
+        <a href="/call/active?contact=<%= k.id %>" class="rounded-lg px-4 py-2 font-bold text-white text-[14px]" style="background: rgb(23,105,163);" aria-label="تواصل مع <%= k.name %>">تواصل</a>
+      </article>
+    <% }) %>
+  </div>
+</section>
+<% } %>
+<%- include('../partials/layout-end', { scripts: ['/js/directory.js'] }) %>

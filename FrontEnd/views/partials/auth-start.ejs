@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <%- include('./head', { title: title + ' | ' + agencyName }) %>
+</head>
+<body class="w-full min-h-screen" style="background: rgb(243, 246, 249);">
+  <header class="w-full border-b-4 border-[#c4a56a]" style="background: rgb(20, 40, 63);">
+    <div class="max-w-3xl mx-auto px-5 py-5 flex items-center gap-4">
+      <div class="w-12 h-12 rounded-xl border border-white/20 bg-white/10 text-[#e4c990] flex items-center justify-center shrink-0" aria-hidden="true"><i data-lucide="landmark"></i></div>
+      <div>
+        <p class="font-bold leading-tight text-white text-[16px]"><%= agencyName %></p>
+        <p class="text-[#c9d5e3] text-[13px]">التواصل الإداري الداخلي</p>
+      </div>
+    </div>
+  </header>
+  <main class="w-full max-w-3xl mx-auto px-4 sm:px-6 py-10">

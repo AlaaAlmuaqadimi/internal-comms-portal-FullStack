@@ -1,0 +1,598 @@
+{
+  "id": "u77",
+  "name": "رئيس مصلحة الضرائب",
+  "kind": "root",
+  "kitchen": "مطبخ 1 / مطبخ 2",
+  "children": [
+    {
+      "id": "u36",
+      "name": "مكتب شؤون رئيس المصلحة",
+      "kind": "office",
+      "kitchen": "مطبخ 1 / مطبخ 2",
+      "children": [
+        {
+          "id": "u1",
+          "name": "مكتب المتابعة",
+          "kind": "office",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [],
+          "parent": "u36"
+        },
+        {
+          "id": "u2",
+          "name": "مكتب المراجعة الداخلية",
+          "kind": "office",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [],
+          "parent": "u36"
+        },
+        {
+          "id": "u3",
+          "name": "مكتب النشاط الرياضي",
+          "kind": "office",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [],
+          "parent": "u36"
+        },
+        {
+          "id": "u4",
+          "name": "مكتب الإعلام والتثقيف الضريبي",
+          "kind": "office",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [],
+          "parent": "u36"
+        },
+        {
+          "id": "u5",
+          "name": "صندوق الرعاية الاجتماعية",
+          "kind": "office",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [],
+          "parent": "u36"
+        },
+        {
+          "id": "u8",
+          "name": "إدارة الشؤون الفنية",
+          "kind": "directorate",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [
+            {
+              "id": "u6",
+              "name": "قسم إصدار المستندات الضريبية",
+              "kind": "section",
+              "children": [],
+              "parent": "u8"
+            },
+            {
+              "id": "u7",
+              "name": "قسم التعاون والإتفاقيات الدولية",
+              "kind": "section",
+              "children": [],
+              "parent": "u8"
+            }
+          ],
+          "parent": "u36"
+        },
+        {
+          "id": "u15",
+          "name": "إدارة الشؤون الإدارية والمالية",
+          "kind": "directorate",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [
+            {
+              "id": "u9",
+              "name": "قسم الشؤون الإدارية",
+              "kind": "section",
+              "children": [],
+              "parent": "u15"
+            },
+            {
+              "id": "u10",
+              "name": "قسم العلاقات العامة",
+              "kind": "section",
+              "children": [],
+              "parent": "u15"
+            },
+            {
+              "id": "u11",
+              "name": "قسم الشؤون المالية",
+              "kind": "section",
+              "children": [],
+              "parent": "u15"
+            },
+            {
+              "id": "u12",
+              "name": "قسم الخدمات",
+              "kind": "section",
+              "children": [],
+              "parent": "u15"
+            },
+            {
+              "id": "u13",
+              "name": "قسم شؤون الموظفين",
+              "kind": "section",
+              "children": [],
+              "parent": "u15"
+            },
+            {
+              "id": "u14",
+              "name": "قسم الحركة / الصيانة",
+              "kind": "section",
+              "children": [],
+              "parent": "u15"
+            }
+          ],
+          "parent": "u36"
+        },
+        {
+          "id": "u19",
+          "name": "إدارة التفتيش",
+          "kind": "directorate",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [
+            {
+              "id": "u16",
+              "name": "قسم الإشراف والتفتيش",
+              "kind": "section",
+              "children": [],
+              "parent": "u19"
+            },
+            {
+              "id": "u17",
+              "name": "قسم المتابعة والتقارير",
+              "kind": "section",
+              "children": [],
+              "parent": "u19"
+            },
+            {
+              "id": "u18",
+              "name": "قسم بالإدارات والمناطق",
+              "kind": "section",
+              "children": [],
+              "parent": "u19"
+            }
+          ],
+          "parent": "u36"
+        },
+        {
+          "id": "u23",
+          "name": "إدارة محاسبة الإيرادات",
+          "kind": "directorate",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [
+            {
+              "id": "u20",
+              "name": "قسم التدقيق والمراجعة",
+              "kind": "section",
+              "children": [],
+              "parent": "u23"
+            },
+            {
+              "id": "u21",
+              "name": "قسم الإحصاء ومطابقة الحسابات",
+              "kind": "section",
+              "children": [],
+              "parent": "u23"
+            },
+            {
+              "id": "u22",
+              "name": "قسم إدخال البيانات",
+              "kind": "section",
+              "children": [],
+              "parent": "u23"
+            }
+          ],
+          "parent": "u36"
+        },
+        {
+          "id": "u35",
+          "name": "الإدارات التنفيذية بالمناطق (فرع مكتب شؤون الرئيس)",
+          "kind": "group",
+          "children": [
+            {
+              "id": "u24",
+              "name": "إدارة ضرائب طرابلس",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب طرابلس",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u25",
+              "name": "إدارة ضرائب بنغازي",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب بنغازي",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u26",
+              "name": "إدارة ضرائب مصراتة",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب مصراتة",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u27",
+              "name": "إدارة ضرائب خليج السدرة",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب خليج السدرة",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u28",
+              "name": "إدارة ضرائب الواحات",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب الواحات",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u29",
+              "name": "إدارة ضرائب المرقب",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب المرقب",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u30",
+              "name": "إدارة ضرائب غريان",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب غريان",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u31",
+              "name": "إدارة ضرائب سبها",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب سبها",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u32",
+              "name": "إدارة ضرائب مرادة",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب مرادة",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u33",
+              "name": "إدارة ضرائب سرت",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب سرت",
+              "children": [],
+              "parent": "u35"
+            },
+            {
+              "id": "u34",
+              "name": "إدارة ضرائب العجيلات",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب العجيلات",
+              "children": [],
+              "parent": "u35"
+            }
+          ],
+          "parent": "u36"
+        }
+      ],
+      "parent": "u77"
+    },
+    {
+      "id": "u76",
+      "name": "نائب رئيس المصلحة",
+      "kind": "deputy",
+      "kitchen": "مطبخ 1 / مطبخ 2",
+      "children": [
+        {
+          "id": "u37",
+          "name": "مكتب شؤون نائب رئيس المصلحة",
+          "kind": "office",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [],
+          "parent": "u76"
+        },
+        {
+          "id": "u38",
+          "name": "مكتب الخبراء والاستشارات",
+          "kind": "office",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [],
+          "parent": "u76"
+        },
+        {
+          "id": "u39",
+          "name": "قسم شؤون إدارية",
+          "kind": "section",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [],
+          "parent": "u76"
+        },
+        {
+          "id": "u45",
+          "name": "مكتب الشؤون القانونية",
+          "kind": "office",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [
+            {
+              "id": "u40",
+              "name": "قسم العقود",
+              "kind": "section",
+              "children": [],
+              "parent": "u45"
+            },
+            {
+              "id": "u41",
+              "name": "قسم القضايا",
+              "kind": "section",
+              "children": [],
+              "parent": "u45"
+            },
+            {
+              "id": "u42",
+              "name": "قسم القرارات",
+              "kind": "section",
+              "children": [],
+              "parent": "u45"
+            },
+            {
+              "id": "u43",
+              "name": "قسم التحقيقات",
+              "kind": "section",
+              "children": [],
+              "parent": "u45"
+            },
+            {
+              "id": "u44",
+              "name": "قسم الآراء القانونية",
+              "kind": "section",
+              "children": [],
+              "parent": "u45"
+            }
+          ],
+          "parent": "u76"
+        },
+        {
+          "id": "u49",
+          "name": "إدارة التخطيط والتطوير",
+          "kind": "directorate",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [
+            {
+              "id": "u46",
+              "name": "قسم التدريب والتأهيل",
+              "kind": "section",
+              "children": [],
+              "parent": "u49"
+            },
+            {
+              "id": "u47",
+              "name": "قسم المتابعة والتقييم",
+              "kind": "section",
+              "children": [],
+              "parent": "u49"
+            },
+            {
+              "id": "u48",
+              "name": "قسم البحوث والدراسات",
+              "kind": "section",
+              "children": [],
+              "parent": "u49"
+            }
+          ],
+          "parent": "u76"
+        },
+        {
+          "id": "u52",
+          "name": "إدارة مكافحة التهرب الضريبي",
+          "kind": "directorate",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [
+            {
+              "id": "u50",
+              "name": "قسم المعلومات والمتابعة الميدانية",
+              "kind": "section",
+              "children": [],
+              "parent": "u52"
+            },
+            {
+              "id": "u51",
+              "name": "قسم التحقيق ومتابعة الدعاوى القضائية",
+              "kind": "section",
+              "children": [],
+              "parent": "u52"
+            }
+          ],
+          "parent": "u76"
+        },
+        {
+          "id": "u58",
+          "name": "إدارة المعلوماتية",
+          "kind": "directorate",
+          "kitchen": "مطبخ 1 / مطبخ 2",
+          "children": [
+            {
+              "id": "u53",
+              "name": "قسم البرمجة والتطوير",
+              "kind": "section",
+              "children": [],
+              "parent": "u58"
+            },
+            {
+              "id": "u54",
+              "name": "قسم الشبكات والدعم الفني",
+              "kind": "section",
+              "children": [],
+              "parent": "u58"
+            },
+            {
+              "id": "u55",
+              "name": "قسم التوثيق والمعلومات",
+              "kind": "section",
+              "children": [],
+              "parent": "u58"
+            },
+            {
+              "id": "u56",
+              "name": "قسم أمن المعلومات",
+              "kind": "section",
+              "children": [],
+              "parent": "u58"
+            },
+            {
+              "id": "u57",
+              "name": "وحدة الاتصالات",
+              "kind": "section",
+              "children": [],
+              "parent": "u58"
+            }
+          ],
+          "parent": "u76"
+        },
+        {
+          "id": "u75",
+          "name": "الإدارات التنفيذية بالمناطق (فرع نائب الرئيس)",
+          "kind": "group",
+          "children": [
+            {
+              "id": "u59",
+              "name": "إدارة ضرائب الجفارة",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب الجفارة",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u60",
+              "name": "إدارة ضرائب تاجوراء",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب تاجوراء",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u61",
+              "name": "إدارة ضرائب أجدابيا",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب أجدابيا",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u62",
+              "name": "إدارة ضرائب الجبل الأخضر",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب الجبل الأخضر",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u63",
+              "name": "إدارة ضرائب زليتن",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب زليتن",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u64",
+              "name": "إدارة ضرائب جنزور",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب جنزور",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u65",
+              "name": "إدارة ضرائب الزاوية",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب الزاوية",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u66",
+              "name": "إدارة ضرائب طبرق",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب طبرق",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u67",
+              "name": "إدارة ضرائب الحزام",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب الحزام",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u68",
+              "name": "إدارة ضرائب المرج",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب المرج",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u69",
+              "name": "إدارة ضرائب الكفرة",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب الكفرة",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u70",
+              "name": "إدارة ضرائب زوارة",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب زوارة",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u71",
+              "name": "إدارة ضرائب وادي الشاطئ",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب وادي الشاطئ",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u72",
+              "name": "إدارة ضرائب القبة",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب القبة",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u73",
+              "name": "إدارة ضرائب درنة",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب درنة",
+              "children": [],
+              "parent": "u75"
+            },
+            {
+              "id": "u74",
+              "name": "إدارة ضرائب صرمان",
+              "kind": "directorate",
+              "kitchen": "مطبخ إدارة ضرائب صرمان",
+              "children": [],
+              "parent": "u75"
+            }
+          ],
+          "parent": "u76"
+        }
+      ],
+      "parent": "u77"
+    }
+  ],
+  "parent": null
+}

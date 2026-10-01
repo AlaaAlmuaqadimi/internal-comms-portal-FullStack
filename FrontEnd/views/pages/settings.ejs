@@ -1,0 +1,58 @@
+<%- include('../partials/layout-start') %>
+<div class="mb-8 border-r-4 border-[#c4a56a] pr-4">
+  <h1 class="font-extrabold leading-tight text-[#14283f] text-[32px]">الإعدادات</h1>
+  <p class="mt-1 text-[#526579] text-[16px]">بيانات حسابك والحسابات المتاحة للتواصل.</p>
+</div>
+
+<section class="rounded-2xl border border-[#e3e9ef] bg-white card-shadow p-6 mb-6" aria-labelledby="profile-heading">
+  <h2 id="profile-heading" class="font-bold text-[#14283f] text-[24px] mb-5">حسابي</h2>
+  <div class="flex flex-col sm:flex-row gap-5 sm:items-center">
+    <%- include('../partials/avatar', { person: currentUser, cls: 'w-20 h-20 rounded-2xl text-2xl' }) %>
+    <dl class="grid sm:grid-cols-2 gap-x-10 gap-y-3 flex-1">
+      <div><dt class="text-[#64748b] text-[13px]">الاسم</dt><dd class="font-bold text-[#14283f]"><%= me.name %></dd></div>
+      <div><dt class="text-[#64748b] text-[13px]">اسم المستخدم</dt><dd class="font-bold text-[#14283f]" dir="ltr" style="text-align:right"><%= me.username %></dd></div>
+      <div><dt class="text-[#64748b] text-[13px]">الإدارة / المكتب</dt><dd class="font-bold text-[#14283f]"><%= currentUser.management %></dd></div>
+      <div class="sm:col-span-2"><dt class="text-[#64748b] text-[13px]">الموقع في الهيكل الإداري</dt><dd class="font-bold text-[#14283f]"><%= currentUser.path %></dd></div>
+    </dl>
+  </div>
+</section>
+
+<% if (kitchenOptions.type === 'choice') { %>
+<section class="rounded-2xl border border-[#e3e9ef] bg-white card-shadow p-6 mb-6" aria-labelledby="kitchen-heading">
+  <h2 id="kitchen-heading" class="font-bold text-[#14283f] text-[24px] mb-1">مطبخ الخدمة</h2>
+  <p class="text-[#526579] text-[14px] mb-4">موقعك يقع ضمن نطاق مطبخين مشتركين؛ اختر أحدهما.</p>
+  <form method="post" action="/settings/kitchen" class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="flex flex-col sm:flex-row gap-3 flex-1">
+      <% kitchenOptions.options.forEach(k => { %>
+        <label class="flex items-center gap-2 rounded-xl border border-[#e9dcc2] bg-[#fbf6ec] px-4 py-2.5 cursor-pointer flex-1">
+          <input type="radio" name="kitchenChoice" value="<%= k.id %>" class="accent-[#8a6a2f]" required <%= kitchenChoice === k.id ? 'checked' : '' %>>
+          <span class="font-bold text-[#5b4515] text-[15px]"><%= k.name %></span>
+        </label>
+      <% }) %>
+    </div>
+    <button type="submit" class="rounded-xl px-5 py-2.5 font-bold text-white shrink-0" style="background: rgb(23,105,163);">حفظ</button>
+  </form>
+</section>
+<% } %>
+<section class="rounded-2xl border border-[#e3e9ef] bg-white card-shadow p-6" aria-labelledby="contacts-heading">
+  <h2 id="contacts-heading" class="font-bold text-[#14283f] text-[24px]">الحسابات المتاحة للتواصل</h2>
+  <p class="mt-1 mb-5 text-[#526579] text-[14px]">اختر من بين الحسابات المرتبطة بموقعك في الهيكل الإداري (مديرك المباشر، نفس المستوى، ومن يندرج أسفلك). لا يمكن التواصل مع أي حساب خارجها.</p>
+  <form method="post" action="/settings/contacts">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+      <div class="relative flex-1 min-w-[200px]">
+        <i data-lucide="search" class="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#64748b] pointer-events-none" aria-hidden="true"></i>
+        <input id="contact-search" type="search" class="field !pr-11" placeholder="ابحث في الحسابات" autocomplete="off" aria-label="ابحث في الحسابات">
+      </div>
+      <button type="button" id="select-all" class="rounded-lg px-3 py-2 border border-[#ccd9e5] font-bold text-[#1769a3] text-[14px]">تحديد الكل</button>
+      <button type="button" id="select-none" class="rounded-lg px-3 py-2 border border-[#ccd9e5] font-bold text-[#1769a3] text-[14px]">إلغاء التحديد</button>
+    </div>
+    <div id="contact-list"><%- include('../partials/candidates', { groups, kitchenOptions, kitchenChoice, selected }) %></div>
+    <div class="flex flex-wrap items-center justify-between gap-3 mt-4">
+      <p class="text-[#1769a3] font-bold" role="status" aria-live="polite">المحدد: <span id="selected-count">0</span></p>
+      <button type="submit" class="rounded-xl px-6 py-2.5 font-bold text-white" style="background: rgb(23,105,163);">حفظ التغييرات</button>
+    </div>
+  </form>
+</section>
+<%- include('../partials/layout-end', { scripts: ['/js/contacts-picker.js'] }) %>

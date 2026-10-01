@@ -1,0 +1,4 @@
+<% if (person.isKitchen) { %><span class="<%= cls %> shrink-0 flex items-center justify-center bg-[#f4ede0] text-[#8a6a2f]" role="img" aria-label="<%= person.name %>"><i data-lucide="chef-hat"></i></span>
+<% } else if (person.avatar) { %><img loading="lazy" class="<%= cls %> object-cover bg-[#e5ecf1] shrink-0" src="<%= person.avatar %>" alt="<%= person.avatarAlt || person.name %>">
+<% } else { %><span class="<%= cls %> shrink-0 flex items-center justify-center bg-[#eaf1f7] text-[#1769a3] font-bold" role="img" aria-label="<%= person.name %>"><%= Array.from(person.name)[0] %></span>
+<% } %>

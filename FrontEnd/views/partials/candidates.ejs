@@ -1,0 +1,29 @@
+<%- include('./kitchen-picker', { kitchenOptions, kitchenChoice: typeof kitchenChoice !== 'undefined' ? kitchenChoice : null }) %>
+<% if (!groups) { %>
+  <p class="rounded-xl border border-dashed border-[#cbd7e2] p-5 text-center text-[#526579]">اختر موقعك في الهيكل الإداري لتظهر الحسابات المتاحة لك.</p>
+<% } else if (groups.length === 0) { %>
+  <p class="rounded-xl border border-dashed border-[#cbd7e2] p-5 text-center text-[#526579]">لا توجد حاليًا حسابات مرتبطة بهذا الموقع (المرتبة الأعلى بدرجة واحدة، أو نفس المستوى، أو من يندرج أسفله).</p>
+<% } else { %>
+  <div class="flex flex-wrap items-center gap-2 mb-4" role="group" aria-label="تصفية حسب العلاقة">
+    <button type="button" class="relation-filter rounded-full px-3 py-1.5 text-[13px] font-bold border" data-relation="all">الكل (<%= groups.reduce((n,g)=>n+g.items.length,0) %>)</button>
+    <% groups.forEach(g => { %><button type="button" class="relation-filter rounded-full px-3 py-1.5 text-[13px] font-bold border" data-relation="<%= g.key %>"><%= g.label %> (<%= g.items.length %>)</button><% }) %>
+    <select id="unit-filter" class="field !h-9 !w-auto !text-[13px] mr-auto" aria-label="تصفية حسب الوحدة"><option value="">كل الوحدات</option></select>
+  </div>
+  <% groups.forEach(g => { %>
+    <section class="mb-5" data-relation="<%= g.key %>" aria-label="<%= g.label %>">
+      <h3 class="font-bold text-[#243b53] text-[15px] mb-2"><%= g.label %> <span class="font-normal text-[#64748b]">(<%= g.items.length %>)</span></h3>
+      <div class="grid sm:grid-cols-2 gap-3">
+        <% g.items.forEach(p => { %>
+          <label class="contact-option flex items-center gap-3 rounded-xl border border-[#e3e9ef] p-3 cursor-pointer hover:bg-[#f5f9fc]" data-search="<%= [p.name, p.unitName, p.management].join(' ') %>" data-unit="<%= p.unitName %>">
+            <input type="checkbox" name="contacts" value="<%= p.id %>" class="w-5 h-5 shrink-0 accent-[#1769a3]" <%= selected.includes(p.id) ? 'checked' : '' %>>
+            <%- include('./avatar', { person: p, cls: 'w-12 h-12 rounded-lg' }) %>
+            <span class="min-w-0">
+              <span class="block font-bold text-[#14283f] text-[15px]"><%= p.name %></span>
+              <span class="block text-[#526579] text-[13px]"><%= p.unitName %></span>
+            </span>
+          </label>
+        <% }) %>
+      </div>
+    </section>
+  <% }) %>
+<% } %>

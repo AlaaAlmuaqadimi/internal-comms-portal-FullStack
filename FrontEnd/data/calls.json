@@ -1,0 +1,52 @@
+[
+  {
+    "id": 1,
+    "type": "incoming",
+    "typeLabel": "مكالمة واردة",
+    "icon": "arrow-down-left",
+    "contactId": 54,
+    "date": "٢٧ سبتمبر ٢٠٢٦",
+    "time": "١٠:٣٠ ص",
+    "duration": "المدة: ٤ دقائق و١٢ ثانية"
+  },
+  {
+    "id": 2,
+    "type": "missed",
+    "typeLabel": "مكالمة فائتة",
+    "icon": "phone-missed",
+    "contactId": 26,
+    "date": "٢٧ سبتمبر ٢٠٢٦",
+    "time": "٠٩:١٥ ص",
+    "duration": "المدة: لم يتم الرد"
+  },
+  {
+    "id": 3,
+    "type": "outgoing",
+    "typeLabel": "مكالمة صادرة",
+    "icon": "arrow-up-right",
+    "contactId": 11,
+    "date": "٢٦ سبتمبر ٢٠٢٦",
+    "time": "٠٢:٤٠ م",
+    "duration": "المدة: ٧ دقائق و٣٥ ثانية"
+  },
+  {
+    "id": 4,
+    "type": "incoming",
+    "typeLabel": "مكالمة واردة",
+    "icon": "arrow-down-left",
+    "contactId": 28,
+    "date": "٢٦ سبتمبر ٢٠٢٦",
+    "time": "١١:٠٥ ص",
+    "duration": "المدة: دقيقتان و٤٨ ثانية"
+  },
+  {
+    "id": 5,
+    "type": "missed",
+    "typeLabel": "مكالمة فائتة",
+    "icon": "phone-missed",
+    "contactId": 41,
+    "date": "٢٥ سبتمبر ٢٠٢٦",
+    "time": "٠٣:٢٠ م",
+    "duration": "المدة: لم يتم الرد"
+  }
+]

@@ -1,0 +1,26 @@
+<%
+const items = [
+  { key: 'calls', href: '/calls', icon: 'phone', label: 'المكالمات الأخيرة' },
+  { key: 'directory', href: '/directory', icon: 'users-round', label: 'دليل الموظفين' },
+  { key: 'org', href: '/org', icon: 'building-2', label: 'الإدارات' },
+  { key: 'notifications', href: '/notifications', icon: 'bell', label: 'الإشعارات' },
+  { key: 'settings', href: '/settings', icon: 'settings', label: 'الإعدادات' }
+];
+%>
+<aside class="sidebar px-5 py-6 text-white" aria-label="التنقل الرئيسي">
+  <div class="flex items-center gap-3 mb-7 lg:mb-12">
+    <div class="w-11 h-11 rounded-xl flex items-center justify-center border border-white/20 bg-white/10 text-[#e4c990]" aria-hidden="true"><i data-lucide="landmark"></i></div>
+    <div>
+      <p class="font-bold leading-tight text-white text-[16px]"><%= agencyName %></p>
+      <p class="opacity-75 text-[#c9d5e3] text-[13px]">التواصل الإداري</p>
+    </div>
+  </div>
+  <nav class="nav-list lg:space-y-2" aria-label="أقسام الموقع">
+    <% items.forEach(item => { const on = item.key === active; %>
+      <a class="nav-link <%= on ? 'active' : '' %>" href="<%= item.href %>" <%- on ? 'aria-current="page"' : '' %>><i data-lucide="<%= item.icon %>"></i><span><%= item.label %></span></a>
+    <% }) %>
+  </nav>
+  <div class="hidden lg:block mt-16 border-t border-white/15 pt-5">
+    <p class="leading-7 text-[#c9d5e3] text-[13px]">واجهة داخلية ببيانات تجريبية للمعاينة؛ لا تُجرى مكالمات أو رسائل فعلية.</p>
+  </div>
+</aside>

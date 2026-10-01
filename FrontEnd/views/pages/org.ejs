@@ -1,0 +1,19 @@
+<%- include('../partials/layout-start') %>
+<div class="mb-8 flex flex-wrap items-start justify-between gap-4">
+  <div>
+    <div class="flex items-center gap-3 mb-3"><span class="h-8 w-1 rounded-full bg-[#c4a56a]" aria-hidden="true"></span>
+      <h1 class="font-extrabold leading-tight text-[#14283f] text-[32px]">الإدارات</h1></div>
+    <p class="leading-8 max-w-3xl text-[#526579] text-[16px]">الهيكل الإداري لمصلحة الضرائب. يحدّد موقعك فيه من يمكنك التواصل معه، ومطبخ الخدمة المرتبط بوحدتك. يمكن لأي مستخدم تعديل الهيكل من هنا.</p>
+  </div>
+</div>
+
+<section class="rounded-xl border border-[#d9e6ee] px-5 py-4 mb-7 flex items-start gap-3" style="background: rgb(237,245,250);">
+  <i data-lucide="info" class="w-5 h-5 shrink-0 text-[#1769a3] mt-1" aria-hidden="true"></i>
+  <p class="leading-7 text-[#27455b] text-[16px]">مديرو الإدارات (🏢) يتواصلون تلقائيًا مع رئيس المصلحة ونائبه (مرتبة أعلى بدرجة واحدة) ومع بقية مديري الإدارات (نفس المستوى)، أيًا كان فرع المكتب الذي تتبعه الإدارة في الشكل. لا يمكن حذف وحدة بها حسابات؛ انقل الحسابات أولًا من صفحة التسجيل أو الإعدادات.</p>
+</section>
+
+<div id="org-tree" class="org-tree">
+  <%- include('../partials/org-node', { node: tree, csrfToken, kinds }) %>
+</div>
+
+<%- include('../partials/layout-end', { scripts: ['/js/org.js'] }) %>

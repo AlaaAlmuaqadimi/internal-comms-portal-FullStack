@@ -1,0 +1,5 @@
+<% if (errors && errors.length) { %>
+  <div role="alert" class="rounded-xl border border-[#e5b3a6] bg-[#fdf0ec] px-4 py-3 text-[#8a3a24]">
+    <ul class="list-disc pr-5 space-y-1"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+  </div>
+<% } %>

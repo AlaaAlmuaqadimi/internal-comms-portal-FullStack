@@ -1,0 +1,66 @@
+<% const inApp = !!currentUser; %>
+<%- include(inApp ? '../partials/layout-start' : '../partials/auth-start') %>
+<div class="max-w-3xl mx-auto">
+  <% if (inApp) { %><a href="/directory" class="inline-flex items-center gap-2 mb-4 font-bold text-[#1769a3]"><i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>العودة إلى دليل الموظفين</a><% } %>
+  <div class="mb-6 border-r-4 border-[#c4a56a] pr-4">
+    <h1 class="font-extrabold leading-tight text-[#14283f] text-[28px]">إنشاء حساب</h1>
+    <p class="mt-1 text-[#526579] text-[16px]">حدّد موقع الحساب في الهيكل الإداري لتظهر لك الحسابات المرتبطة به، ثم اختر منها من يمكنه التواصل معهم.</p>
+  </div>
+  <form method="post" action="/register" class="rounded-2xl border border-[#e3e9ef] bg-white card-shadow p-6 sm:p-8 space-y-6" novalidate>
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <%- include('../partials/form-errors') %>
+
+    <fieldset class="grid sm:grid-cols-2 gap-4">
+      <legend class="font-bold text-[#14283f] text-[18px] mb-3">بيانات الحساب</legend>
+      <div class="sm:col-span-2">
+        <label for="name" class="block font-bold mb-2 text-[#14283f]">الاسم الكامل</label>
+        <input id="name" name="name" class="field" required maxlength="60" autocomplete="name" value="<%= values.name || '' %>">
+      </div>
+      <div>
+        <label for="username" class="block font-bold mb-2 text-[#14283f]">اسم المستخدم</label>
+        <input id="username" name="username" class="field" dir="ltr" required maxlength="30" autocomplete="username" value="<%= values.username || '' %>" aria-describedby="username-hint">
+        <p id="username-hint" class="mt-1 text-[#64748b] text-[13px]">أحرف إنجليزية وأرقام فقط (3–30).</p>
+      </div>
+      <div>
+        <label for="password" class="block font-bold mb-2 text-[#14283f]">كلمة المرور</label>
+        <input id="password" name="password" type="password" class="field" dir="ltr" required minlength="8" maxlength="72" autocomplete="new-password">
+        <p class="mt-1 text-[#64748b] text-[13px]">8 أحرف على الأقل.</p>
+      </div>
+      <div>
+        <label for="confirm" class="block font-bold mb-2 text-[#14283f]">تأكيد كلمة المرور</label>
+        <input id="confirm" name="confirm" type="password" class="field" dir="ltr" required autocomplete="new-password">
+      </div>
+      <div class="sm:col-span-2">
+        <label for="unit" class="block font-bold mb-2 text-[#14283f]">الموقع في الهيكل الإداري (إدارة / مكتب / قسم)</label>
+        <select id="unit" name="unit" class="field" required>
+          <option value="">اختر موقعك في الهيكل الإداري</option>
+          <% unitGroups.forEach(g => { %>
+            <optgroup label="<%= g.label %>">
+              <% g.items.forEach(i => { %><option value="<%= i.id %>" <%= values.unit === i.id ? 'selected' : '' %>><%= i.label %></option><% }) %>
+            </optgroup>
+          <% }) %>
+        </select>
+        <p class="mt-1 text-[#64748b] text-[13px]">يحدّد هذا الموقع من يظهر لك في قائمة الحسابات أدناه.</p>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend class="font-bold text-[#14283f] text-[18px]">الحسابات التي يمكنني التواصل معها</legend>
+      <p class="mt-1 mb-4 text-[#526579] text-[14px]">تظهر هنا فقط الحسابات المرتبطة بموقعك: مديرك المباشر، ونفس مستواك الإداري، ومن يندرج أسفل وحدتك. لن ترى أو تتصل بغيرها.</p>
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <div class="relative flex-1 min-w-[200px]">
+          <i data-lucide="search" class="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#64748b] pointer-events-none" aria-hidden="true"></i>
+          <input id="contact-search" type="search" class="field !pr-11" placeholder="ابحث في الحسابات" autocomplete="off" aria-label="ابحث في الحسابات">
+        </div>
+        <button type="button" id="select-all" class="rounded-lg px-3 py-2 border border-[#ccd9e5] font-bold text-[#1769a3] text-[14px]">تحديد الكل</button>
+        <button type="button" id="select-none" class="rounded-lg px-3 py-2 border border-[#ccd9e5] font-bold text-[#1769a3] text-[14px]">إلغاء التحديد</button>
+      </div>
+      <div id="contact-list" aria-live="polite"><%- include('../partials/candidates', { groups: candidateGroups, kitchenOptions, kitchenChoice: values.kitchenChoice || null, selected: values.contacts || [] }) %></div>
+      <p class="mt-3 text-[#1769a3] font-bold" role="status" aria-live="polite">المحدد: <span id="selected-count">0</span></p>
+    </fieldset>
+
+    <button type="submit" class="w-full rounded-xl py-3 font-bold text-white" style="background: rgb(23,105,163);">إنشاء الحساب</button>
+  </form>
+  <% if (!inApp) { %><p class="mt-5 text-center text-[#526579]">لديك حساب؟ <a href="/login" class="font-bold text-[#1769a3] underline">تسجيل الدخول</a></p><% } %>
+</div>
+<%- include(inApp ? '../partials/layout-end' : '../partials/auth-end', { scripts: ['/js/contacts-picker.js'] }) %>
