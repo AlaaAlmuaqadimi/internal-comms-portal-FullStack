@@ -1,3 +1,4 @@
+import { translate } from '../context/LanguageContext';
 import { useState, useEffect, useCallback } from 'react';
 
 const useFetch = (fetchFunction, immediate = true) => {
@@ -13,7 +14,7 @@ const useFetch = (fetchFunction, immediate = true) => {
       setData(result);
       return result;
     } catch (err) {
-      setError(err.message || 'حدث خطأ غير متوقع');
+      setError(err.message || translate('mock.errorUnexpected'));
       throw err;
     } finally {
       setLoading(false);

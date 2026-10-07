@@ -16,9 +16,12 @@ import StatusBadge from '../../components/StatusBadge';
 import CustomButton from '../../components/CustomButton';
 import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { useLanguage } from '../../context/LanguageContext';
+import { localizeText } from '../../i18n/localize';
 
 const CallActiveScreen = ({ route, navigation }) => {
   const { contact } = route.params;
+  const { t } = useLanguage();
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
@@ -100,33 +103,33 @@ const CallActiveScreen = ({ route, navigation }) => {
           <View style={styles.summaryIcon}>
             <Ionicons name="call" size={32} color={colors.primaryLight} />
           </View>
-          <Text style={styles.summaryTitle}>انتهت المكالمة</Text>
+          <Text style={styles.summaryTitle}>{t('callActive.ended')}</Text>
 
           <View style={styles.summaryDetails}>
             <Text style={styles.summaryText}>
-              <Text style={styles.summaryLabel}>الموظف: </Text>
-              {contact.name}
+              <Text style={styles.summaryLabel}>{t('callActive.employeeLabel')}</Text>
+              {localizeText(contact.name)}
             </Text>
             <Text style={styles.summaryText}>
-              <Text style={styles.summaryLabel}>مدة المكالمة: </Text>
+              <Text style={styles.summaryLabel}>{t('callActive.durationLabel')}</Text>
               {formatDuration(duration)}
             </Text>
           </View>
 
           <View style={styles.summaryActions}>
             <CustomButton
-              title="العودة إلى دليل الموظفين"
+              title={t('callActive.backToDirectory')}
               onPress={() => navigation.navigate('Directory')}
               style={styles.summaryButton}
             />
             <CustomButton
-              title="المكالمات الأخيرة"
+              title={t('callActive.recentCalls')}
               onPress={() => navigation.navigate('Calls')}
               variant="outline"
               style={styles.summaryButton}
             />
             <CustomButton
-              title="اتصال مرة أخرى"
+              title={t('callActive.callAgain')}
               onPress={handleRestart}
               variant="outline"
               style={styles.summaryButton}
@@ -146,32 +149,32 @@ const CallActiveScreen = ({ route, navigation }) => {
             <UserAvatar person={contact} size="xlarge" />
             <View style={styles.callHeaderText}>
               <Text style={styles.callLabel}>
-                {contact.isKitchen ? 'التواصل مع' : 'الموظف المتصل'}
+                {contact.isKitchen ? t('callActive.communicatingWith') : t('callActive.callingEmployee')}
               </Text>
-              <Text style={styles.callName}>{contact.name}</Text>
-              <Text style={styles.callUnit}>{contact.unitName}</Text>
+              <Text style={styles.callName}>{localizeText(contact.name)}</Text>
+              <Text style={styles.callUnit}>{localizeText(contact.unitName)}</Text>
             </View>
             <StatusBadge
               status={contact.isKitchen ? 'kitchen' : 'online'}
-              text={contact.isKitchen ? 'خدمة متاحة' : 'متصل الآن'}
+              text={contact.isKitchen ? t('callActive.serviceAvailable') : t('callActive.onlineNow')}
             />
           </View>
 
           <View style={styles.callMeta}>
             <View style={styles.durationContainer}>
-              <Text style={styles.durationLabel}>مدة المكالمة</Text>
+              <Text style={styles.durationLabel}>{t('callActive.durationTitle')}</Text>
               <Text style={styles.duration}>{formatDuration(duration)}</Text>
             </View>
             <View style={styles.secureBadge}>
               <Ionicons name="shield" size={16} color={colors.primaryLight} />
-              <Text style={styles.secureText}>مكالمة داخلية آمنة</Text>
+              <Text style={styles.secureText}>{t('callActive.secureCall')}</Text>
             </View>
           </View>
         </View>
 
         {/* التحكم بالمكالمة */}
         <View style={styles.controls}>
-          <Text style={styles.controlsTitle}>التحكم بالمكالمة</Text>
+          <Text style={styles.controlsTitle}>{t('callActive.controlsTitle')}</Text>
 
           <View style={styles.controlsGrid}>
             <Pressable
@@ -184,7 +187,7 @@ const CallActiveScreen = ({ route, navigation }) => {
                 color={isMuted ? colors.textWhite : colors.text}
               />
               <Text style={[styles.controlLabel, isMuted && styles.controlLabelActive]}>
-                {isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
+                {isMuted ? t('callActive.unmute') : t('callActive.mute')}
               </Text>
             </Pressable>
 
@@ -198,7 +201,7 @@ const CallActiveScreen = ({ route, navigation }) => {
                 color={isSpeaker ? colors.textWhite : colors.text}
               />
               <Text style={[styles.controlLabel, isSpeaker && styles.controlLabelActive]}>
-                {isSpeaker ? 'إيقاف مكبر الصوت' : 'مكبر الصوت'}
+                {isSpeaker ? t('callActive.speakerOff') : t('callActive.speaker')}
               </Text>
             </Pressable>
 
@@ -212,7 +215,7 @@ const CallActiveScreen = ({ route, navigation }) => {
                 color={showKeypad ? colors.textWhite : colors.text}
               />
               <Text style={[styles.controlLabel, showKeypad && styles.controlLabelActive]}>
-                لوحة الأرقام
+                {t('callActive.keypad')}
               </Text>
             </Pressable>
 
@@ -221,7 +224,7 @@ const CallActiveScreen = ({ route, navigation }) => {
               onPress={() => setShowParticipantModal(true)}
             >
               <Ionicons name="person-add" size={24} color={colors.text} />
-              <Text style={styles.controlLabel}>إضافة مشارك</Text>
+              <Text style={styles.controlLabel}>{t('callActive.addParticipant')}</Text>
             </Pressable>
           </View>
 
@@ -229,13 +232,13 @@ const CallActiveScreen = ({ route, navigation }) => {
           {showKeypad && (
             <View style={styles.keypad}>
               <View style={styles.keypadHeader}>
-                <Text style={styles.keypadTitle}>لوحة الأرقام</Text>
+                <Text style={styles.keypadTitle}>{t('callActive.keypadTitle')}</Text>
                 <Pressable onPress={() => setShowKeypad(false)} style={styles.keypadClose}>
-                  <Text style={styles.keypadCloseText}>إغلاق</Text>
+                  <Text style={styles.keypadCloseText}>{t('common.close')}</Text>
                 </Pressable>
               </View>
 
-              <Text style={styles.keypadInput}>{keypadInput || 'الأرقام المُدخلة'}</Text>
+              <Text style={styles.keypadInput}>{keypadInput || t('callActive.enteredDigits')}</Text>
 
               <View style={styles.keypadGrid}>
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((digit) => (
@@ -250,7 +253,7 @@ const CallActiveScreen = ({ route, navigation }) => {
               </View>
 
               <Pressable onPress={handleKeypadClear} style={styles.keypadClear}>
-                <Text style={styles.keypadClearText}>مسح الأرقام</Text>
+                <Text style={styles.keypadClearText}>{t('callActive.clearDigits')}</Text>
               </Pressable>
             </View>
           )}
@@ -259,13 +262,13 @@ const CallActiveScreen = ({ route, navigation }) => {
           <View style={styles.endCallContainer}>
             <Pressable style={styles.endCallButton} onPress={handleEndCall}>
               <Ionicons name="call" size={24} color={colors.textWhite} />
-              <Text style={styles.endCallText}>إنهاء المكالمة</Text>
+              <Text style={styles.endCallText}>{t('callActive.endCall')}</Text>
             </Pressable>
           </View>
         </View>
 
         <Text style={styles.disclaimer}>
-          معاينة تفاعلية فقط؛ لا تُجرى مكالمة صوتية فعلية أو إضافة مشارك حقيقية.
+          {t('callActive.disclaimer')}
         </Text>
       </ScrollView>
 
@@ -273,11 +276,11 @@ const CallActiveScreen = ({ route, navigation }) => {
       <Modal
         visible={showParticipantModal}
         onClose={() => setShowParticipantModal(false)}
-        title="إضافة مشارك"
+        title={t('callActive.addParticipantTitle')}
         size="medium"
       >
         <Text style={styles.modalDescription}>
-          اختر أحد الحسابات المتاحة لك لعرض حالة الاختيار في المعاينة.
+          {t('callActive.addParticipantDescription')}
         </Text>
 
         <View style={styles.participantsList}>
@@ -287,14 +290,14 @@ const CallActiveScreen = ({ route, navigation }) => {
               style={styles.participantItem}
               onPress={() => handleAddParticipant(participant)}
             >
-              <Text style={styles.participantName}>{participant.name}</Text>
+              <Text style={styles.participantName}>{localizeText(participant.name)}</Text>
             </Pressable>
           ))}
         </View>
 
         {selectedParticipant && (
           <Text style={styles.selectedParticipant}>
-            تم اختيار: {selectedParticipant.name}
+            {t('callActive.selectedParticipant', { name: localizeText(selectedParticipant.name) })}
           </Text>
         )}
       </Modal>
@@ -304,10 +307,10 @@ const CallActiveScreen = ({ route, navigation }) => {
         visible={showEndModal}
         onClose={() => setShowEndModal(false)}
         onConfirm={confirmEndCall}
-        title="تأكيد إنهاء المكالمة"
-        description="هل تريد إنهاء معاينة المكالمة وعرض ملخصها؟"
-        confirmText="تأكيد الإنهاء"
-        cancelText="متابعة المكالمة"
+        title={t('callActive.confirmEndTitle')}
+        description={t('callActive.confirmEndDescription')}
+        confirmText={t('callActive.confirmEnd')}
+        cancelText={t('callActive.continueCall')}
         variant="danger"
         icon="call"
       />

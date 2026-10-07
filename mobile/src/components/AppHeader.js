@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing } from '../constants/spacing';
+import { useLanguage } from '../context/LanguageContext';
 
 const AppHeader = ({ 
   title, 
@@ -14,6 +15,7 @@ const AppHeader = ({
   showLogout = false,
   onLogoutPress 
 }) => {
+  const { t } = useLanguage();
   return (
     <View style={styles.header}>
       <View style={styles.headerContent}>
@@ -32,7 +34,7 @@ const AppHeader = ({
           {rightComponent}
           {showLogout && (
             <Pressable onPress={onLogoutPress} style={styles.logoutButton}>
-              <Text style={styles.logoutText}>تسجيل الخروج</Text>
+              <Text style={styles.logoutText}>{t('header.logout')}</Text>
             </Pressable>
           )}
         </View>

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
+import { useLanguage } from '../context/LanguageContext';
 
 const CustomInput = ({
   label,
@@ -26,6 +27,7 @@ const CustomInput = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [isSecure, setIsSecure] = useState(secureTextEntry);
+  const { align } = useLanguage();
 
   return (
     <View style={[styles.container, style]}>
@@ -53,6 +55,7 @@ const CustomInput = ({
           style={[
             styles.input,
             multiline && styles.multiline,
+            { textAlign: align },
             inputStyle,
           ]}
           value={value}

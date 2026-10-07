@@ -17,8 +17,11 @@ import EmptyState from '../../components/EmptyState';
 import NotificationItem from '../../components/NotificationItem';
 import Modal from '../../components/Modal';
 import { mockData } from '../../utils/mockData';
+import { useLanguage } from '../../context/LanguageContext';
+import { localizeText } from '../../i18n/localize';
 
 const NotificationsScreen = () => {
+  const { t, align } = useLanguage();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -96,7 +99,7 @@ const NotificationsScreen = () => {
   );
 
   if (loading) {
-    return <Loading fullScreen text="جارٍ تحميل الإشعارات..." />;
+    return <Loading fullScreen text={t('notifications.loading')} />;
   }
 
   return (
@@ -106,14 +109,14 @@ const NotificationsScreen = () => {
         <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
           <View>
-            <Text style={styles.title}>الإشعارات</Text>
+            <Text style={styles.title}>{t('notifications.title')}</Text>
             <Text style={styles.subtitle}>
-              تابع التعميمات والإعلانات والمراسلات الإدارية في مكان واحد.
+              {t('notifications.subtitle')}
             </Text>
           </View>
         </View>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>بيانات تجريبية</Text>
+          <Text style={styles.badgeText}>{t('notifications.demoBadge')}</Text>
         </View>
       </View>
 
@@ -121,8 +124,8 @@ const NotificationsScreen = () => {
       {notifications.length === 0 ? (
         <EmptyState
           icon="notifications-off"
-          title="لا توجد إشعارات"
-          description="لا توجد إشعارات حالياً. ستظهر هنا التعميمات والإعلانات والمراسلات الإدارية."
+          title={t('notifications.emptyTitle')}
+          description={t('notifications.emptyDescription')}
         />
       ) : (
         <FlatList
@@ -140,7 +143,7 @@ const NotificationsScreen = () => {
       <Modal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        title="تفاصيل الإشعار"
+        title={t('notifications.detailsTitle')}
         size="medium"
       >
         {selectedNotification && (
@@ -153,11 +156,11 @@ const NotificationsScreen = () => {
                   color={getIconColor(selectedNotification.type)}
                 />
               </View>
-              <Text style={styles.modalType}>{selectedNotification.type}</Text>
+              <Text style={styles.modalType}>{localizeText(selectedNotification.type)}</Text>
             </View>
 
-            <Text style={styles.modalTitle}>{selectedNotification.title}</Text>
-            <Text style={styles.modalBody}>{selectedNotification.body}</Text>
+            <Text style={styles.modalTitle}>{localizeText(selectedNotification.title)}</Text>
+            <Text style={[styles.modalBody, { textAlign: align }]}>{localizeText(selectedNotification.body)}</Text>
 
             <Text style={styles.modalDate}>
               {selectedNotification.date} · {selectedNotification.time}
@@ -169,7 +172,7 @@ const NotificationsScreen = () => {
       {/* الفوتر */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          واجهة إشعارات داخلية · محتوى تجريبي للمعاينة
+          {t('notifications.footer')}
         </Text>
       </View>
     </SafeAreaView>

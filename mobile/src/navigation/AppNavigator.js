@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { colors } from '../constants/colors';
 import { spacing } from '../constants/spacing';
 
@@ -36,7 +37,9 @@ const AuthStack = () => (
 );
 
 // التبويبات الرئيسية
-const MainTabs = () => (
+const MainTabs = () => {
+  const { t } = useLanguage();
+  return (
   <Tab.Navigator
     screenOptions={{
       headerShown: false,
@@ -60,7 +63,7 @@ const MainTabs = () => (
       name="Directory"
       component={DirectoryScreen}
       options={{
-        tabBarLabel: 'دليل الموظفين',
+        tabBarLabel: t('tabs.directory'),
         tabBarIcon: ({ color, size }) => (
           <Ionicons name="people" size={size} color={color} />
         ),
@@ -70,7 +73,7 @@ const MainTabs = () => (
       name="Calls"
       component={CallsScreen}
       options={{
-        tabBarLabel: 'المكالمات',
+        tabBarLabel: t('tabs.calls'),
         tabBarIcon: ({ color, size }) => (
           <Ionicons name="call" size={size} color={color} />
         ),
@@ -80,7 +83,7 @@ const MainTabs = () => (
       name="Org"
       component={OrgScreen}
       options={{
-        tabBarLabel: 'الإدارات',
+        tabBarLabel: t('tabs.org'),
         tabBarIcon: ({ color, size }) => (
           <Ionicons name="business" size={size} color={color} />
         ),
@@ -90,7 +93,7 @@ const MainTabs = () => (
       name="Notifications"
       component={NotificationsScreen}
       options={{
-        tabBarLabel: 'الإشعارات',
+        tabBarLabel: t('tabs.notifications'),
         tabBarIcon: ({ color, size }) => (
           <Ionicons name="notifications" size={size} color={color} />
         ),
@@ -100,14 +103,15 @@ const MainTabs = () => (
       name="Settings"
       component={SettingsScreen}
       options={{
-        tabBarLabel: 'الإعدادات',
+        tabBarLabel: t('tabs.settings'),
         tabBarIcon: ({ color, size }) => (
           <Ionicons name="settings" size={size} color={color} />
         ),
       }}
     />
   </Tab.Navigator>
-);
+  );
+};
 
 // الشاشات الرئيسية
 const MainStack = () => (
@@ -118,6 +122,7 @@ const MainStack = () => (
     }}
   >
     <Stack.Screen name="MainTabs" component={MainTabs} />
+    <Stack.Screen name="Register" component={RegisterScreen} />
     <Stack.Screen 
       name="CallActive" 
       component={CallActiveScreen}

@@ -1,4 +1,5 @@
 // خدمة API - محاكاة الاتصال بالخادم
+import { translate } from '../context/LanguageContext';
 // في التطبيق الحقيقي سيتم استبدال هذا بطلبات HTTP حقيقية
 
 import { mockData } from '../utils/mockData';
@@ -26,7 +27,7 @@ export const api = {
           },
         };
       }
-      throw new Error('بيانات الدخول غير صحيحة');
+      throw new Error(translate('login.invalidCredentials'));
     },
 
     register: async (userData) => {

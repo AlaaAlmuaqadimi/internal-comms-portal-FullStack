@@ -1,11 +1,12 @@
 // أدوات تنسيق البيانات
+import { translate, getCurrentLanguage } from '../context/LanguageContext';
 
 export const formatters = {
   // تنسيق التاريخ
   date: (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    return date.toLocaleDateString('ar-SA', {
+    return date.toLocaleDateString(getCurrentLanguage() === 'ar' ? 'ar-SA' : 'en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -39,7 +40,7 @@ export const formatters = {
   // تنسيق الأرقام
   number: (num) => {
     if (num === null || num === undefined) return '';
-    return num.toLocaleString('ar-SA');
+    return num.toLocaleString(getCurrentLanguage() === 'ar' ? 'ar-SA' : 'en-US');
   },
 
   // تنسيق النص الطويل
@@ -59,9 +60,9 @@ export const formatters = {
   status: (status) => {
     switch (status) {
       case 'online':
-        return 'متصل الآن';
+        return translate('formatters.online');
       case 'offline':
-        return 'غير متصل';
+        return translate('formatters.offline');
       default:
         return status;
     }
@@ -71,11 +72,11 @@ export const formatters = {
   callType: (type) => {
     switch (type) {
       case 'incoming':
-        return 'واردة';
+        return translate('formatters.incoming');
       case 'outgoing':
-        return 'صادرة';
+        return translate('formatters.outgoing');
       case 'missed':
-        return 'فائتة';
+        return translate('formatters.missed');
       default:
         return type;
     }

@@ -19,9 +19,12 @@ import UserAvatar from '../../components/UserAvatar';
 import CustomButton from '../../components/CustomButton';
 import Modal from '../../components/Modal';
 import { mockData } from '../../utils/mockData';
+import { useLanguage } from '../../context/LanguageContext';
+import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 
 const CallsScreen = ({ navigation }) => {
+  const { t } = useLanguage();
   const [calls, setCalls] = useState([]);
   const [filteredCalls, setFilteredCalls] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,8 +131,8 @@ const CallsScreen = ({ navigation }) => {
       <View style={styles.callHeader}>
         <UserAvatar person={item.contact} size="medium" />
         <View style={styles.callInfo}>
-          <Text style={styles.callName}>{item.contact.name}</Text>
-          <Text style={styles.callUnit}>{item.contact.unitName}</Text>
+          <Text style={styles.callName}>{localizeText(item.contact.name)}</Text>
+          <Text style={styles.callUnit}>{localizeText(item.contact.unitName)}</Text>
         </View>
       </View>
 
@@ -137,16 +140,16 @@ const CallsScreen = ({ navigation }) => {
         <View style={styles.callType}>
           <Ionicons name={getTypeIcon(item.type)} size={16} color={getTypeColor(item.type)} />
           <Text style={[styles.callTypeText, { color: getTypeColor(item.type) }]}>
-            {item.typeLabel}
+            {localizeText(item.typeLabel)}
           </Text>
         </View>
         <Text style={styles.callDate}>{item.date} · {item.time}</Text>
-        <Text style={styles.callDuration}>المدة: {item.duration}</Text>
+        <Text style={styles.callDuration}>{t('calls.duration', { duration: item.duration })}</Text>
       </View>
 
       <View style={styles.callActions}>
         <CustomButton
-          title="اتصال"
+          title={t('calls.callButton')}
           onPress={() => handleCallPress(item)}
           icon="call"
           size="small"
@@ -156,7 +159,7 @@ const CallsScreen = ({ navigation }) => {
   );
 
   if (loading) {
-    return <Loading fullScreen text="جارٍ تحميل المكالمات..." />;
+    return <Loading fullScreen text={t('calls.loading')} />;
   }
 
   return (
@@ -166,9 +169,9 @@ const CallsScreen = ({ navigation }) => {
         <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
           <View>
-            <Text style={styles.title}>المكالمات الأخيرة</Text>
+            <Text style={styles.title}>{t('calls.title')}</Text>
             <Text style={styles.subtitle}>
-              متابعة منظمة لاتصالات الزملاء ضمن بيئة العمل الداخلية
+              {t('calls.subtitle')}
             </Text>
           </View>
         </View>
@@ -182,16 +185,16 @@ const CallsScreen = ({ navigation }) => {
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="ابحث في المكالمات الأخيرة"
+          placeholder={t('calls.searchPlaceholder')}
           onClear={() => setSearchQuery('')}
         />
 
         <View style={styles.filterRow}>
           {[
-            { key: 'all', label: 'الكل' },
-            { key: 'incoming', label: 'الواردة' },
-            { key: 'outgoing', label: 'الصادرة' },
-            { key: 'missed', label: 'الفائتة' },
+            { key: 'all', label: t('calls.filterAll') },
+            { key: 'incoming', label: t('calls.filterIncoming') },
+            { key: 'outgoing', label: t('calls.filterOutgoing') },
+            { key: 'missed', label: t('calls.filterMissed') },
           ].map((filter) => (
             <Pressable
               key={filter.key}
@@ -218,9 +221,9 @@ const CallsScreen = ({ navigation }) => {
       {filteredCalls.length === 0 ? (
         <EmptyState
           icon="call"
-          title="لا توجد مكالمات مطابقة"
-          description={calls.length > 0 ? 'جرّب كلمة بحث أخرى أو غيّر نوع المكالمة.' : 'لا توجد مكالمات مسجّلة مع الحسابات المتاحة لك. ابدأ من دليل الموظفين.'}
-          actionTitle={calls.length > 0 ? 'إعادة ضبط التصفية' : 'فتح دليل الموظفين'}
+          title={t('calls.noMatchTitle')}
+          description={calls.length > 0 ? t('calls.noMatchDescription') : t('calls.noCallsDescription')}
+          actionTitle={calls.length > 0 ? t('calls.resetFilters') : t('calls.openDirectory')}
           onAction={calls.length > 0 ? resetFilters : () => navigation.navigate('Directory')}
         />
       ) : (
@@ -239,7 +242,7 @@ const CallsScreen = ({ navigation }) => {
       <Modal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        title="تأكيد الاتصال"
+        title={t('calls.confirmTitle')}
         size="small"
       >
         {selectedCall && (
@@ -248,17 +251,17 @@ const CallsScreen = ({ navigation }) => {
               <Ionicons name="call" size={32} color={colors.primaryLight} />
             </View>
             <Text style={styles.modalDescription}>
-              هل تريد بدء معاينة مكالمة مع الموظف التالي؟ لا تُجرى مكالمة حقيقية.
+              {t('calls.confirmDescription')}
             </Text>
-            <Text style={styles.modalName}>{selectedCall.contact.name}</Text>
+            <Text style={styles.modalName}>{localizeText(selectedCall.contact.name)}</Text>
             <View style={styles.modalActions}>
               <CustomButton
-                title="بدء مكالمة"
+                title={t('calls.startCall')}
                 onPress={handleStartCall}
                 style={styles.modalButton}
               />
               <CustomButton
-                title="إلغاء"
+                title={t('common.cancel')}
                 onPress={() => setModalVisible(false)}
                 variant="outline"
                 style={styles.modalButton}

@@ -18,9 +18,12 @@ import CustomButton from '../../components/CustomButton';
 import CustomInput from '../../components/CustomInput';
 import SearchBar from '../../components/SearchBar';
 import { mockData } from '../../utils/mockData';
+import { useLanguage } from '../../context/LanguageContext';
+import { localizeText } from '../../i18n/localize';
 
 const SettingsScreen = () => {
   const { user, logout, updateUser } = useAuth();
+  const { t, language, toggleLanguage } = useLanguage();
   const [selectedContacts, setSelectedContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKitchen, setSelectedKitchen] = useState(null);
@@ -72,6 +75,7 @@ const SettingsScreen = () => {
   };
 
   const filteredContacts = mockData.availableContacts.filter(contact =>
+    localizeText(contact.name).toLowerCase().includes(searchQuery.toLowerCase()) ||
     contact.name.includes(searchQuery) ||
     contact.unitName.includes(searchQuery) ||
     contact.management.includes(searchQuery)
@@ -87,9 +91,9 @@ const SettingsScreen = () => {
           <View style={styles.headerTitle}>
             <View style={styles.titleBorder} />
             <View>
-              <Text style={styles.title}>الإعدادات</Text>
+              <Text style={styles.title}>{t('settings.title')}</Text>
               <Text style={styles.subtitle}>
-                بيانات حسابك والحسابات المتاحة للتواصل.
+                {t('settings.subtitle')}
               </Text>
             </View>
           </View>
@@ -97,24 +101,24 @@ const SettingsScreen = () => {
 
         {/* حسابي */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>حسابي</Text>
+          <Text style={styles.sectionTitle}>{t('settings.myAccount')}</Text>
           <View style={styles.profileCard}>
             <UserAvatar person={user} size="xlarge" />
             <View style={styles.profileInfo}>
               <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>الاسم</Text>
+                <Text style={styles.profileLabel}>{t('settings.nameLabel')}</Text>
                 <Text style={styles.profileValue}>{user?.name}</Text>
               </View>
               <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>اسم المستخدم</Text>
+                <Text style={styles.profileLabel}>{t('settings.usernameLabel')}</Text>
                 <Text style={styles.profileValue}>{user?.username}</Text>
               </View>
               <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>الإدارة / المكتب</Text>
+                <Text style={styles.profileLabel}>{t('settings.managementLabel')}</Text>
                 <Text style={styles.profileValue}>{user?.management}</Text>
               </View>
               <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>الموقع في الهيكل الإداري</Text>
+                <Text style={styles.profileLabel}>{t('settings.orgPathLabel')}</Text>
                 <Text style={styles.profileValue}>{user?.path}</Text>
               </View>
             </View>
@@ -124,9 +128,9 @@ const SettingsScreen = () => {
         {/* مطبخ الخدمة */}
         {kitchenOptions.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>مطبخ الخدمة</Text>
+            <Text style={styles.sectionTitle}>{t('settings.kitchenTitle')}</Text>
             <Text style={styles.sectionDescription}>
-              موقعك يقع ضمن نطاق مطبخين مشتركين؛ اختر أحدهما.
+              {t('settings.kitchenDescription')}
             </Text>
             <View style={styles.kitchenOptions}>
               {kitchenOptions.map((kitchen) => (
@@ -143,12 +147,12 @@ const SettingsScreen = () => {
                       <View style={styles.kitchenRadioSelected} />
                     )}
                   </View>
-                  <Text style={styles.kitchenName}>{kitchen.name}</Text>
+                  <Text style={styles.kitchenName}>{localizeText(kitchen.name)}</Text>
                 </Pressable>
               ))}
             </View>
             <CustomButton
-              title="حفظ"
+              title={t('common.save')}
               onPress={handleSaveKitchen}
               loading={loading}
               style={styles.saveButton}
@@ -158,25 +162,25 @@ const SettingsScreen = () => {
 
         {/* الحسابات المتاحة للتواصل */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>الحسابات المتاحة للتواصل</Text>
+          <Text style={styles.sectionTitle}>{t('settings.availableContacts')}</Text>
           <Text style={styles.sectionDescription}>
-            اختر من بين الحسابات المرتبطة بموقعك في الهيكل الإداري (مديرك المباشر، نفس المستوى، ومن يندرج أسفلك). لا يمكن التواصل مع أي حساب خارجها.
+            {t('settings.availableContactsDescription')}
           </Text>
 
           <View style={styles.contactsHeader}>
             <SearchBar
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="ابحث في الحسابات"
+              placeholder={t('settings.searchPlaceholder')}
               onClear={() => setSearchQuery('')}
               style={styles.searchBar}
             />
             <View style={styles.contactsActions}>
               <Pressable onPress={selectAll} style={styles.actionButton}>
-                <Text style={styles.actionButtonText}>تحديد الكل</Text>
+                <Text style={styles.actionButtonText}>{t('settings.selectAll')}</Text>
               </Pressable>
               <Pressable onPress={selectNone} style={styles.actionButton}>
-                <Text style={styles.actionButtonText}>إلغاء التحديد</Text>
+                <Text style={styles.actionButtonText}>{t('settings.selectNone')}</Text>
               </Pressable>
             </View>
           </View>
@@ -192,8 +196,8 @@ const SettingsScreen = () => {
                 onPress={() => toggleContact(contact.id)}
               >
                 <View style={styles.contactInfo}>
-                  <Text style={styles.contactName}>{contact.name}</Text>
-                  <Text style={styles.contactUnit}>{contact.unitName}</Text>
+                  <Text style={styles.contactName}>{localizeText(contact.name)}</Text>
+                  <Text style={styles.contactUnit}>{localizeText(contact.unitName)}</Text>
                 </View>
                 <View style={[
                   styles.checkbox,
@@ -209,20 +213,37 @@ const SettingsScreen = () => {
 
           <View style={styles.contactsFooter}>
             <Text style={styles.selectedCount}>
-              المحدد: {selectedContacts.length}
+              {t('common.selected', { count: selectedContacts.length })}
             </Text>
             <CustomButton
-              title="حفظ التغييرات"
+              title={t('common.saveChanges')}
               onPress={handleSaveContacts}
               loading={loading}
             />
           </View>
         </View>
 
+        {/* اللغة */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('settings.languageTitle')}</Text>
+          <Text style={styles.sectionDescription}>{t('settings.languageDescription')}</Text>
+          <Pressable style={styles.languageRow} onPress={toggleLanguage}>
+            <View style={styles.languageIcon}>
+              <Ionicons name="language" size={20} color={colors.primaryLight} />
+            </View>
+            <View style={styles.languageInfo}>
+              <Text style={styles.languageValue}>
+                {language === 'ar' ? t('settings.arabic') : t('settings.english')}
+              </Text>
+            </View>
+            <Ionicons name={language === 'ar' ? 'chevron-back' : 'chevron-forward'} size={20} color={colors.textLight} />
+          </Pressable>
+        </View>
+
         {/* تسجيل الخروج */}
         <View style={styles.section}>
           <CustomButton
-            title="تسجيل الخروج"
+            title={t('settings.logout')}
             onPress={logout}
             variant="danger"
             icon="log-out"
@@ -421,6 +442,26 @@ const styles = StyleSheet.create({
   selectedCount: {
     ...typography.bodyBold,
     color: colors.primaryLight,
+  },
+  languageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  languageIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.md,
+    backgroundColor: '#eaf1f7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.md,
+  },
+  languageInfo: {
+    flex: 1,
+  },
+  languageValue: {
+    ...typography.bodyBold,
+    color: colors.text,
   },
   logoutButton: {
     marginTop: spacing.md,

@@ -11,6 +11,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
+import { localizeText } from '../../i18n/localize';
 import { colors } from '../../constants/colors';
 import { typography } from '../../constants/typography';
 import { spacing, borderRadius } from '../../constants/spacing';
@@ -21,6 +23,7 @@ import { mockData } from '../../utils/mockData';
 
 const RegisterScreen = ({ navigation }) => {
   const { register } = useAuth();
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({
     name: '',
     username: '',
@@ -36,31 +39,31 @@ const RegisterScreen = ({ navigation }) => {
     const newErrors = {};
 
     if (!formData.name.trim()) {
-      newErrors.name = 'الاسم مطلوب';
+      newErrors.name = t('register.nameRequired');
     }
 
     if (!formData.username.trim()) {
-      newErrors.username = 'اسم المستخدم مطلوب';
+      newErrors.username = t('register.usernameRequired');
     } else if (formData.username.length < 3) {
-      newErrors.username = 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل';
+      newErrors.username = t('register.usernameMin');
     } else if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
-      newErrors.username = 'اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام فقط';
+      newErrors.username = t('register.usernameInvalid');
     }
 
     if (!formData.password) {
-      newErrors.password = 'كلمة المرور مطلوبة';
+      newErrors.password = t('register.passwordRequired');
     } else if (formData.password.length < 8) {
-      newErrors.password = 'كلمة المرور يجب أن تكون 8 أحرف على الأقل';
+      newErrors.password = t('register.passwordMin');
     }
 
     if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'تأكيد كلمة المرور مطلوب';
+      newErrors.confirmPassword = t('register.confirmPasswordRequired');
     } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'كلمتا المرور غير متطابقتين';
+      newErrors.confirmPassword = t('register.passwordsMismatch');
     }
 
     if (!formData.unit) {
-      newErrors.unit = 'الموقع في الهيكل الإداري مطلوب';
+      newErrors.unit = t('register.unitRequired');
     }
 
     setErrors(newErrors);
@@ -77,7 +80,7 @@ const RegisterScreen = ({ navigation }) => {
         setErrors({ general: result.error });
       }
     } catch (error) {
-      setErrors({ general: 'حدث خطأ أثناء إنشاء الحساب' });
+      setErrors({ general: t('register.error') });
     } finally {
       setLoading(false);
     }
@@ -100,8 +103,8 @@ const RegisterScreen = ({ navigation }) => {
                 <Ionicons name="business" size={32} color={colors.textGold} />
               </View>
               <View style={styles.headerText}>
-                <Text style={styles.headerTitle}>مصلحة الضرائب</Text>
-                <Text style={styles.headerSubtitle}>التواصل الإداري الداخلي</Text>
+                <Text style={styles.headerTitle}>{t('common.appName')}</Text>
+                <Text style={styles.headerSubtitle}>{t('common.appTagline')}</Text>
               </View>
             </View>
           </View>
@@ -111,9 +114,9 @@ const RegisterScreen = ({ navigation }) => {
             <View style={styles.titleContainer}>
               <View style={styles.titleBorder} />
               <View style={styles.titleText}>
-                <Text style={styles.title}>إنشاء حساب</Text>
+                <Text style={styles.title}>{t('register.title')}</Text>
                 <Text style={styles.subtitle}>
-                  حدّد موقع الحساب في الهيكل الإداري لتظهر لك الحسابات المرتبطة به، ثم اختر منها من يمكنه التواصل معهم.
+                  {t('register.subtitle')}
                 </Text>
               </View>
             </View>
@@ -127,48 +130,48 @@ const RegisterScreen = ({ navigation }) => {
 
               {/* بيانات الحساب */}
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>بيانات الحساب</Text>
+                <Text style={styles.sectionTitle}>{t('register.accountInfo')}</Text>
 
                 <CustomInput
-                  label="الاسم الكامل"
+                  label={t('register.fullName')}
                   value={formData.name}
                   onChangeText={(text) => setFormData({ ...formData, name: text })}
-                  placeholder="أدخل اسمك الكامل"
+                  placeholder={t('register.fullNamePlaceholder')}
                   required
                   error={errors.name}
                   icon="person"
                 />
 
                 <CustomInput
-                  label="اسم المستخدم"
+                  label={t('register.username')}
                   value={formData.username}
                   onChangeText={(text) => setFormData({ ...formData, username: text })}
-                  placeholder="أدخل اسم المستخدم"
+                  placeholder={t('register.usernamePlaceholder')}
                   keyboardType="default"
                   autoCapitalize="none"
                   required
                   error={errors.username}
-                  hint="أحرف إنجليزية وأرقام فقط (3–30)."
+                  hint={t('register.usernameHint')}
                   icon="at"
                 />
 
                 <CustomInput
-                  label="كلمة المرور"
+                  label={t('register.password')}
                   value={formData.password}
                   onChangeText={(text) => setFormData({ ...formData, password: text })}
-                  placeholder="أدخل كلمة المرور"
+                  placeholder={t('register.passwordPlaceholder')}
                   secureTextEntry
                   required
                   error={errors.password}
-                  hint="8 أحرف على الأقل."
+                  hint={t('register.passwordHint')}
                   icon="lock-closed"
                 />
 
                 <CustomInput
-                  label="تأكيد كلمة المرور"
+                  label={t('register.confirmPassword')}
                   value={formData.confirmPassword}
                   onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })}
-                  placeholder="أعد إدخال كلمة المرور"
+                  placeholder={t('register.confirmPasswordPlaceholder')}
                   secureTextEntry
                   required
                   error={errors.confirmPassword}
@@ -176,22 +179,22 @@ const RegisterScreen = ({ navigation }) => {
                 />
 
                 <CustomInput
-                  label="الموقع في الهيكل الإداري (إدارة / مكتب / قسم)"
+                  label={t('register.unit')}
                   value={formData.unit}
                   onChangeText={(text) => setFormData({ ...formData, unit: text })}
-                  placeholder="اختر موقعك في الهيكل الإداري"
+                  placeholder={t('register.unitPlaceholder')}
                   required
                   error={errors.unit}
-                  hint="يحدّد هذا الموقع من يظهر لك في قائمة الحسابات أدناه."
+                  hint={t('register.unitHint')}
                   icon="business"
                 />
               </View>
 
               {/* الحسابات المتاحة */}
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>الحسابات التي يمكنني التواصل معها</Text>
+                <Text style={styles.sectionTitle}>{t('register.contactsTitle')}</Text>
                 <Text style={styles.sectionDescription}>
-                  تظهر هنا فقط الحسابات المرتبطة بموقعك: مديرك المباشر، ونفس مستواك الإداري، ومن يندرج أسفل وحدتك. لن ترى أو تتصل بغيرها.
+                  {t('register.contactsDescription')}
                 </Text>
 
                 <View style={styles.contactsList}>
@@ -210,8 +213,8 @@ const RegisterScreen = ({ navigation }) => {
                       }}
                     >
                       <View style={styles.contactInfo}>
-                        <Text style={styles.contactName}>{contact.name}</Text>
-                        <Text style={styles.contactUnit}>{contact.unitName}</Text>
+                        <Text style={styles.contactName}>{localizeText(contact.name)}</Text>
+                        <Text style={styles.contactUnit}>{localizeText(contact.unitName)}</Text>
                       </View>
                       <View style={[
                         styles.checkbox,
@@ -226,12 +229,12 @@ const RegisterScreen = ({ navigation }) => {
                 </View>
 
                 <Text style={styles.selectedCount}>
-                  المحدد: {formData.contacts.length}
+                  {t('common.selected', { count: formData.contacts.length })}
                 </Text>
               </View>
 
               <CustomButton
-                title="إنشاء الحساب"
+                title={t('register.submit')}
                 onPress={handleRegister}
                 loading={loading}
                 style={styles.registerButton}
@@ -239,9 +242,9 @@ const RegisterScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.footer}>
-              <Text style={styles.footerText}>لديك حساب؟</Text>
+              <Text style={styles.footerText}>{t('register.haveAccount')}</Text>
               <Pressable onPress={() => navigation.navigate('Login')}>
-                <Text style={styles.footerLink}>تسجيل الدخول</Text>
+                <Text style={styles.footerLink}>{t('register.loginLink')}</Text>
               </Pressable>
             </View>
           </View>

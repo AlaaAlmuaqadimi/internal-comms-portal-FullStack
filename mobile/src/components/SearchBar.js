@@ -4,14 +4,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
+import { useLanguage } from '../context/LanguageContext';
 
 const SearchBar = ({
   value,
   onChangeText,
-  placeholder = 'بحث...',
+  placeholder,
   onClear,
   style,
 }) => {
+  const { t, align } = useLanguage();
   return (
     <View style={[styles.container, style]}>
       <Ionicons name="search" size={20} color={colors.textLight} style={styles.icon} />
@@ -19,9 +21,9 @@ const SearchBar = ({
         style={styles.input}
         value={value}
         onChangeText={onChangeText}
-        placeholder={placeholder}
+        placeholder={placeholder || t('common.search')}
         placeholderTextColor={colors.textLight}
-        textAlign="right"
+        textAlign={align}
       />
       {value && onClear && (
         <Pressable onPress={onClear} style={styles.clearButton}>
