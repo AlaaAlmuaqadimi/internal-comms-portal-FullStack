@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { colors } from '../../constants/colors';
 import { typography } from '../../constants/typography';
 import { spacing, borderRadius } from '../../constants/spacing';
@@ -20,6 +21,7 @@ import Loading from '../../components/Loading';
 
 const LoginScreen = ({ navigation }) => {
   const { login } = useAuth();
+  const { t, language, toggleLanguage } = useLanguage();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -31,11 +33,11 @@ const LoginScreen = ({ navigation }) => {
     const newErrors = {};
 
     if (!formData.username.trim()) {
-      newErrors.username = 'اسم المستخدم مطلوب';
+      newErrors.username = t('validation.usernameRequired');
     }
 
     if (!formData.password) {
-      newErrors.password = 'كلمة المرور مطلوبة';
+      newErrors.password = t('validation.passwordRequired');
     }
 
     setErrors(newErrors);
@@ -52,7 +54,7 @@ const LoginScreen = ({ navigation }) => {
         setErrors({ general: result.error });
       }
     } catch (error) {
-      setErrors({ general: 'حدث خطأ أثناء تسجيل الدخول' });
+      setErrors({ general: t('login.error') });
     } finally {
       setLoading(false);
     }
@@ -75,8 +77,8 @@ const LoginScreen = ({ navigation }) => {
                 <Ionicons name="business" size={32} color={colors.textGold} />
               </View>
               <View style={styles.headerText}>
-                <Text style={styles.headerTitle}>مصلحة الضرائب</Text>
-                <Text style={styles.headerSubtitle}>التواصل الإداري الداخلي</Text>
+                <Text style={styles.headerTitle}>{t('common.appName')}</Text>
+                <Text style={styles.headerSubtitle}>{t('common.appTagline')}</Text>
               </View>
             </View>
           </View>
@@ -86,9 +88,9 @@ const LoginScreen = ({ navigation }) => {
             <View style={styles.titleContainer}>
               <View style={styles.titleBorder} />
               <View style={styles.titleText}>
-                <Text style={styles.title}>تسجيل الدخول</Text>
+                <Text style={styles.title}>{t('login.title')}</Text>
                 <Text style={styles.subtitle}>
-                  أدخل بيانات حسابك للوصول إلى بوابة التواصل.
+                  {t('login.subtitle')}
                 </Text>
               </View>
             </View>
@@ -101,10 +103,10 @@ const LoginScreen = ({ navigation }) => {
               )}
 
               <CustomInput
-                label="اسم المستخدم"
+                label={t('login.username')}
                 value={formData.username}
                 onChangeText={(text) => setFormData({ ...formData, username: text })}
-                placeholder="أدخل اسم المستخدم"
+                placeholder={t('login.usernamePlaceholder')}
                 keyboardType="default"
                 autoCapitalize="none"
                 required
@@ -113,10 +115,10 @@ const LoginScreen = ({ navigation }) => {
               />
 
               <CustomInput
-                label="كلمة المرور"
+                label={t('login.password')}
                 value={formData.password}
                 onChangeText={(text) => setFormData({ ...formData, password: text })}
-                placeholder="أدخل كلمة المرور"
+                placeholder={t('login.passwordPlaceholder')}
                 secureTextEntry
                 required
                 error={errors.password}
@@ -124,17 +126,24 @@ const LoginScreen = ({ navigation }) => {
               />
 
               <CustomButton
-                title="دخول"
+                title={t('login.submit')}
                 onPress={handleLogin}
                 loading={loading}
                 style={styles.loginButton}
               />
             </View>
 
+            <Pressable onPress={toggleLanguage} style={styles.langButton}>
+              <Ionicons name="language" size={18} color={colors.primaryLight} />
+              <Text style={styles.langButtonText}>
+                {language === 'ar' ? 'English' : 'العربية'}
+              </Text>
+            </Pressable>
+
             <View style={styles.footer}>
-              <Text style={styles.footerText}>ليس لديك حساب؟</Text>
+              <Text style={styles.footerText}>{t('login.noAccount')}</Text>
               <Pressable onPress={() => navigation.navigate('Register')}>
-                <Text style={styles.footerLink}>إنشاء حساب جديد</Text>
+                <Text style={styles.footerLink}>{t('login.createAccount')}</Text>
               </Pressable>
             </View>
           </View>
@@ -242,6 +251,17 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     marginTop: spacing.md,
+  },
+  langButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  langButtonText: {
+    ...typography.bodyBold,
+    color: colors.primaryLight,
   },
   footer: {
     flexDirection: 'row',

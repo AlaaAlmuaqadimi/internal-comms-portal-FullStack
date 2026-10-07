@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import { ThemeProvider } from './src/context/ThemeContext';
+import { LanguageProvider } from './src/context/LanguageContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useFonts, Cairo_400Regular, Cairo_700Bold, Cairo_800ExtraBold } from '@expo-google-fonts/cairo';
 import { View, ActivityIndicator } from 'react-native';
@@ -26,10 +27,12 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <AuthProvider>
-          <StatusBar style="light" backgroundColor="#14283f" />
-          <AppNavigator />
-        </AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <StatusBar style="light" backgroundColor="#14283f" />
+            <AppNavigator />
+          </AuthProvider>
+        </LanguageProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

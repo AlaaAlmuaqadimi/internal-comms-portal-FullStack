@@ -4,12 +4,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
+import { useLanguage } from '../context/LanguageContext';
+import { localizeText } from '../i18n/localize';
 
 const NotificationItem = ({
   notification,
   onPress,
   style,
 }) => {
+  const { t } = useLanguage();
   const getIconName = () => {
     switch (notification.icon) {
       case 'megaphone':
@@ -56,17 +59,17 @@ const NotificationItem = ({
         </View>
         <View style={styles.textContainer}>
           <View style={styles.header}>
-            <Text style={styles.type}>{notification.type}</Text>
+            <Text style={styles.type}>{localizeText(notification.type)}</Text>
             <View style={styles.status}>
               {notification.unread && (
                 <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadText}>غير مقروء</Text>
+                  <Text style={styles.unreadText}>{t('common.unread')}</Text>
                 </View>
               )}
             </View>
           </View>
-          <Text style={styles.title}>{notification.title}</Text>
-          <Text style={styles.summary} numberOfLines={2}>{notification.summary}</Text>
+          <Text style={styles.title}>{localizeText(notification.title)}</Text>
+          <Text style={styles.summary} numberOfLines={2}>{localizeText(notification.summary)}</Text>
           <Text style={styles.date}>{notification.date} · {notification.time}</Text>
         </View>
       </View>

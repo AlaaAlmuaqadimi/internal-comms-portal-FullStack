@@ -6,6 +6,7 @@ import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import Modal from './Modal';
 import CustomButton from './CustomButton';
+import { useLanguage } from '../context/LanguageContext';
 
 const ConfirmDialog = ({
   visible,
@@ -13,12 +14,13 @@ const ConfirmDialog = ({
   onConfirm,
   title,
   description,
-  confirmText = 'تأكيد',
-  cancelText = 'إلغاء',
+  confirmText,
+  cancelText,
   variant = 'danger', // danger, primary
   icon,
   loading = false,
 }) => {
+  const { t } = useLanguage();
   return (
     <Modal
       visible={visible}
@@ -42,14 +44,14 @@ const ConfirmDialog = ({
         )}
         <View style={styles.actions}>
           <CustomButton
-            title={confirmText}
+            title={confirmText || t('common.confirm')}
             onPress={onConfirm}
             variant={variant}
             loading={loading}
             style={styles.button}
           />
           <CustomButton
-            title={cancelText}
+            title={cancelText || t('common.cancel')}
             onPress={onClose}
             variant="outline"
             style={styles.button}

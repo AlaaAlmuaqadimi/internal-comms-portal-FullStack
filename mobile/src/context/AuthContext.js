@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { translate } from './LanguageContext';
 
 const AuthContext = createContext();
 
@@ -40,11 +41,11 @@ export const AuthProvider = ({ children }) => {
       if (username && password) {
         const userData = {
           id: '1',
-          name: 'أحمد محمد',
+          name: translate('mock.defaultUserName'),
           username: username,
-          management: 'إدارة تقنية المعلومات',
-          unitName: 'قسم البرمجيات',
-          path: 'مصلحة الضرائب / إدارة تقنية المعلومات / قسم البرمجيات',
+          management: translate('mock.itDept'),
+          unitName: translate('mock.software'),
+          path: `${translate('mock.orgName')} / ${translate('mock.itDept')} / ${translate('mock.software')}`,
           status: 'online',
         };
         await AsyncStorage.setItem('user', JSON.stringify(userData));
@@ -52,9 +53,9 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true);
         return { success: true };
       }
-      return { success: false, error: 'بيانات الدخول غير صحيحة' };
+      return { success: false, error: translate('login.invalidCredentials') };
     } catch (error) {
-      return { success: false, error: 'حدث خطأ أثناء تسجيل الدخول' };
+      return { success: false, error: translate('mock.errorLogin') };
     }
   };
 
@@ -71,7 +72,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       return { success: true };
     } catch (error) {
-      return { success: false, error: 'حدث خطأ أثناء إنشاء الحساب' };
+      return { success: false, error: translate('mock.errorCreateAccount') };
     }
   };
 
@@ -92,7 +93,7 @@ export const AuthProvider = ({ children }) => {
       setUser(updatedUser);
       return { success: true };
     } catch (error) {
-      return { success: false, error: 'حدث خطأ أثناء تحديث البيانات' };
+      return { success: false, error: translate('mock.errorUpdate') };
     }
   };
 

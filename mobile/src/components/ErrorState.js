@@ -5,25 +5,27 @@ import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import CustomButton from './CustomButton';
+import { useLanguage } from '../context/LanguageContext';
 
 const ErrorState = ({
   icon = 'alert-circle',
-  title = 'حدث خطأ',
+  title,
   description,
-  actionTitle = 'إعادة المحاولة',
+  actionTitle,
   onAction,
   style,
 }) => {
+  const { t } = useLanguage();
   return (
     <View style={[styles.container, style]}>
       <View style={styles.iconContainer}>
         <Ionicons name={icon} size={48} color={colors.danger} />
       </View>
-      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.title}>{title || t('common.errorOccurred')}</Text>
       {description && <Text style={styles.description}>{description}</Text>}
-      {actionTitle && onAction && (
+      {(actionTitle || t('common.retry')) && onAction && (
         <CustomButton
-          title={actionTitle}
+          title={actionTitle || t('common.retry')}
           onPress={onAction}
           variant="primary"
           style={styles.button}

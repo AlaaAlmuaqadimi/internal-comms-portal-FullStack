@@ -3,6 +3,8 @@ import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
+import { useLanguage } from '../context/LanguageContext';
+import { localizeText } from '../i18n/localize';
 
 const StatusBadge = ({
   status, // online, offline, kitchen, success, warning, danger
@@ -10,6 +12,7 @@ const StatusBadge = ({
   showDot = true,
   style,
 }) => {
+  const { t } = useLanguage();
   const getStatusStyle = () => {
     switch (status) {
       case 'online':
@@ -55,7 +58,7 @@ const StatusBadge = ({
         <View style={[styles.dot, { backgroundColor: statusStyle.dotColor }]} />
       )}
       <Text style={[styles.text, { color: statusStyle.color }]}>
-        {text || (status === 'online' ? 'متصل الآن' : status === 'offline' ? 'غير متصل' : status)}
+        {text || (status === 'online' ? t('status.online') : status === 'offline' ? t('status.offline') : localizeText(status))}
       </Text>
     </View>
   );

@@ -21,10 +21,13 @@ import StatusBadge from '../../components/StatusBadge';
 import CustomButton from '../../components/CustomButton';
 import Modal from '../../components/Modal';
 import { mockData } from '../../utils/mockData';
+import { useLanguage } from '../../context/LanguageContext';
+import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 
 const DirectoryScreen = ({ navigation }) => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [employees, setEmployees] = useState([]);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,26 +131,26 @@ const DirectoryScreen = ({ navigation }) => {
       <View style={styles.employeeHeader}>
         <UserAvatar person={item} size="large" />
         <View style={styles.employeeInfo}>
-          <Text style={styles.employeeName}>{item.name}</Text>
-          <Text style={styles.employeeUnit}>{item.unitName}</Text>
+          <Text style={styles.employeeName}>{localizeText(item.name)}</Text>
+          <Text style={styles.employeeUnit}>{localizeText(item.unitName)}</Text>
         </View>
       </View>
 
       <View style={styles.employeeDetails}>
         <Text style={styles.employeeDetail}>
-          <Text style={styles.detailLabel}>الإدارة / المكتب: </Text>
-          {item.management || '—'}
+          <Text style={styles.detailLabel}>{t('directory.managementLabel')}</Text>
+          {localizeText(item.management) || '—'}
         </Text>
         <Text style={styles.employeeDetail}>
-          <Text style={styles.detailLabel}>الوحدة: </Text>
-          {item.unitName || '—'}
+          <Text style={styles.detailLabel}>{t('directory.unitLabel')}</Text>
+          {localizeText(item.unitName) || '—'}
         </Text>
       </View>
 
       <View style={styles.employeeActions}>
         <StatusBadge status={item.status} />
         <CustomButton
-          title="اتصال"
+          title={t('directory.callButton')}
           onPress={() => handleContactPress(item)}
           icon="call"
           size="small"
@@ -157,7 +160,7 @@ const DirectoryScreen = ({ navigation }) => {
   );
 
   if (loading) {
-    return <Loading fullScreen text="جارٍ تحميل دليل الموظفين..." />;
+    return <Loading fullScreen text={t('directory.loading')} />;
   }
 
   return (
@@ -168,9 +171,9 @@ const DirectoryScreen = ({ navigation }) => {
           <View style={styles.headerTitle}>
             <View style={styles.titleBorder} />
             <View>
-              <Text style={styles.title}>دليل الموظفين</Text>
+              <Text style={styles.title}>{t('directory.title')}</Text>
               <Text style={styles.subtitle}>
-                ابحث عن الزملاء واستعرض بياناتهم الوظيفية ضمن الحسابات المتاحة لك حسب الهيكل الإداري.
+                {t('directory.subtitle')}
               </Text>
             </View>
           </View>
@@ -179,7 +182,7 @@ const DirectoryScreen = ({ navigation }) => {
             style={styles.addButton}
           >
             <Ionicons name="person-add" size={20} color={colors.textWhite} />
-            <Text style={styles.addButtonText}>إنشاء حساب</Text>
+            <Text style={styles.addButtonText}>{t('directory.createAccount')}</Text>
           </Pressable>
         </View>
       </View>
@@ -189,7 +192,7 @@ const DirectoryScreen = ({ navigation }) => {
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="ابحث عن موظف أو إدارة أو قسم"
+          placeholder={t('directory.searchPlaceholder')}
           onClear={() => setSearchQuery('')}
         />
 
@@ -199,7 +202,7 @@ const DirectoryScreen = ({ navigation }) => {
             onPress={() => setSelectedDepartment(selectedDepartment ? '' : departments[0])}
           >
             <Text style={[styles.filterChipText, selectedDepartment && styles.filterChipTextActive]}>
-              {selectedDepartment || 'كل الإدارات'}
+              {localizeText(selectedDepartment) || t('directory.allDepartments')}
             </Text>
           </Pressable>
 
@@ -208,7 +211,7 @@ const DirectoryScreen = ({ navigation }) => {
             onPress={() => setSelectedSection(selectedSection ? '' : sections[0])}
           >
             <Text style={[styles.filterChipText, selectedSection && styles.filterChipTextActive]}>
-              {selectedSection || 'كل الأقسام'}
+              {localizeText(selectedSection) || t('directory.allSections')}
             </Text>
           </Pressable>
 
@@ -217,17 +220,17 @@ const DirectoryScreen = ({ navigation }) => {
             onPress={() => setSelectedStatus(selectedStatus ? '' : 'online')}
           >
             <Text style={[styles.filterChipText, selectedStatus && styles.filterChipTextActive]}>
-              {selectedStatus === 'online' ? 'متصل' : selectedStatus === 'offline' ? 'غير متصل' : 'كل الحالات'}
+              {selectedStatus === 'online' ? t('directory.online') : selectedStatus === 'offline' ? t('directory.offline') : t('directory.allStatuses')}
             </Text>
           </Pressable>
         </View>
 
         <View style={styles.filterFooter}>
           <Pressable onPress={resetFilters} style={styles.resetButton}>
-            <Text style={styles.resetButtonText}>إعادة ضبط الفلاتر</Text>
+            <Text style={styles.resetButtonText}>{t('directory.resetFilters')}</Text>
           </Pressable>
           <Text style={styles.resultsCount}>
-            النتائج المطابقة: {filteredEmployees.length}
+            {t('directory.resultsCount', { count: filteredEmployees.length })}
           </Text>
         </View>
       </View>
@@ -236,7 +239,7 @@ const DirectoryScreen = ({ navigation }) => {
       <View style={styles.alert}>
         <Ionicons name="shield-check" size={20} color={colors.primaryLight} />
         <Text style={styles.alertText}>
-          تظهر هنا فقط الحسابات التي اخترتها عند إنشاء حسابك، ولا يمكنك التواصل مع غيرها. البيانات تجريبية للمعاينة.
+          {t('directory.alert')}
         </Text>
       </View>
 
@@ -244,9 +247,9 @@ const DirectoryScreen = ({ navigation }) => {
       {filteredEmployees.length === 0 ? (
         <EmptyState
           icon="search"
-          title="لا توجد نتائج مطابقة"
-          description="جرّب كلمات بحث أخرى أو غيّر التصفية."
-          actionTitle="إعادة ضبط البحث والتصفية"
+          title={t('directory.noResultsTitle')}
+          description={t('directory.noResultsDescription')}
+          actionTitle={t('directory.resetSearch')}
           onAction={resetFilters}
         />
       ) : (
@@ -265,24 +268,24 @@ const DirectoryScreen = ({ navigation }) => {
       <Modal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        title="خيارات التواصل"
+        title={t('directory.contactOptions')}
         size="small"
       >
         {selectedEmployee && (
           <View style={styles.modalContent}>
-            <Text style={styles.modalName}>{selectedEmployee.name}</Text>
+            <Text style={styles.modalName}>{localizeText(selectedEmployee.name)}</Text>
             <Text style={styles.modalDescription}>
-              اختر إجراءً لمعاينة التفاعل. لا تُجرى مكالمات ولا تُرسل رسائل فعلية من هذه الصفحة.
+              {t('directory.contactDescription')}
             </Text>
             <View style={styles.modalActions}>
               <CustomButton
-                title="بدء مكالمة"
+                title={t('directory.startCall')}
                 onPress={handleCall}
                 icon="call"
                 style={styles.modalButton}
               />
               <CustomButton
-                title="إرسال رسالة"
+                title={t('directory.sendMessage')}
                 onPress={handleMessage}
                 variant="outline"
                 icon="mail"

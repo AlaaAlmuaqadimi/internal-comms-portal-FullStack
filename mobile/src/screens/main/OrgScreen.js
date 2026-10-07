@@ -15,8 +15,11 @@ import Loading from '../../components/Loading';
 import CustomButton from '../../components/CustomButton';
 import CustomInput from '../../components/CustomInput';
 import { mockData } from '../../utils/mockData';
+import { useLanguage } from '../../context/LanguageContext';
+import { localizeText } from '../../i18n/localize';
 
 const OrgScreen = () => {
+  const { t, isRTL } = useLanguage();
   const [orgTree, setOrgTree] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedNodes, setExpandedNodes] = useState(new Set());
@@ -93,11 +96,11 @@ const OrgScreen = () => {
   const getKindLabel = (kind) => {
     switch (kind) {
       case 'office':
-        return 'مكتب';
+        return t('org.kindOffice');
       case 'directorate':
-        return 'إدارة';
+        return t('org.kindDirectorate');
       case 'section':
-        return 'قسم';
+        return t('org.kindSection');
       default:
         return '';
     }
@@ -111,7 +114,7 @@ const OrgScreen = () => {
     const hasChildren = node.children && node.children.length > 0;
 
     return (
-      <View key={node.id} style={[styles.nodeContainer, { marginRight: level * 20 }]}>
+      <View key={node.id} style={[styles.nodeContainer, { [isRTL ? 'marginRight' : 'marginLeft']: level * 20 }]}>
         <View style={styles.nodeRow}>
           <Pressable
             style={styles.nodeToggle}
@@ -130,17 +133,17 @@ const OrgScreen = () => {
             <Ionicons name={getKindIcon(node.kind)} size={20} color={colors.primaryLight} />
           </View>
 
-          <Text style={styles.nodeName}>{node.name}</Text>
+          <Text style={styles.nodeName}>{localizeText(node.name)}</Text>
 
           <View style={styles.nodeActions}>
             {canHaveChildren(node.kind) && (
               <Pressable onPress={() => handleAddChild(node)} style={styles.actionButton}>
-                <Text style={styles.actionText}>+ إضافة تابعة</Text>
+                <Text style={styles.actionText}>{t('org.addChild')}</Text>
               </Pressable>
             )}
             {canEdit(node.kind) && (
               <Pressable onPress={() => handleEdit(node)} style={styles.actionButton}>
-                <Text style={styles.actionText}>تعديل</Text>
+                <Text style={styles.actionText}>{t('org.edit')}</Text>
               </Pressable>
             )}
           </View>
@@ -150,26 +153,26 @@ const OrgScreen = () => {
         {editingNode === node.id && (
           <View style={styles.editForm}>
             <CustomInput
-              label="الاسم"
+              label={t('org.name')}
               value={editForm.name}
               onChangeText={(text) => setEditForm({ ...editForm, name: text })}
-              placeholder="اسم الوحدة"
+              placeholder={t('org.unitNamePlaceholder')}
             />
             <CustomInput
-              label="مطبخ خاص (اختياري)"
+              label={t('org.kitchenOptional')}
               value={editForm.kitchen}
               onChangeText={(text) => setEditForm({ ...editForm, kitchen: text })}
-              placeholder="اتركه فارغًا للوراثة من الأعلى"
+              placeholder={t('org.kitchenPlaceholder')}
             />
             <View style={styles.formActions}>
               <CustomButton
-                title="حفظ"
+                title={t('common.save')}
                 onPress={handleSaveEdit}
                 size="small"
                 style={styles.formButton}
               />
               <CustomButton
-                title="حذف"
+                title={t('common.delete')}
                 onPress={() => {}}
                 variant="danger"
                 size="small"
@@ -183,32 +186,32 @@ const OrgScreen = () => {
         {addingToNode === node.id && (
           <View style={styles.addForm}>
             <CustomInput
-              label="اسم الوحدة الجديدة"
+              label={t('org.newUnitName')}
               value={addForm.name}
               onChangeText={(text) => setAddForm({ ...addForm, name: text })}
-              placeholder="مثال: قسم جديد"
+              placeholder={t('org.newUnitPlaceholder')}
             />
             <CustomInput
-              label="النوع"
+              label={t('org.kind')}
               value={addForm.kind}
               onChangeText={(text) => setAddForm({ ...addForm, kind: text })}
-              placeholder="مكتب / إدارة / قسم"
+              placeholder={t('org.kindPlaceholder')}
             />
             <CustomInput
-              label="مطبخ خاص (اختياري)"
+              label={t('org.kitchenOptional')}
               value={addForm.kitchen}
               onChangeText={(text) => setAddForm({ ...addForm, kitchen: text })}
-              placeholder="اتركه فارغًا للوراثة"
+              placeholder={t('org.kitchenPlaceholderShort')}
             />
             <View style={styles.formActions}>
               <CustomButton
-                title="إضافة"
+                title={t('org.add')}
                 onPress={handleSaveAdd}
                 size="small"
                 style={styles.formButton}
               />
               <CustomButton
-                title="إلغاء"
+                title={t('common.cancel')}
                 onPress={() => setAddingToNode(null)}
                 variant="outline"
                 size="small"
@@ -229,7 +232,7 @@ const OrgScreen = () => {
   };
 
   if (loading) {
-    return <Loading fullScreen text="جارٍ تحميل الهيكل الإداري..." />;
+    return <Loading fullScreen text={t('org.loading')} />;
   }
 
   return (
@@ -239,9 +242,9 @@ const OrgScreen = () => {
         <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
           <View>
-            <Text style={styles.title}>الإدارات</Text>
+            <Text style={styles.title}>{t('org.title')}</Text>
             <Text style={styles.subtitle}>
-              الهيكل الإداري لمصلحة الضرائب. يحدّد موقعك فيه من يمكنك التواصل معه، ومطبخ الخدمة المرتبط بوحدتك.
+              {t('org.subtitle')}
             </Text>
           </View>
         </View>
@@ -251,7 +254,7 @@ const OrgScreen = () => {
       <View style={styles.alert}>
         <Ionicons name="information-circle" size={20} color={colors.primaryLight} />
         <Text style={styles.alertText}>
-          مديرو الإدارات يتواصلون تلقائيًا مع رئيس المصلحة ونائبه (مرتبة أعلى بدرجة واحدة) ومع بقية مديري الإدارات (نفس المستوى). لا يمكن حذف وحدة بها حسابات.
+          {t('org.alert')}
         </Text>
       </View>
 
