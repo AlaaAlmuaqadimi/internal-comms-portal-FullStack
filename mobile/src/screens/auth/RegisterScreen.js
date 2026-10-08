@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,15 +16,21 @@ import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import { colors } from '../../constants/colors';
 import { typography } from '../../constants/typography';
-import { spacing, borderRadius } from '../../constants/spacing';
+import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
 import CustomButton from '../../components/CustomButton';
 import Loading from '../../components/Loading';
 import { mockData } from '../../utils/mockData';
 
 const RegisterScreen = ({ navigation }) => {
+  const { width, height } = useWindowDimensions();
   const { register } = useAuth();
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  
+  const isSmallScreen = width < 375;
+  const isLargeScreen = width > 768;
+  const isLandscape = width > height;
+  
   const [formData, setFormData] = useState({
     name: '',
     username: '',
@@ -86,6 +93,12 @@ const RegisterScreen = ({ navigation }) => {
     }
   };
 
+  // أحجام متجاوبة
+  const logoSize = isSmallScreen ? 40 : isLargeScreen ? 56 : 48;
+  const headerPadding = isSmallScreen ? spacing.md : isLargeScreen ? spacing.xl : spacing.lg;
+  const contentPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
+  const cardPadding = isSmallScreen ? spacing.md : isLargeScreen ? spacing.xl : spacing.lg;
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -93,35 +106,44 @@ const RegisterScreen = ({ navigation }) => {
         style={styles.keyboardView}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            isLandscape && styles.scrollContentLandscape,
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           {/* الهيدر */}
-          <View style={styles.header}>
+          <View style={[styles.header, { padding: headerPadding }]}>
             <View style={styles.headerContent}>
-              <View style={styles.logoContainer}>
-                <Ionicons name="business" size={32} color={colors.textGold} />
+              <View style={[styles.logoContainer, { width: logoSize, height: logoSize, borderRadius: logoSize / 4 }]}>
+                <Ionicons name="business" size={logoSize / 2} color={colors.textGold} />
               </View>
               <View style={styles.headerText}>
-                <Text style={styles.headerTitle}>{t('common.appName')}</Text>
-                <Text style={styles.headerSubtitle}>{t('common.appTagline')}</Text>
+                <Text style={[styles.headerTitle, isSmallScreen && styles.headerTitleSmall]}>
+                  {t('common.appName')}
+                </Text>
+                <Text style={[styles.headerSubtitle, isSmallScreen && styles.headerSubtitleSmall]}>
+                  {t('common.appTagline')}
+                </Text>
               </View>
             </View>
           </View>
 
           {/* المحتوى */}
-          <View style={styles.content}>
+          <View style={[styles.content, { padding: contentPadding }]}>
             <View style={styles.titleContainer}>
               <View style={styles.titleBorder} />
               <View style={styles.titleText}>
-                <Text style={styles.title}>{t('register.title')}</Text>
-                <Text style={styles.subtitle}>
+                <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
+                  {t('register.title')}
+                </Text>
+                <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
                   {t('register.subtitle')}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.form}>
+            <View style={[styles.form, { padding: cardPadding }]}>
               {errors.general && (
                 <View style={styles.errorContainer}>
                   <Text style={styles.errorText}>{errors.general}</Text>
@@ -130,7 +152,9 @@ const RegisterScreen = ({ navigation }) => {
 
               {/* بيانات الحساب */}
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>{t('register.accountInfo')}</Text>
+                <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+                  {t('register.accountInfo')}
+                </Text>
 
                 <CustomInput
                   label={t('register.fullName')}
@@ -140,6 +164,7 @@ const RegisterScreen = ({ navigation }) => {
                   required
                   error={errors.name}
                   icon="person"
+                  size="small"
                 />
 
                 <CustomInput
@@ -153,6 +178,7 @@ const RegisterScreen = ({ navigation }) => {
                   error={errors.username}
                   hint={t('register.usernameHint')}
                   icon="at"
+                  size="small"
                 />
 
                 <CustomInput
@@ -165,6 +191,7 @@ const RegisterScreen = ({ navigation }) => {
                   error={errors.password}
                   hint={t('register.passwordHint')}
                   icon="lock-closed"
+                  size="small"
                 />
 
                 <CustomInput
@@ -176,6 +203,7 @@ const RegisterScreen = ({ navigation }) => {
                   required
                   error={errors.confirmPassword}
                   icon="lock-closed"
+                  size="small"
                 />
 
                 <CustomInput
@@ -187,13 +215,16 @@ const RegisterScreen = ({ navigation }) => {
                   error={errors.unit}
                   hint={t('register.unitHint')}
                   icon="business"
+                  size="small"
                 />
               </View>
 
               {/* الحسابات المتاحة */}
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>{t('register.contactsTitle')}</Text>
-                <Text style={styles.sectionDescription}>
+                <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+                  {t('register.contactsTitle')}
+                </Text>
+                <Text style={[styles.sectionDescription, isSmallScreen && styles.sectionDescriptionSmall]}>
                   {t('register.contactsDescription')}
                 </Text>
 
@@ -213,8 +244,12 @@ const RegisterScreen = ({ navigation }) => {
                       }}
                     >
                       <View style={styles.contactInfo}>
-                        <Text style={styles.contactName}>{localizeText(contact.name)}</Text>
-                        <Text style={styles.contactUnit}>{localizeText(contact.unitName)}</Text>
+                        <Text style={[styles.contactName, isSmallScreen && styles.contactNameSmall]}>
+                          {localizeText(contact.name)}
+                        </Text>
+                        <Text style={[styles.contactUnit, isSmallScreen && styles.contactUnitSmall]}>
+                          {localizeText(contact.unitName)}
+                        </Text>
                       </View>
                       <View style={[
                         styles.checkbox,
@@ -238,6 +273,7 @@ const RegisterScreen = ({ navigation }) => {
                 onPress={handleRegister}
                 loading={loading}
                 style={styles.registerButton}
+                size="small"
               />
             </View>
 
@@ -265,21 +301,20 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
   },
+  scrollContentLandscape: {
+    paddingHorizontal: '15%',
+  },
   header: {
     backgroundColor: colors.surfaceDark,
     borderBottomWidth: 4,
     borderBottomColor: colors.accent,
     paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   logoContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -294,14 +329,19 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: colors.textWhite,
   },
+  headerTitleSmall: {
+    fontSize: 18,
+  },
   headerSubtitle: {
     ...typography.caption,
     color: colors.textGold,
     marginTop: 2,
   },
+  headerSubtitleSmall: {
+    fontSize: 11,
+  },
   content: {
     flex: 1,
-    padding: spacing.md,
   },
   titleContainer: {
     flexDirection: 'row',
@@ -311,7 +351,7 @@ const styles = StyleSheet.create({
   },
   titleBorder: {
     width: 4,
-    height: 80,
+    height: 70,
     backgroundColor: colors.accent,
     borderRadius: 2,
     marginLeft: spacing.md,
@@ -323,19 +363,25 @@ const styles = StyleSheet.create({
     ...typography.h1,
     color: colors.text,
   },
+  titleSmall: {
+    fontSize: 22,
+  },
   subtitle: {
     ...typography.body,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    lineHeight: 24,
+    lineHeight: 22,
+  },
+  subtitleSmall: {
+    fontSize: 13,
   },
   form: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
     marginBottom: spacing.lg,
+    ...shadows.sm,
   },
   errorContainer: {
     backgroundColor: colors.dangerLight,
@@ -343,7 +389,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5b3a6',
     padding: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   errorText: {
     ...typography.bodySmall,
@@ -356,16 +402,22 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.h4,
     color: colors.text,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  sectionTitleSmall: {
+    fontSize: 16,
   },
   sectionDescription: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    marginBottom: spacing.md,
-    lineHeight: 20,
+    marginBottom: spacing.sm,
+    lineHeight: 18,
+  },
+  sectionDescriptionSmall: {
+    fontSize: 11,
   },
   contactsList: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   contactItem: {
     flexDirection: 'row',
@@ -375,7 +427,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.sm,
     marginBottom: spacing.sm,
   },
   contactItemSelected: {
@@ -389,10 +441,16 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     color: colors.text,
   },
+  contactNameSmall: {
+    fontSize: 13,
+  },
   contactUnit: {
     ...typography.caption,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  contactUnitSmall: {
+    fontSize: 10,
   },
   checkbox: {
     width: 24,
@@ -413,13 +471,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   registerButton: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     marginBottom: spacing.xl,
   },
   footerText: {

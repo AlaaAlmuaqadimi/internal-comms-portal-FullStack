@@ -5,7 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Switch,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,8 +22,14 @@ import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 
 const SettingsScreen = () => {
+  const { width, height } = useWindowDimensions();
   const { user, logout, updateUser } = useAuth();
   const { t, language, toggleLanguage } = useLanguage();
+  
+  const isSmallScreen = width < 375;
+  const isLargeScreen = width > 768;
+  const isLandscape = width > height;
+  
   const [selectedContacts, setSelectedContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKitchen, setSelectedKitchen] = useState(null);
@@ -83,16 +89,26 @@ const SettingsScreen = () => {
 
   const kitchenOptions = mockData.kitchens;
 
+  // أحجام متجاوبة
+  const avatarSize = isSmallScreen ? 'medium' : isLargeScreen ? 'xlarge' : 'large';
+  const sectionPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
+  const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[
+        styles.scrollContent,
+        isLandscape && styles.scrollContentLandscape,
+      ]}>
         {/* الهيدر */}
-        <View style={styles.header}>
+        <View style={[styles.header, { padding: headerPadding }]}>
           <View style={styles.headerTitle}>
             <View style={styles.titleBorder} />
             <View>
-              <Text style={styles.title}>{t('settings.title')}</Text>
-              <Text style={styles.subtitle}>
+              <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
+                {t('settings.title')}
+              </Text>
+              <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
                 {t('settings.subtitle')}
               </Text>
             </View>
@@ -100,26 +116,44 @@ const SettingsScreen = () => {
         </View>
 
         {/* حسابي */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('settings.myAccount')}</Text>
+        <View style={[styles.section, { padding: sectionPadding }]}>
+          <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+            {t('settings.myAccount')}
+          </Text>
           <View style={styles.profileCard}>
-            <UserAvatar person={user} size="xlarge" />
+            <UserAvatar person={user} size={avatarSize} />
             <View style={styles.profileInfo}>
               <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>{t('settings.nameLabel')}</Text>
-                <Text style={styles.profileValue}>{user?.name}</Text>
+                <Text style={[styles.profileLabel, isSmallScreen && styles.profileLabelSmall]}>
+                  {t('settings.nameLabel')}
+                </Text>
+                <Text style={[styles.profileValue, isSmallScreen && styles.profileValueSmall]}>
+                  {user?.name}
+                </Text>
               </View>
               <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>{t('settings.usernameLabel')}</Text>
-                <Text style={styles.profileValue}>{user?.username}</Text>
+                <Text style={[styles.profileLabel, isSmallScreen && styles.profileLabelSmall]}>
+                  {t('settings.usernameLabel')}
+                </Text>
+                <Text style={[styles.profileValue, isSmallScreen && styles.profileValueSmall]}>
+                  {user?.username}
+                </Text>
               </View>
               <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>{t('settings.managementLabel')}</Text>
-                <Text style={styles.profileValue}>{user?.management}</Text>
+                <Text style={[styles.profileLabel, isSmallScreen && styles.profileLabelSmall]}>
+                  {t('settings.managementLabel')}
+                </Text>
+                <Text style={[styles.profileValue, isSmallScreen && styles.profileValueSmall]}>
+                  {user?.management}
+                </Text>
               </View>
               <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>{t('settings.orgPathLabel')}</Text>
-                <Text style={styles.profileValue}>{user?.path}</Text>
+                <Text style={[styles.profileLabel, isSmallScreen && styles.profileLabelSmall]}>
+                  {t('settings.orgPathLabel')}
+                </Text>
+                <Text style={[styles.profileValue, isSmallScreen && styles.profileValueSmall]}>
+                  {user?.path}
+                </Text>
               </View>
             </View>
           </View>
@@ -127,9 +161,11 @@ const SettingsScreen = () => {
 
         {/* مطبخ الخدمة */}
         {kitchenOptions.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('settings.kitchenTitle')}</Text>
-            <Text style={styles.sectionDescription}>
+          <View style={[styles.section, { padding: sectionPadding }]}>
+            <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+              {t('settings.kitchenTitle')}
+            </Text>
+            <Text style={[styles.sectionDescription, isSmallScreen && styles.sectionDescriptionSmall]}>
               {t('settings.kitchenDescription')}
             </Text>
             <View style={styles.kitchenOptions}>
@@ -147,7 +183,9 @@ const SettingsScreen = () => {
                       <View style={styles.kitchenRadioSelected} />
                     )}
                   </View>
-                  <Text style={styles.kitchenName}>{localizeText(kitchen.name)}</Text>
+                  <Text style={[styles.kitchenName, isSmallScreen && styles.kitchenNameSmall]}>
+                    {localizeText(kitchen.name)}
+                  </Text>
                 </Pressable>
               ))}
             </View>
@@ -156,14 +194,17 @@ const SettingsScreen = () => {
               onPress={handleSaveKitchen}
               loading={loading}
               style={styles.saveButton}
+              size="small"
             />
           </View>
         )}
 
         {/* الحسابات المتاحة للتواصل */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('settings.availableContacts')}</Text>
-          <Text style={styles.sectionDescription}>
+        <View style={[styles.section, { padding: sectionPadding }]}>
+          <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+            {t('settings.availableContacts')}
+          </Text>
+          <Text style={[styles.sectionDescription, isSmallScreen && styles.sectionDescriptionSmall]}>
             {t('settings.availableContactsDescription')}
           </Text>
 
@@ -177,10 +218,14 @@ const SettingsScreen = () => {
             />
             <View style={styles.contactsActions}>
               <Pressable onPress={selectAll} style={styles.actionButton}>
-                <Text style={styles.actionButtonText}>{t('settings.selectAll')}</Text>
+                <Text style={[styles.actionButtonText, isSmallScreen && styles.actionButtonTextSmall]}>
+                  {t('settings.selectAll')}
+                </Text>
               </Pressable>
               <Pressable onPress={selectNone} style={styles.actionButton}>
-                <Text style={styles.actionButtonText}>{t('settings.selectNone')}</Text>
+                <Text style={[styles.actionButtonText, isSmallScreen && styles.actionButtonTextSmall]}>
+                  {t('settings.selectNone')}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -196,8 +241,12 @@ const SettingsScreen = () => {
                 onPress={() => toggleContact(contact.id)}
               >
                 <View style={styles.contactInfo}>
-                  <Text style={styles.contactName}>{localizeText(contact.name)}</Text>
-                  <Text style={styles.contactUnit}>{localizeText(contact.unitName)}</Text>
+                  <Text style={[styles.contactName, isSmallScreen && styles.contactNameSmall]}>
+                    {localizeText(contact.name)}
+                  </Text>
+                  <Text style={[styles.contactUnit, isSmallScreen && styles.contactUnitSmall]}>
+                    {localizeText(contact.unitName)}
+                  </Text>
                 </View>
                 <View style={[
                   styles.checkbox,
@@ -212,42 +261,52 @@ const SettingsScreen = () => {
           </View>
 
           <View style={styles.contactsFooter}>
-            <Text style={styles.selectedCount}>
+            <Text style={[styles.selectedCount, isSmallScreen && styles.selectedCountSmall]}>
               {t('common.selected', { count: selectedContacts.length })}
             </Text>
             <CustomButton
               title={t('common.saveChanges')}
               onPress={handleSaveContacts}
               loading={loading}
+              size="small"
             />
           </View>
         </View>
 
         {/* اللغة */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('settings.languageTitle')}</Text>
-          <Text style={styles.sectionDescription}>{t('settings.languageDescription')}</Text>
+        <View style={[styles.section, { padding: sectionPadding }]}>
+          <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+            {t('settings.languageTitle')}
+          </Text>
+          <Text style={[styles.sectionDescription, isSmallScreen && styles.sectionDescriptionSmall]}>
+            {t('settings.languageDescription')}
+          </Text>
           <Pressable style={styles.languageRow} onPress={toggleLanguage}>
             <View style={styles.languageIcon}>
-              <Ionicons name="language" size={20} color={colors.primaryLight} />
+              <Ionicons name="language" size={isSmallScreen ? 16 : 20} color={colors.primaryLight} />
             </View>
             <View style={styles.languageInfo}>
-              <Text style={styles.languageValue}>
+              <Text style={[styles.languageValue, isSmallScreen && styles.languageValueSmall]}>
                 {language === 'ar' ? t('settings.arabic') : t('settings.english')}
               </Text>
             </View>
-            <Ionicons name={language === 'ar' ? 'chevron-back' : 'chevron-forward'} size={20} color={colors.textLight} />
+            <Ionicons 
+              name={language === 'ar' ? 'chevron-back' : 'chevron-forward'} 
+              size={isSmallScreen ? 16 : 20} 
+              color={colors.textLight} 
+            />
           </Pressable>
         </View>
 
         {/* تسجيل الخروج */}
-        <View style={styles.section}>
+        <View style={[styles.section, { padding: sectionPadding }]}>
           <CustomButton
             title={t('settings.logout')}
             onPress={logout}
             variant="danger"
             icon="log-out"
             style={styles.logoutButton}
+            size="small"
           />
         </View>
       </ScrollView>
@@ -263,11 +322,13 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.xl,
   },
+  scrollContentLandscape: {
+    paddingHorizontal: '15%',
+  },
   header: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    padding: spacing.md,
   },
   headerTitle: {
     flexDirection: 'row',
@@ -275,7 +336,7 @@ const styles = StyleSheet.create({
   },
   titleBorder: {
     width: 4,
-    height: 60,
+    height: 50,
     backgroundColor: colors.accent,
     borderRadius: 2,
     marginLeft: spacing.md,
@@ -284,31 +345,42 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.text,
   },
+  titleSmall: {
+    fontSize: 18,
+  },
   subtitle: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    lineHeight: 20,
+    lineHeight: 18,
+  },
+  subtitleSmall: {
+    fontSize: 11,
   },
   section: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
-    margin: spacing.md,
+    margin: spacing.sm,
     ...shadows.sm,
   },
   sectionTitle: {
     ...typography.h3,
     color: colors.text,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  sectionTitleSmall: {
+    fontSize: 16,
   },
   sectionDescription: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    marginBottom: spacing.md,
-    lineHeight: 20,
+    marginBottom: spacing.sm,
+    lineHeight: 18,
+  },
+  sectionDescriptionSmall: {
+    fontSize: 11,
   },
   profileCard: {
     flexDirection: 'row',
@@ -319,20 +391,26 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
   },
   profileRow: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   profileLabel: {
     ...typography.caption,
     color: colors.textLight,
+  },
+  profileLabelSmall: {
+    fontSize: 10,
   },
   profileValue: {
     ...typography.bodyBold,
     color: colors.text,
     marginTop: 2,
   },
+  profileValueSmall: {
+    fontSize: 12,
+  },
   kitchenOptions: {
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   kitchenOption: {
     flexDirection: 'row',
@@ -341,7 +419,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: '#e9dcc2',
-    padding: spacing.md,
+    padding: spacing.sm,
   },
   kitchenOptionSelected: {
     borderColor: colors.warning,
@@ -355,7 +433,7 @@ const styles = StyleSheet.create({
     borderColor: colors.warning,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.md,
+    marginLeft: spacing.sm,
   },
   kitchenRadioSelected: {
     width: 10,
@@ -367,11 +445,14 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     color: '#5b4515',
   },
+  kitchenNameSmall: {
+    fontSize: 12,
+  },
   saveButton: {
     marginTop: spacing.sm,
   },
   contactsHeader: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   searchBar: {
     marginBottom: spacing.sm,
@@ -381,7 +462,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   actionButton: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
     borderWidth: 1,
@@ -391,8 +472,11 @@ const styles = StyleSheet.create({
     ...typography.buttonSmall,
     color: colors.primaryLight,
   },
+  actionButtonTextSmall: {
+    fontSize: 11,
+  },
   contactsList: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   contactItem: {
     flexDirection: 'row',
@@ -402,7 +486,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.sm,
     marginBottom: spacing.sm,
   },
   contactItemSelected: {
@@ -416,10 +500,16 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     color: colors.text,
   },
+  contactNameSmall: {
+    fontSize: 13,
+  },
   contactUnit: {
     ...typography.caption,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  contactUnitSmall: {
+    fontSize: 10,
   },
   checkbox: {
     width: 24,
@@ -443,18 +533,21 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     color: colors.primaryLight,
   },
+  selectedCountSmall: {
+    fontSize: 12,
+  },
   languageRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   languageIcon: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: borderRadius.md,
     backgroundColor: '#eaf1f7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.md,
+    marginLeft: spacing.sm,
   },
   languageInfo: {
     flex: 1,
@@ -463,8 +556,11 @@ const styles = StyleSheet.create({
     ...typography.bodyBold,
     color: colors.text,
   },
+  languageValueSmall: {
+    fontSize: 13,
+  },
   logoutButton: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
 });
 

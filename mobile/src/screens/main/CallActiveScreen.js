@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,8 +21,14 @@ import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 
 const CallActiveScreen = ({ route, navigation }) => {
+  const { width, height } = useWindowDimensions();
   const { contact } = route.params;
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  
+  const isSmallScreen = width < 375;
+  const isLargeScreen = width > 768;
+  const isLandscape = width > height;
+  
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
@@ -96,21 +103,28 @@ const CallActiveScreen = ({ route, navigation }) => {
     { id: '3', name: 'خالد إبراهيم الحربي' },
   ];
 
+  // أحجام متجاوبة
+  const avatarSize = isSmallScreen ? 'medium' : isLargeScreen ? 'xlarge' : 'large';
+  const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
+  const controlIconSize = isSmallScreen ? 20 : isLargeScreen ? 28 : 24;
+
   if (callEnded) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.summaryContainer}>
+        <View style={[styles.summaryContainer, { padding: cardPadding }]}>
           <View style={styles.summaryIcon}>
-            <Ionicons name="call" size={32} color={colors.primaryLight} />
+            <Ionicons name="call" size={isSmallScreen ? 24 : 32} color={colors.primaryLight} />
           </View>
-          <Text style={styles.summaryTitle}>{t('callActive.ended')}</Text>
+          <Text style={[styles.summaryTitle, isSmallScreen && styles.summaryTitleSmall]}>
+            {t('callActive.ended')}
+          </Text>
 
           <View style={styles.summaryDetails}>
-            <Text style={styles.summaryText}>
+            <Text style={[styles.summaryText, isSmallScreen && styles.summaryTextSmall]}>
               <Text style={styles.summaryLabel}>{t('callActive.employeeLabel')}</Text>
               {localizeText(contact.name)}
             </Text>
-            <Text style={styles.summaryText}>
+            <Text style={[styles.summaryText, isSmallScreen && styles.summaryTextSmall]}>
               <Text style={styles.summaryLabel}>{t('callActive.durationLabel')}</Text>
               {formatDuration(duration)}
             </Text>
@@ -121,18 +135,21 @@ const CallActiveScreen = ({ route, navigation }) => {
               title={t('callActive.backToDirectory')}
               onPress={() => navigation.navigate('Directory')}
               style={styles.summaryButton}
+              size="small"
             />
             <CustomButton
               title={t('callActive.recentCalls')}
               onPress={() => navigation.navigate('Calls')}
               variant="outline"
               style={styles.summaryButton}
+              size="small"
             />
             <CustomButton
               title={t('callActive.callAgain')}
               onPress={handleRestart}
               variant="outline"
               style={styles.summaryButton}
+              size="small"
             />
           </View>
         </View>
@@ -142,17 +159,24 @@ const CallActiveScreen = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[
+        styles.scrollContent,
+        isLandscape && styles.scrollContentLandscape,
+      ]}>
         {/* معلومات المكالمة */}
-        <View style={styles.callInfo}>
+        <View style={[styles.callInfo, { padding: cardPadding }]}>
           <View style={styles.callHeader}>
-            <UserAvatar person={contact} size="xlarge" />
+            <UserAvatar person={contact} size={avatarSize} />
             <View style={styles.callHeaderText}>
-              <Text style={styles.callLabel}>
+              <Text style={[styles.callLabel, isSmallScreen && styles.callLabelSmall]}>
                 {contact.isKitchen ? t('callActive.communicatingWith') : t('callActive.callingEmployee')}
               </Text>
-              <Text style={styles.callName}>{localizeText(contact.name)}</Text>
-              <Text style={styles.callUnit}>{localizeText(contact.unitName)}</Text>
+              <Text style={[styles.callName, isSmallScreen && styles.callNameSmall]}>
+                {localizeText(contact.name)}
+              </Text>
+              <Text style={[styles.callUnit, isSmallScreen && styles.callUnitSmall]}>
+                {localizeText(contact.unitName)}
+              </Text>
             </View>
             <StatusBadge
               status={contact.isKitchen ? 'kitchen' : 'online'}
@@ -162,19 +186,27 @@ const CallActiveScreen = ({ route, navigation }) => {
 
           <View style={styles.callMeta}>
             <View style={styles.durationContainer}>
-              <Text style={styles.durationLabel}>{t('callActive.durationTitle')}</Text>
-              <Text style={styles.duration}>{formatDuration(duration)}</Text>
+              <Text style={[styles.durationLabel, isSmallScreen && styles.durationLabelSmall]}>
+                {t('callActive.durationTitle')}
+              </Text>
+              <Text style={[styles.duration, isSmallScreen && styles.durationSmall]}>
+                {formatDuration(duration)}
+              </Text>
             </View>
             <View style={styles.secureBadge}>
-              <Ionicons name="shield" size={16} color={colors.primaryLight} />
-              <Text style={styles.secureText}>{t('callActive.secureCall')}</Text>
+              <Ionicons name="shield" size={isSmallScreen ? 14 : 16} color={colors.primaryLight} />
+              <Text style={[styles.secureText, isSmallScreen && styles.secureTextSmall]}>
+                {t('callActive.secureCall')}
+              </Text>
             </View>
           </View>
         </View>
 
         {/* التحكم بالمكالمة */}
-        <View style={styles.controls}>
-          <Text style={styles.controlsTitle}>{t('callActive.controlsTitle')}</Text>
+        <View style={[styles.controls, { padding: cardPadding }]}>
+          <Text style={[styles.controlsTitle, isSmallScreen && styles.controlsTitleSmall]}>
+            {t('callActive.controlsTitle')}
+          </Text>
 
           <View style={styles.controlsGrid}>
             <Pressable
@@ -183,10 +215,10 @@ const CallActiveScreen = ({ route, navigation }) => {
             >
               <Ionicons
                 name={isMuted ? 'mic-off' : 'mic'}
-                size={24}
+                size={controlIconSize}
                 color={isMuted ? colors.textWhite : colors.text}
               />
-              <Text style={[styles.controlLabel, isMuted && styles.controlLabelActive]}>
+              <Text style={[styles.controlLabel, isMuted && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
                 {isMuted ? t('callActive.unmute') : t('callActive.mute')}
               </Text>
             </Pressable>
@@ -197,10 +229,10 @@ const CallActiveScreen = ({ route, navigation }) => {
             >
               <Ionicons
                 name="volume-high"
-                size={24}
+                size={controlIconSize}
                 color={isSpeaker ? colors.textWhite : colors.text}
               />
-              <Text style={[styles.controlLabel, isSpeaker && styles.controlLabelActive]}>
+              <Text style={[styles.controlLabel, isSpeaker && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
                 {isSpeaker ? t('callActive.speakerOff') : t('callActive.speaker')}
               </Text>
             </Pressable>
@@ -211,10 +243,10 @@ const CallActiveScreen = ({ route, navigation }) => {
             >
               <Ionicons
                 name="grid"
-                size={24}
+                size={controlIconSize}
                 color={showKeypad ? colors.textWhite : colors.text}
               />
-              <Text style={[styles.controlLabel, showKeypad && styles.controlLabelActive]}>
+              <Text style={[styles.controlLabel, showKeypad && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
                 {t('callActive.keypad')}
               </Text>
             </Pressable>
@@ -223,8 +255,10 @@ const CallActiveScreen = ({ route, navigation }) => {
               style={styles.controlButton}
               onPress={() => setShowParticipantModal(true)}
             >
-              <Ionicons name="person-add" size={24} color={colors.text} />
-              <Text style={styles.controlLabel}>{t('callActive.addParticipant')}</Text>
+              <Ionicons name="person-add" size={controlIconSize} color={colors.text} />
+              <Text style={[styles.controlLabel, isSmallScreen && styles.controlLabelSmall]}>
+                {t('callActive.addParticipant')}
+              </Text>
             </Pressable>
           </View>
 
@@ -232,13 +266,17 @@ const CallActiveScreen = ({ route, navigation }) => {
           {showKeypad && (
             <View style={styles.keypad}>
               <View style={styles.keypadHeader}>
-                <Text style={styles.keypadTitle}>{t('callActive.keypadTitle')}</Text>
+                <Text style={[styles.keypadTitle, isSmallScreen && styles.keypadTitleSmall]}>
+                  {t('callActive.keypadTitle')}
+                </Text>
                 <Pressable onPress={() => setShowKeypad(false)} style={styles.keypadClose}>
                   <Text style={styles.keypadCloseText}>{t('common.close')}</Text>
                 </Pressable>
               </View>
 
-              <Text style={styles.keypadInput}>{keypadInput || t('callActive.enteredDigits')}</Text>
+              <Text style={[styles.keypadInput, isSmallScreen && styles.keypadInputSmall]}>
+                {keypadInput || t('callActive.enteredDigits')}
+              </Text>
 
               <View style={styles.keypadGrid}>
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((digit) => (
@@ -261,13 +299,15 @@ const CallActiveScreen = ({ route, navigation }) => {
           {/* زر إنهاء المكالمة */}
           <View style={styles.endCallContainer}>
             <Pressable style={styles.endCallButton} onPress={handleEndCall}>
-              <Ionicons name="call" size={24} color={colors.textWhite} />
-              <Text style={styles.endCallText}>{t('callActive.endCall')}</Text>
+              <Ionicons name="call" size={isSmallScreen ? 20 : 24} color={colors.textWhite} />
+              <Text style={[styles.endCallText, isSmallScreen && styles.endCallTextSmall]}>
+                {t('callActive.endCall')}
+              </Text>
             </Pressable>
           </View>
         </View>
 
-        <Text style={styles.disclaimer}>
+        <Text style={[styles.disclaimer, isSmallScreen && styles.disclaimerSmall]}>
           {t('callActive.disclaimer')}
         </Text>
       </ScrollView>
@@ -326,36 +366,47 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
   },
+  scrollContentLandscape: {
+    paddingHorizontal: '15%',
+  },
   callInfo: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
     margin: spacing.md,
     ...shadows.sm,
   },
   callHeader: {
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   callHeaderText: {
     alignItems: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   callLabel: {
     ...typography.bodySmall,
     color: colors.textLight,
+  },
+  callLabelSmall: {
+    fontSize: 11,
   },
   callName: {
     ...typography.h2,
     color: colors.text,
     marginTop: spacing.xs,
   },
+  callNameSmall: {
+    fontSize: 18,
+  },
   callUnit: {
     ...typography.body,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  callUnitSmall: {
+    fontSize: 12,
   },
   callMeta: {
     flexDirection: 'row',
@@ -363,7 +414,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
   },
   durationContainer: {
     alignItems: 'center',
@@ -372,10 +423,16 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textLight,
   },
+  durationLabelSmall: {
+    fontSize: 10,
+  },
   duration: {
     ...typography.h1,
     color: colors.text,
     marginTop: spacing.xs,
+  },
+  durationSmall: {
+    fontSize: 24,
   },
   secureBadge: {
     flexDirection: 'row',
@@ -386,19 +443,24 @@ const styles = StyleSheet.create({
     color: colors.primaryLight,
     marginRight: spacing.xs,
   },
+  secureTextSmall: {
+    fontSize: 10,
+  },
   controls: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
     margin: spacing.md,
     ...shadows.sm,
   },
   controlsTitle: {
     ...typography.h3,
     color: colors.text,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  controlsTitleSmall: {
+    fontSize: 16,
   },
   controlsGrid: {
     flexDirection: 'row',
@@ -412,7 +474,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.borderDark,
-    padding: spacing.md,
+    padding: spacing.sm,
     alignItems: 'center',
   },
   controlButtonActive: {
@@ -424,12 +486,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: spacing.xs,
   },
+  controlLabelSmall: {
+    fontSize: 10,
+  },
   controlLabelActive: {
     color: colors.textWhite,
   },
   keypad: {
-    marginTop: spacing.lg,
-    paddingTop: spacing.lg,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
@@ -437,11 +502,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   keypadTitle: {
     ...typography.h4,
     color: colors.text,
+  },
+  keypadTitleSmall: {
+    fontSize: 14,
   },
   keypadClose: {
     paddingHorizontal: spacing.sm,
@@ -458,8 +526,11 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: colors.text,
     textAlign: 'center',
-    marginBottom: spacing.md,
-    minHeight: 40,
+    marginBottom: spacing.sm,
+    minHeight: 36,
+  },
+  keypadInputSmall: {
+    fontSize: 20,
   },
   keypadGrid: {
     flexDirection: 'row',
@@ -480,7 +551,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   keypadClear: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     padding: spacing.sm,
     borderRadius: borderRadius.md,
     borderWidth: 1,
@@ -492,8 +563,8 @@ const styles = StyleSheet.create({
     color: colors.primaryLight,
   },
   endCallContainer: {
-    marginTop: spacing.lg,
-    paddingTop: spacing.lg,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     alignItems: 'center',
@@ -504,12 +575,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.danger,
     borderRadius: borderRadius.md,
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
   },
   endCallText: {
     ...typography.button,
     color: colors.textWhite,
     marginRight: spacing.sm,
+  },
+  endCallTextSmall: {
+    fontSize: 13,
   },
   disclaimer: {
     ...typography.caption,
@@ -517,44 +591,52 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     margin: spacing.md,
   },
+  disclaimerSmall: {
+    fontSize: 10,
+  },
   summaryContainer: {
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.xl,
     margin: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.sm,
   },
   summaryIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#eaf1f7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   summaryTitle: {
     ...typography.h2,
     color: colors.text,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  summaryTitleSmall: {
+    fontSize: 18,
   },
   summaryDetails: {
     width: '100%',
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: colors.border,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.lg,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
   },
   summaryText: {
     ...typography.body,
     color: colors.text,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  summaryTextSmall: {
+    fontSize: 12,
   },
   summaryLabel: {
     fontWeight: '700',
@@ -570,8 +652,8 @@ const styles = StyleSheet.create({
   modalDescription: {
     ...typography.body,
     color: colors.textSecondary,
-    marginBottom: spacing.md,
-    lineHeight: 24,
+    marginBottom: spacing.sm,
+    lineHeight: 22,
   },
   participantsList: {
     gap: spacing.sm,
@@ -581,7 +663,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.borderDark,
-    padding: spacing.md,
+    padding: spacing.sm,
   },
   participantName: {
     ...typography.bodyBold,
@@ -590,7 +672,7 @@ const styles = StyleSheet.create({
   selectedParticipant: {
     ...typography.bodySmallBold,
     color: colors.primaryLight,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     textAlign: 'center',
   },
 });

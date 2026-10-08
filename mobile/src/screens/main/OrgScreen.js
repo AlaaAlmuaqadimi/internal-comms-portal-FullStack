@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +20,13 @@ import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 
 const OrgScreen = () => {
+  const { width, height } = useWindowDimensions();
   const { t, isRTL } = useLanguage();
+  
+  const isSmallScreen = width < 375;
+  const isLargeScreen = width > 768;
+  const isLandscape = width > height;
+  
   const [orgTree, setOrgTree] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedNodes, setExpandedNodes] = useState(new Set());
@@ -37,7 +44,6 @@ const OrgScreen = () => {
       setLoading(true);
       await new Promise(resolve => setTimeout(resolve, 800));
       setOrgTree(mockData.orgTree);
-      // توسيع العقدة الجذرية افتراضياً
       setExpandedNodes(new Set(['root']));
     } catch (error) {
       console.error('Error loading org tree:', error);
@@ -67,12 +73,10 @@ const OrgScreen = () => {
   };
 
   const handleSaveEdit = () => {
-    // في التطبيق الحقيقي سيتم حفظ التغييرات في الخادم
     setEditingNode(null);
   };
 
   const handleSaveAdd = () => {
-    // في التطبيق الحقيقي سيتم إضافة الوحدة في الخادم
     setAddingToNode(null);
   };
 
@@ -109,41 +113,52 @@ const OrgScreen = () => {
   const canHaveChildren = (kind) => kind !== 'section';
   const canEdit = (kind) => kind !== 'root' && kind !== 'group';
 
+  // أحجام متجاوبة
+  const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
+  const nodePadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.lg : spacing.md;
+  const iconSize = isSmallScreen ? 16 : isLargeScreen ? 24 : 20;
+
   const renderNode = (node, level = 0) => {
     const isExpanded = expandedNodes.has(node.id);
     const hasChildren = node.children && node.children.length > 0;
 
     return (
-      <View key={node.id} style={[styles.nodeContainer, { [isRTL ? 'marginRight' : 'marginLeft']: level * 20 }]}>
-        <View style={styles.nodeRow}>
+      <View key={node.id} style={[styles.nodeContainer, { [isRTL ? 'marginRight' : 'marginLeft']: level * (isSmallScreen ? 12 : 20) }]}>
+        <View style={[styles.nodeRow, { padding: nodePadding }]}>
           <Pressable
             style={styles.nodeToggle}
             onPress={() => hasChildren && toggleNode(node.id)}
           >
             {hasChildren && (
               <Ionicons
-                name={isExpanded ? 'chevron-down' : 'chevron-left'}
-                size={20}
+                name={isExpanded ? 'chevron-down' : (isRTL ? 'chevron-left' : 'chevron-right')}
+                size={iconSize}
                 color={colors.textSecondary}
               />
             )}
           </Pressable>
 
           <View style={styles.nodeIcon}>
-            <Ionicons name={getKindIcon(node.kind)} size={20} color={colors.primaryLight} />
+            <Ionicons name={getKindIcon(node.kind)} size={iconSize} color={colors.primaryLight} />
           </View>
 
-          <Text style={styles.nodeName}>{localizeText(node.name)}</Text>
+          <Text style={[styles.nodeName, isSmallScreen && styles.nodeNameSmall]}>
+            {localizeText(node.name)}
+          </Text>
 
           <View style={styles.nodeActions}>
             {canHaveChildren(node.kind) && (
               <Pressable onPress={() => handleAddChild(node)} style={styles.actionButton}>
-                <Text style={styles.actionText}>{t('org.addChild')}</Text>
+                <Text style={[styles.actionText, isSmallScreen && styles.actionTextSmall]}>
+                  {t('org.addChild')}
+                </Text>
               </Pressable>
             )}
             {canEdit(node.kind) && (
               <Pressable onPress={() => handleEdit(node)} style={styles.actionButton}>
-                <Text style={styles.actionText}>{t('org.edit')}</Text>
+                <Text style={[styles.actionText, isSmallScreen && styles.actionTextSmall]}>
+                  {t('org.edit')}
+                </Text>
               </Pressable>
             )}
           </View>
@@ -157,12 +172,14 @@ const OrgScreen = () => {
               value={editForm.name}
               onChangeText={(text) => setEditForm({ ...editForm, name: text })}
               placeholder={t('org.unitNamePlaceholder')}
+              size="small"
             />
             <CustomInput
               label={t('org.kitchenOptional')}
               value={editForm.kitchen}
               onChangeText={(text) => setEditForm({ ...editForm, kitchen: text })}
               placeholder={t('org.kitchenPlaceholder')}
+              size="small"
             />
             <View style={styles.formActions}>
               <CustomButton
@@ -190,18 +207,21 @@ const OrgScreen = () => {
               value={addForm.name}
               onChangeText={(text) => setAddForm({ ...addForm, name: text })}
               placeholder={t('org.newUnitPlaceholder')}
+              size="small"
             />
             <CustomInput
               label={t('org.kind')}
               value={addForm.kind}
               onChangeText={(text) => setAddForm({ ...addForm, kind: text })}
               placeholder={t('org.kindPlaceholder')}
+              size="small"
             />
             <CustomInput
               label={t('org.kitchenOptional')}
               value={addForm.kitchen}
               onChangeText={(text) => setAddForm({ ...addForm, kitchen: text })}
               placeholder={t('org.kitchenPlaceholderShort')}
+              size="small"
             />
             <View style={styles.formActions}>
               <CustomButton
@@ -238,12 +258,14 @@ const OrgScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       {/* الهيدر */}
-      <View style={styles.header}>
+      <View style={[styles.header, { padding: headerPadding }]}>
         <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
           <View>
-            <Text style={styles.title}>{t('org.title')}</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
+              {t('org.title')}
+            </Text>
+            <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
               {t('org.subtitle')}
             </Text>
           </View>
@@ -252,14 +274,14 @@ const OrgScreen = () => {
 
       {/* تنبيه */}
       <View style={styles.alert}>
-        <Ionicons name="information-circle" size={20} color={colors.primaryLight} />
-        <Text style={styles.alertText}>
+        <Ionicons name="information-circle" size={isSmallScreen ? 16 : 20} color={colors.primaryLight} />
+        <Text style={[styles.alertText, isSmallScreen && styles.alertTextSmall]}>
           {t('org.alert')}
         </Text>
       </View>
 
       {/* الهيكل الإداري */}
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={isLandscape && styles.contentLandscape}>
         {orgTree && renderNode(orgTree)}
       </ScrollView>
     </SafeAreaView>
@@ -275,7 +297,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    padding: spacing.md,
   },
   headerTitle: {
     flexDirection: 'row',
@@ -283,7 +304,7 @@ const styles = StyleSheet.create({
   },
   titleBorder: {
     width: 4,
-    height: 60,
+    height: 50,
     backgroundColor: colors.accent,
     borderRadius: 2,
     marginLeft: spacing.md,
@@ -292,11 +313,17 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.text,
   },
+  titleSmall: {
+    fontSize: 18,
+  },
   subtitle: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    lineHeight: 20,
+    lineHeight: 18,
+  },
+  subtitleSmall: {
+    fontSize: 11,
   },
   alert: {
     flexDirection: 'row',
@@ -305,19 +332,25 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: '#d9e6ee',
-    padding: spacing.md,
-    margin: spacing.md,
+    padding: spacing.sm,
+    margin: spacing.sm,
   },
   alertText: {
     ...typography.bodySmall,
     color: '#27455b',
     flex: 1,
     marginRight: spacing.sm,
-    lineHeight: 20,
+    lineHeight: 18,
+  },
+  alertTextSmall: {
+    fontSize: 11,
   },
   content: {
     flex: 1,
     padding: spacing.md,
+  },
+  contentLandscape: {
+    paddingHorizontal: '15%',
   },
   nodeContainer: {
     marginBottom: spacing.sm,
@@ -329,7 +362,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
   },
   nodeToggle: {
     padding: spacing.xs,
@@ -343,6 +375,9 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: spacing.sm,
   },
+  nodeNameSmall: {
+    fontSize: 13,
+  },
   nodeActions: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -355,12 +390,15 @@ const styles = StyleSheet.create({
     ...typography.captionBold,
     color: colors.primaryLight,
   },
+  actionTextSmall: {
+    fontSize: 10,
+  },
   editForm: {
     backgroundColor: '#f8fafc',
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.borderDark,
-    padding: spacing.md,
+    padding: spacing.sm,
     marginTop: spacing.sm,
   },
   addForm: {
@@ -369,7 +407,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderDark,
     borderStyle: 'dashed',
-    padding: spacing.md,
+    padding: spacing.sm,
     marginTop: spacing.sm,
   },
   formActions: {

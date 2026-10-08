@@ -6,6 +6,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,8 +27,14 @@ import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 
 const DirectoryScreen = ({ navigation }) => {
+  const { width, height } = useWindowDimensions();
   const { user } = useAuth();
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  
+  const isSmallScreen = width < 375;
+  const isLargeScreen = width > 768;
+  const isLandscape = width > height;
+  
   const [employees, setEmployees] = useState([]);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,7 +59,6 @@ const DirectoryScreen = ({ navigation }) => {
   const loadEmployees = async () => {
     try {
       setLoading(true);
-      // محاكاة تحميل البيانات
       await new Promise(resolve => setTimeout(resolve, 800));
       setEmployees(mockData.employees);
     } catch (error) {
@@ -65,7 +71,6 @@ const DirectoryScreen = ({ navigation }) => {
   const filterEmployees = () => {
     let filtered = [...employees];
 
-    // البحث
     if (debouncedSearch) {
       const query = debouncedSearch.toLowerCase();
       filtered = filtered.filter(emp =>
@@ -75,17 +80,14 @@ const DirectoryScreen = ({ navigation }) => {
       );
     }
 
-    // التصفية حسب الإدارة
     if (selectedDepartment) {
       filtered = filtered.filter(emp => emp.management === selectedDepartment);
     }
 
-    // التصفية حسب القسم
     if (selectedSection) {
       filtered = filtered.filter(emp => emp.unitName === selectedSection);
     }
 
-    // التصفية حسب الحالة
     if (selectedStatus) {
       filtered = filtered.filter(emp => emp.status === selectedStatus);
     }
@@ -113,7 +115,6 @@ const DirectoryScreen = ({ navigation }) => {
 
   const handleMessage = () => {
     setModalVisible(false);
-    // يمكن إضافة وظيفة إرسال رسالة هنا
   };
 
   const resetFilters = () => {
@@ -126,22 +127,31 @@ const DirectoryScreen = ({ navigation }) => {
   const departments = [...new Set(employees.map(emp => emp.management))];
   const sections = [...new Set(employees.map(emp => emp.unitName))];
 
+  // أحجام متجاوبة
+  const avatarSize = isSmallScreen ? 'small' : isLargeScreen ? 'large' : 'medium';
+  const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.lg : spacing.md;
+  const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
+
   const renderEmployee = ({ item }) => (
-    <View style={styles.employeeCard}>
+    <View style={[styles.employeeCard, { padding: cardPadding }]}>
       <View style={styles.employeeHeader}>
-        <UserAvatar person={item} size="large" />
+        <UserAvatar person={item} size={avatarSize} />
         <View style={styles.employeeInfo}>
-          <Text style={styles.employeeName}>{localizeText(item.name)}</Text>
-          <Text style={styles.employeeUnit}>{localizeText(item.unitName)}</Text>
+          <Text style={[styles.employeeName, isSmallScreen && styles.employeeNameSmall]}>
+            {localizeText(item.name)}
+          </Text>
+          <Text style={[styles.employeeUnit, isSmallScreen && styles.employeeUnitSmall]}>
+            {localizeText(item.unitName)}
+          </Text>
         </View>
       </View>
 
       <View style={styles.employeeDetails}>
-        <Text style={styles.employeeDetail}>
+        <Text style={[styles.employeeDetail, isSmallScreen && styles.employeeDetailSmall]}>
           <Text style={styles.detailLabel}>{t('directory.managementLabel')}</Text>
           {localizeText(item.management) || '—'}
         </Text>
-        <Text style={styles.employeeDetail}>
+        <Text style={[styles.employeeDetail, isSmallScreen && styles.employeeDetailSmall]}>
           <Text style={styles.detailLabel}>{t('directory.unitLabel')}</Text>
           {localizeText(item.unitName) || '—'}
         </Text>
@@ -166,13 +176,15 @@ const DirectoryScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       {/* الهيدر */}
-      <View style={styles.header}>
+      <View style={[styles.header, { padding: headerPadding }]}>
         <View style={styles.headerTop}>
           <View style={styles.headerTitle}>
             <View style={styles.titleBorder} />
             <View>
-              <Text style={styles.title}>{t('directory.title')}</Text>
-              <Text style={styles.subtitle}>
+              <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
+                {t('directory.title')}
+              </Text>
+              <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
                 {t('directory.subtitle')}
               </Text>
             </View>
@@ -181,14 +193,16 @@ const DirectoryScreen = ({ navigation }) => {
             onPress={() => navigation.navigate('Register')}
             style={styles.addButton}
           >
-            <Ionicons name="person-add" size={20} color={colors.textWhite} />
-            <Text style={styles.addButtonText}>{t('directory.createAccount')}</Text>
+            <Ionicons name="person-add" size={isSmallScreen ? 16 : 20} color={colors.textWhite} />
+            <Text style={[styles.addButtonText, isSmallScreen && styles.addButtonTextSmall]}>
+              {t('directory.createAccount')}
+            </Text>
           </Pressable>
         </View>
       </View>
 
       {/* البحث والتصفية */}
-      <View style={styles.filtersContainer}>
+      <View style={[styles.filtersContainer, { padding: headerPadding }]}>
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -201,7 +215,7 @@ const DirectoryScreen = ({ navigation }) => {
             style={[styles.filterChip, selectedDepartment && styles.filterChipActive]}
             onPress={() => setSelectedDepartment(selectedDepartment ? '' : departments[0])}
           >
-            <Text style={[styles.filterChipText, selectedDepartment && styles.filterChipTextActive]}>
+            <Text style={[styles.filterChipText, selectedDepartment && styles.filterChipTextActive, isSmallScreen && styles.filterChipTextSmall]}>
               {localizeText(selectedDepartment) || t('directory.allDepartments')}
             </Text>
           </Pressable>
@@ -210,7 +224,7 @@ const DirectoryScreen = ({ navigation }) => {
             style={[styles.filterChip, selectedSection && styles.filterChipActive]}
             onPress={() => setSelectedSection(selectedSection ? '' : sections[0])}
           >
-            <Text style={[styles.filterChipText, selectedSection && styles.filterChipTextActive]}>
+            <Text style={[styles.filterChipText, selectedSection && styles.filterChipTextActive, isSmallScreen && styles.filterChipTextSmall]}>
               {localizeText(selectedSection) || t('directory.allSections')}
             </Text>
           </Pressable>
@@ -219,7 +233,7 @@ const DirectoryScreen = ({ navigation }) => {
             style={[styles.filterChip, selectedStatus && styles.filterChipActive]}
             onPress={() => setSelectedStatus(selectedStatus ? '' : 'online')}
           >
-            <Text style={[styles.filterChipText, selectedStatus && styles.filterChipTextActive]}>
+            <Text style={[styles.filterChipText, selectedStatus && styles.filterChipTextActive, isSmallScreen && styles.filterChipTextSmall]}>
               {selectedStatus === 'online' ? t('directory.online') : selectedStatus === 'offline' ? t('directory.offline') : t('directory.allStatuses')}
             </Text>
           </Pressable>
@@ -227,9 +241,11 @@ const DirectoryScreen = ({ navigation }) => {
 
         <View style={styles.filterFooter}>
           <Pressable onPress={resetFilters} style={styles.resetButton}>
-            <Text style={styles.resetButtonText}>{t('directory.resetFilters')}</Text>
+            <Text style={[styles.resetButtonText, isSmallScreen && styles.resetButtonTextSmall]}>
+              {t('directory.resetFilters')}
+            </Text>
           </Pressable>
-          <Text style={styles.resultsCount}>
+          <Text style={[styles.resultsCount, isSmallScreen && styles.resultsCountSmall]}>
             {t('directory.resultsCount', { count: filteredEmployees.length })}
           </Text>
         </View>
@@ -237,8 +253,8 @@ const DirectoryScreen = ({ navigation }) => {
 
       {/* تنبيه */}
       <View style={styles.alert}>
-        <Ionicons name="shield-check" size={20} color={colors.primaryLight} />
-        <Text style={styles.alertText}>
+        <Ionicons name="shield-check" size={isSmallScreen ? 16 : 20} color={colors.primaryLight} />
+        <Text style={[styles.alertText, isSmallScreen && styles.alertTextSmall]}>
           {t('directory.alert')}
         </Text>
       </View>
@@ -257,7 +273,10 @@ const DirectoryScreen = ({ navigation }) => {
           data={filteredEmployees}
           renderItem={renderEmployee}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            isLandscape && styles.listContentLandscape,
+          ]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
@@ -308,7 +327,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    padding: spacing.md,
   },
   headerTop: {
     flexDirection: 'row',
@@ -322,7 +340,7 @@ const styles = StyleSheet.create({
   },
   titleBorder: {
     width: 4,
-    height: 60,
+    height: 50,
     backgroundColor: colors.accent,
     borderRadius: 2,
     marginLeft: spacing.md,
@@ -331,18 +349,24 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.text,
   },
+  titleSmall: {
+    fontSize: 18,
+  },
   subtitle: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    lineHeight: 20,
+    lineHeight: 18,
+  },
+  subtitleSmall: {
+    fontSize: 11,
   },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primaryLight,
     borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
   addButtonText: {
@@ -350,20 +374,22 @@ const styles = StyleSheet.create({
     color: colors.textWhite,
     marginRight: spacing.xs,
   },
+  addButtonTextSmall: {
+    fontSize: 11,
+  },
   filtersContainer: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    padding: spacing.md,
   },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   filterChip: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
     borderWidth: 1,
@@ -378,6 +404,9 @@ const styles = StyleSheet.create({
     ...typography.captionBold,
     color: colors.text,
   },
+  filterChipTextSmall: {
+    fontSize: 11,
+  },
   filterChipTextActive: {
     color: colors.textWhite,
   },
@@ -385,10 +414,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   resetButton: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
     borderWidth: 1,
@@ -398,9 +427,15 @@ const styles = StyleSheet.create({
     ...typography.buttonSmall,
     color: colors.primaryLight,
   },
+  resetButtonTextSmall: {
+    fontSize: 11,
+  },
   resultsCount: {
     ...typography.bodyBold,
     color: colors.text,
+  },
+  resultsCountSmall: {
+    fontSize: 12,
   },
   alert: {
     flexDirection: 'row',
@@ -409,32 +444,37 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: '#d9e6ee',
-    padding: spacing.md,
-    margin: spacing.md,
+    padding: spacing.sm,
+    margin: spacing.sm,
   },
   alertText: {
     ...typography.bodySmall,
     color: '#27455b',
     flex: 1,
     marginRight: spacing.sm,
-    lineHeight: 20,
+    lineHeight: 18,
+  },
+  alertTextSmall: {
+    fontSize: 11,
   },
   listContent: {
     padding: spacing.md,
+  },
+  listContentLandscape: {
+    paddingHorizontal: '15%',
   },
   employeeCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
     marginBottom: spacing.md,
     ...shadows.sm,
   },
   employeeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   employeeInfo: {
     flex: 1,
@@ -444,21 +484,30 @@ const styles = StyleSheet.create({
     ...typography.h4,
     color: colors.text,
   },
+  employeeNameSmall: {
+    fontSize: 14,
+  },
   employeeUnit: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: 2,
   },
+  employeeUnitSmall: {
+    fontSize: 11,
+  },
   employeeDetails: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: spacing.md,
-    marginBottom: spacing.md,
+    paddingTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
   employeeDetail: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginBottom: spacing.xs,
+  },
+  employeeDetailSmall: {
+    fontSize: 11,
   },
   detailLabel: {
     fontWeight: '700',
@@ -482,7 +531,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: spacing.lg,
-    lineHeight: 24,
+    lineHeight: 22,
   },
   modalActions: {
     flexDirection: 'row',

@@ -4,8 +4,8 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  Pressable,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,7 +21,13 @@ import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 
 const NotificationsScreen = () => {
+  const { width, height } = useWindowDimensions();
   const { t, align } = useLanguage();
+  
+  const isSmallScreen = width < 375;
+  const isLargeScreen = width > 768;
+  const isLandscape = width > height;
+  
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,7 +59,6 @@ const NotificationsScreen = () => {
   const handleNotificationPress = (notification) => {
     setSelectedNotification(notification);
     setModalVisible(true);
-    // تحديد كمقروء
     setNotifications(prev =>
       prev.map(n =>
         n.id === notification.id ? { ...n, unread: false } : n
@@ -91,6 +96,10 @@ const NotificationsScreen = () => {
     }
   };
 
+  // أحجام متجاوبة
+  const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
+  const iconSize = isSmallScreen ? 24 : isLargeScreen ? 40 : 32;
+
   const renderNotification = ({ item }) => (
     <NotificationItem
       notification={item}
@@ -105,18 +114,22 @@ const NotificationsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       {/* الهيدر */}
-      <View style={styles.header}>
+      <View style={[styles.header, { padding: headerPadding }]}>
         <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
           <View>
-            <Text style={styles.title}>{t('notifications.title')}</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
+              {t('notifications.title')}
+            </Text>
+            <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
               {t('notifications.subtitle')}
             </Text>
           </View>
         </View>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{t('notifications.demoBadge')}</Text>
+          <Text style={[styles.badgeText, isSmallScreen && styles.badgeTextSmall]}>
+            {t('notifications.demoBadge')}
+          </Text>
         </View>
       </View>
 
@@ -132,7 +145,10 @@ const NotificationsScreen = () => {
           data={notifications}
           renderItem={renderNotification}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            isLandscape && styles.listContentLandscape,
+          ]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
@@ -149,20 +165,26 @@ const NotificationsScreen = () => {
         {selectedNotification && (
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <View style={[styles.modalIcon, { backgroundColor: `${getIconColor(selectedNotification.type)}15` }]}>
+              <View style={[styles.modalIcon, { width: iconSize, height: iconSize, borderRadius: iconSize / 2 }]}>
                 <Ionicons
                   name={getIconName(selectedNotification.icon)}
-                  size={32}
+                  size={iconSize / 2}
                   color={getIconColor(selectedNotification.type)}
                 />
               </View>
-              <Text style={styles.modalType}>{localizeText(selectedNotification.type)}</Text>
+              <Text style={[styles.modalType, isSmallScreen && styles.modalTypeSmall]}>
+                {localizeText(selectedNotification.type)}
+              </Text>
             </View>
 
-            <Text style={styles.modalTitle}>{localizeText(selectedNotification.title)}</Text>
-            <Text style={[styles.modalBody, { textAlign: align }]}>{localizeText(selectedNotification.body)}</Text>
+            <Text style={[styles.modalTitle, isSmallScreen && styles.modalTitleSmall]}>
+              {localizeText(selectedNotification.title)}
+            </Text>
+            <Text style={[styles.modalBody, { textAlign: align }, isSmallScreen && styles.modalBodySmall]}>
+              {localizeText(selectedNotification.body)}
+            </Text>
 
-            <Text style={styles.modalDate}>
+            <Text style={[styles.modalDate, isSmallScreen && styles.modalDateSmall]}>
               {selectedNotification.date} · {selectedNotification.time}
             </Text>
           </View>
@@ -171,7 +193,7 @@ const NotificationsScreen = () => {
 
       {/* الفوتر */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
+        <Text style={[styles.footerText, isSmallScreen && styles.footerTextSmall]}>
           {t('notifications.footer')}
         </Text>
       </View>
@@ -188,7 +210,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    padding: spacing.md,
   },
   headerTitle: {
     flexDirection: 'row',
@@ -197,7 +218,7 @@ const styles = StyleSheet.create({
   },
   titleBorder: {
     width: 4,
-    height: 60,
+    height: 50,
     backgroundColor: colors.accent,
     borderRadius: 2,
     marginLeft: spacing.md,
@@ -206,69 +227,93 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.text,
   },
+  titleSmall: {
+    fontSize: 18,
+  },
   subtitle: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    lineHeight: 20,
+    lineHeight: 18,
+  },
+  subtitleSmall: {
+    fontSize: 11,
   },
   badge: {
     alignSelf: 'flex-start',
     backgroundColor: '#f6f0e4',
     borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
   badgeText: {
     ...typography.captionBold,
     color: '#785e30',
   },
+  badgeTextSmall: {
+    fontSize: 10,
+  },
   listContent: {
     padding: spacing.md,
+  },
+  listContentLandscape: {
+    paddingHorizontal: '15%',
   },
   modalContent: {
     alignItems: 'center',
   },
   modalHeader: {
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   modalIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    backgroundColor: '#eaf1f7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   modalType: {
     ...typography.bodyBold,
     color: colors.primaryLight,
   },
+  modalTypeSmall: {
+    fontSize: 13,
+  },
   modalTitle: {
     ...typography.h3,
     color: colors.text,
     textAlign: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  modalTitleSmall: {
+    fontSize: 16,
   },
   modalBody: {
     ...typography.body,
     color: colors.textSecondary,
-    lineHeight: 28,
-    textAlign: 'right',
-    marginBottom: spacing.lg,
+    lineHeight: 24,
+    marginBottom: spacing.md,
+  },
+  modalBodySmall: {
+    fontSize: 13,
   },
   modalDate: {
     ...typography.caption,
     color: colors.textLight,
   },
+  modalDateSmall: {
+    fontSize: 10,
+  },
   footer: {
-    padding: spacing.md,
+    padding: spacing.sm,
     alignItems: 'center',
   },
   footerText: {
     ...typography.small,
     color: '#78889a',
+  },
+  footerTextSmall: {
+    fontSize: 10,
   },
 });
 
