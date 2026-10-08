@@ -6,6 +6,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +25,13 @@ import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 
 const CallsScreen = ({ navigation }) => {
-  const { t } = useLanguage();
+  const { width, height } = useWindowDimensions();
+  const { t, isRTL } = useLanguage();
+  
+  const isSmallScreen = width < 375;
+  const isLargeScreen = width > 768;
+  const isLandscape = width > height;
+  
   const [calls, setCalls] = useState([]);
   const [filteredCalls, setFilteredCalls] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,7 +66,6 @@ const CallsScreen = ({ navigation }) => {
   const filterCalls = () => {
     let filtered = [...calls];
 
-    // البحث
     if (debouncedSearch) {
       const query = debouncedSearch.toLowerCase();
       filtered = filtered.filter(call =>
@@ -69,7 +75,6 @@ const CallsScreen = ({ navigation }) => {
       );
     }
 
-    // التصفية حسب النوع
     if (selectedType !== 'all') {
       filtered = filtered.filter(call => call.type === selectedType);
     }
@@ -126,25 +131,42 @@ const CallsScreen = ({ navigation }) => {
     }
   };
 
+  // أحجام متجاوبة
+  const avatarSize = isSmallScreen ? 'small' : isLargeScreen ? 'large' : 'medium';
+  const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.lg : spacing.md;
+  const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
+
   const renderCall = ({ item }) => (
-    <View style={[styles.callCard, item.type === 'missed' && styles.callCardMissed]}>
+    <View style={[
+      styles.callCard,
+      { padding: cardPadding },
+      item.type === 'missed' && styles.callCardMissed,
+    ]}>
       <View style={styles.callHeader}>
-        <UserAvatar person={item.contact} size="medium" />
+        <UserAvatar person={item.contact} size={avatarSize} />
         <View style={styles.callInfo}>
-          <Text style={styles.callName}>{localizeText(item.contact.name)}</Text>
-          <Text style={styles.callUnit}>{localizeText(item.contact.unitName)}</Text>
+          <Text style={[styles.callName, isSmallScreen && styles.callNameSmall]}>
+            {localizeText(item.contact.name)}
+          </Text>
+          <Text style={[styles.callUnit, isSmallScreen && styles.callUnitSmall]}>
+            {localizeText(item.contact.unitName)}
+          </Text>
         </View>
       </View>
 
       <View style={styles.callDetails}>
         <View style={styles.callType}>
-          <Ionicons name={getTypeIcon(item.type)} size={16} color={getTypeColor(item.type)} />
-          <Text style={[styles.callTypeText, { color: getTypeColor(item.type) }]}>
+          <Ionicons name={getTypeIcon(item.type)} size={isSmallScreen ? 14 : 16} color={getTypeColor(item.type)} />
+          <Text style={[styles.callTypeText, { color: getTypeColor(item.type) }, isSmallScreen && styles.callTypeTextSmall]}>
             {localizeText(item.typeLabel)}
           </Text>
         </View>
-        <Text style={styles.callDate}>{item.date} · {item.time}</Text>
-        <Text style={styles.callDuration}>{t('calls.duration', { duration: item.duration })}</Text>
+        <Text style={[styles.callDate, isSmallScreen && styles.callDateSmall]}>
+          {item.date} · {item.time}
+        </Text>
+        <Text style={[styles.callDuration, isSmallScreen && styles.callDurationSmall]}>
+          {t('calls.duration', { duration: item.duration })}
+        </Text>
       </View>
 
       <View style={styles.callActions}>
@@ -165,23 +187,27 @@ const CallsScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       {/* الهيدر */}
-      <View style={styles.header}>
+      <View style={[styles.header, { padding: headerPadding }]}>
         <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
           <View>
-            <Text style={styles.title}>{t('calls.title')}</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
+              {t('calls.title')}
+            </Text>
+            <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
               {t('calls.subtitle')}
             </Text>
           </View>
         </View>
         <View style={styles.countBadge}>
-          <Text style={styles.countText}>{filteredCalls.length}</Text>
+          <Text style={[styles.countText, isSmallScreen && styles.countTextSmall]}>
+            {filteredCalls.length}
+          </Text>
         </View>
       </View>
 
       {/* البحث والتصفية */}
-      <View style={styles.filtersContainer}>
+      <View style={[styles.filtersContainer, { padding: headerPadding }]}>
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -208,6 +234,7 @@ const CallsScreen = ({ navigation }) => {
                 style={[
                   styles.filterChipText,
                   selectedType === filter.key && styles.filterChipTextActive,
+                  isSmallScreen && styles.filterChipTextSmall,
                 ]}
               >
                 {filter.label}
@@ -231,7 +258,10 @@ const CallsScreen = ({ navigation }) => {
           data={filteredCalls}
           renderItem={renderCall}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            isLandscape && styles.listContentLandscape,
+          ]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
@@ -283,7 +313,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -295,7 +324,7 @@ const styles = StyleSheet.create({
   },
   titleBorder: {
     width: 4,
-    height: 60,
+    height: 50,
     backgroundColor: colors.accent,
     borderRadius: 2,
     marginLeft: spacing.md,
@@ -304,11 +333,17 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.text,
   },
+  titleSmall: {
+    fontSize: 18,
+  },
   subtitle: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    lineHeight: 20,
+    lineHeight: 18,
+  },
+  subtitleSmall: {
+    fontSize: 11,
   },
   countBadge: {
     backgroundColor: colors.surface,
@@ -322,17 +357,19 @@ const styles = StyleSheet.create({
     ...typography.h4,
     color: colors.primaryLight,
   },
+  countTextSmall: {
+    fontSize: 16,
+  },
   filtersContainer: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    padding: spacing.md,
   },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   filterChip: {
     paddingHorizontal: spacing.md,
@@ -350,18 +387,23 @@ const styles = StyleSheet.create({
     ...typography.captionBold,
     color: colors.text,
   },
+  filterChipTextSmall: {
+    fontSize: 11,
+  },
   filterChipTextActive: {
     color: colors.textWhite,
   },
   listContent: {
     padding: spacing.md,
   },
+  listContentLandscape: {
+    paddingHorizontal: '15%',
+  },
   callCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
     marginBottom: spacing.md,
     ...shadows.sm,
   },
@@ -372,7 +414,7 @@ const styles = StyleSheet.create({
   callHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   callInfo: {
     flex: 1,
@@ -382,16 +424,22 @@ const styles = StyleSheet.create({
     ...typography.h4,
     color: colors.text,
   },
+  callNameSmall: {
+    fontSize: 14,
+  },
   callUnit: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: 2,
   },
+  callUnitSmall: {
+    fontSize: 11,
+  },
   callDetails: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: spacing.md,
-    marginBottom: spacing.md,
+    paddingTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
   callType: {
     flexDirection: 'row',
@@ -402,14 +450,23 @@ const styles = StyleSheet.create({
     ...typography.bodySmallBold,
     marginRight: spacing.xs,
   },
+  callTypeTextSmall: {
+    fontSize: 11,
+  },
   callDate: {
     ...typography.caption,
     color: colors.textSecondary,
     marginBottom: 2,
   },
+  callDateSmall: {
+    fontSize: 10,
+  },
   callDuration: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  callDurationSmall: {
+    fontSize: 10,
   },
   callActions: {
     alignItems: 'flex-start',
@@ -418,9 +475,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#eaf1f7',
     alignItems: 'center',
     justifyContent: 'center',
@@ -431,7 +488,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: spacing.md,
-    lineHeight: 24,
+    lineHeight: 22,
   },
   modalName: {
     ...typography.h4,
