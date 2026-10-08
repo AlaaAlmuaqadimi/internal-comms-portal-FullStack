@@ -16,7 +16,6 @@ import UserAvatar from '../../components/UserAvatar';
 import StatusBadge from '../../components/StatusBadge';
 import CustomButton from '../../components/CustomButton';
 import Modal from '../../components/Modal';
-import ConfirmDialog from '../../components/ConfirmDialog';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 
@@ -34,7 +33,6 @@ const CallActiveScreen = ({ route, navigation }) => {
   const [isSpeaker, setIsSpeaker] = useState(false);
   const [showKeypad, setShowKeypad] = useState(false);
   const [keypadInput, setKeypadInput] = useState('');
-  const [showEndModal, setShowEndModal] = useState(false);
   const [showParticipantModal, setShowParticipantModal] = useState(false);
   const [callEnded, setCallEnded] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState(null);
@@ -59,11 +57,6 @@ const CallActiveScreen = ({ route, navigation }) => {
   };
 
   const handleEndCall = () => {
-    setShowEndModal(true);
-  };
-
-  const confirmEndCall = () => {
-    setShowEndModal(false);
     setCallEnded(true);
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -342,18 +335,6 @@ const CallActiveScreen = ({ route, navigation }) => {
         )}
       </Modal>
 
-      {/* نافذة تأكيد إنهاء المكالمة */}
-      <ConfirmDialog
-        visible={showEndModal}
-        onClose={() => setShowEndModal(false)}
-        onConfirm={confirmEndCall}
-        title={t('callActive.confirmEndTitle')}
-        description={t('callActive.confirmEndDescription')}
-        confirmText={t('callActive.confirmEnd')}
-        cancelText={t('callActive.continueCall')}
-        variant="danger"
-        icon="call"
-      />
     </SafeAreaView>
   );
 };
