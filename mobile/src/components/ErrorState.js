@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
@@ -6,6 +6,7 @@ import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import CustomButton from './CustomButton';
 import { useLanguage } from '../context/LanguageContext';
+import { flipStyles } from '../i18n/rtlStyles';
 
 const ErrorState = ({
   icon = 'alert-circle',
@@ -15,7 +16,8 @@ const ErrorState = ({
   onAction,
   style,
 }) => {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   return (
     <View style={[styles.container, style]}>
       <View style={styles.iconContainer}>
@@ -35,7 +37,7 @@ const ErrorState = ({
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,

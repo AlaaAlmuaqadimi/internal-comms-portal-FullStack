@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
@@ -6,13 +6,15 @@ import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
 import { localizeText } from '../i18n/localize';
+import { flipStyles } from '../i18n/rtlStyles';
 
 const NotificationItem = ({
   notification,
   onPress,
   style,
 }) => {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   const getIconName = () => {
     switch (notification.icon) {
       case 'megaphone':
@@ -77,7 +79,7 @@ const NotificationItem = ({
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,

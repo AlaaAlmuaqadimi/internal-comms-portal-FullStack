@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, TextInput, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
+import { flipStyles } from '../i18n/rtlStyles';
 
 const SearchBar = ({
   value,
@@ -13,7 +14,8 @@ const SearchBar = ({
   onClear,
   style,
 }) => {
-  const { t, align } = useLanguage();
+  const { t, align, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   return (
     <View style={[styles.container, style]}>
       <Ionicons name="search" size={20} color={colors.textLight} style={styles.icon} />
@@ -34,7 +36,7 @@ const SearchBar = ({
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

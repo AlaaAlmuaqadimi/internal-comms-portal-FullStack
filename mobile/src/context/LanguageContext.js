@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { I18nManager, Alert } from 'react-native';
+import { I18nManager, Alert, DevSettings } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLocales } from 'expo-localization';
 import { translations } from '../i18n/translations';
@@ -41,7 +41,14 @@ export const useLanguage = () => {
 I18nManager.allowRTL(true);
 
 export const LanguageProvider = ({ children }) => {
-  const [language, setLanguageState] = useState('ar');
+  const [language, setLanguageState] = useState(() => {
+    try {
+      const locs = getLocales();
+      return locs && locs.length > 0 && locs[0].languageCode === 'ar' ? 'ar' : 'en';
+    } catch (e) {
+      return 'ar';
+    }
+  });
 
   useEffect(() => {
     loadLanguage();
@@ -53,6 +60,11 @@ export const LanguageProvider = ({ children }) => {
       if (stored === 'ar' || stored === 'en') {
         setLanguageState(stored);
         setModuleLanguage(stored);
+        const wantRTL = stored === 'ar';
+        if (I18nManager.isRTL !== wantRTL) {
+          I18nManager.forceRTL(wantRTL);
+          setTimeout(() => DevSettings.reload(), 100);
+        }
         return;
       }
       const locales = getLocales();
@@ -69,7 +81,11 @@ export const LanguageProvider = ({ children }) => {
       setLanguageState(lang);
       setModuleLanguage(lang);
       await AsyncStorage.setItem('language', lang);
-      I18nManager.forceRTL(lang === 'ar');
+      const wantRTL = lang === 'ar';
+      if (I18nManager.isRTL !== wantRTL) {
+        I18nManager.forceRTL(wantRTL);
+        setTimeout(() => DevSettings.reload(), 300);
+      }
     } catch (error) {
       console.error('Error saving language:', error);
     }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,10 +19,12 @@ import Modal from '../../components/Modal';
 import { mockData } from '../../utils/mockData';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
+import { flipStyles } from '../../i18n/rtlStyles';
 
 const NotificationsScreen = () => {
   const { width, height } = useWindowDimensions();
-  const { t, align } = useLanguage();
+  const { t, align, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
@@ -201,7 +203,7 @@ const NotificationsScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

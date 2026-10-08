@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
+import { flipStyles } from '../i18n/rtlStyles';
 
 const CustomInput = ({
   label,
@@ -27,7 +28,8 @@ const CustomInput = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [isSecure, setIsSecure] = useState(secureTextEntry);
-  const { align } = useLanguage();
+  const { align, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
 
   return (
     <View style={[styles.container, style]}>
@@ -92,7 +94,7 @@ const CustomInput = ({
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     marginBottom: spacing.md,
   },

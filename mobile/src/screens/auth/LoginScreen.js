@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,10 +18,12 @@ import { spacing, borderRadius } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
 import CustomButton from '../../components/CustomButton';
 import Loading from '../../components/Loading';
+import { flipStyles } from '../../i18n/rtlStyles';
 
 const LoginScreen = ({ navigation }) => {
   const { login } = useAuth();
-  const { t, language, toggleLanguage } = useLanguage();
+  const { t, language, toggleLanguage, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -153,7 +155,7 @@ const LoginScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

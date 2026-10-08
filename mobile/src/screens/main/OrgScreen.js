@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,10 +18,12 @@ import CustomInput from '../../components/CustomInput';
 import { mockData } from '../../utils/mockData';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
+import { flipStyles } from '../../i18n/rtlStyles';
 
 const OrgScreen = () => {
   const { width, height } = useWindowDimensions();
   const { t, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
@@ -91,7 +93,7 @@ const OrgScreen = () => {
       case 'directorate':
         return 'business';
       case 'section':
-        return 'document';
+        return 'document-text';
       default:
         return 'ellipse';
     }
@@ -288,7 +290,7 @@ const OrgScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

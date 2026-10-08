@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
+import { flipStyles } from '../i18n/rtlStyles';
 
 const AppHeader = ({ 
   title, 
@@ -15,7 +16,8 @@ const AppHeader = ({
   showLogout = false,
   onLogoutPress 
 }) => {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   return (
     <View style={styles.header}>
       <View style={styles.headerContent}>
@@ -43,7 +45,7 @@ const AppHeader = ({
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   header: {
     backgroundColor: colors.surfaceDark,
     paddingVertical: spacing.md,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,11 +20,13 @@ import SearchBar from '../../components/SearchBar';
 import { mockData } from '../../utils/mockData';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
+import { flipStyles } from '../../i18n/rtlStyles';
 
 const SettingsScreen = () => {
   const { width, height } = useWindowDimensions();
   const { user, logout, updateUser } = useAuth();
-  const { t, language, toggleLanguage } = useLanguage();
+  const { t, language, toggleLanguage, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
@@ -314,7 +316,7 @@ const SettingsScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -388,7 +390,8 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     flex: 1,
-    marginRight: spacing.md,
+    marginStart: spacing.md,
+    
   },
   profileRow: {
     marginBottom: spacing.xs,

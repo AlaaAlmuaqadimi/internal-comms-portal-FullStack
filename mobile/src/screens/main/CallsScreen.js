@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,10 +23,12 @@ import { mockData } from '../../utils/mockData';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
+import { flipStyles } from '../../i18n/rtlStyles';
 
 const CallsScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
   const { t, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
@@ -121,11 +123,11 @@ const CallsScreen = ({ navigation }) => {
   const getTypeIcon = (type) => {
     switch (type) {
       case 'incoming':
-        return 'arrow-down-left';
+        return 'arrow-down';
       case 'outgoing':
-        return 'arrow-up-right';
+        return 'arrow-up';
       case 'missed':
-        return 'phone-missed';
+        return 'call';
       default:
         return 'call';
     }
@@ -304,7 +306,7 @@ const CallsScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,11 +18,13 @@ import CustomButton from '../../components/CustomButton';
 import Modal from '../../components/Modal';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
+import { flipStyles } from '../../i18n/rtlStyles';
 
 const CallActiveScreen = ({ route, navigation }) => {
   const { width, height } = useWindowDimensions();
   const { contact } = route.params;
   const { t, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
@@ -339,7 +341,7 @@ const CallActiveScreen = ({ route, navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

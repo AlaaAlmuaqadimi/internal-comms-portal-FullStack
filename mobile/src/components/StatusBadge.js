@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
 import { localizeText } from '../i18n/localize';
+import { flipStyles } from '../i18n/rtlStyles';
 
 const StatusBadge = ({
   status, // online, offline, kitchen, success, warning, danger
@@ -12,7 +13,8 @@ const StatusBadge = ({
   showDot = true,
   style,
 }) => {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   const getStatusStyle = () => {
     switch (status) {
       case 'online':
@@ -64,7 +66,7 @@ const StatusBadge = ({
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

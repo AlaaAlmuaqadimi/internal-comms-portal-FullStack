@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
@@ -7,6 +7,7 @@ import { spacing, borderRadius } from '../constants/spacing';
 import Modal from './Modal';
 import CustomButton from './CustomButton';
 import { useLanguage } from '../context/LanguageContext';
+import { flipStyles } from '../i18n/rtlStyles';
 
 const ConfirmDialog = ({
   visible,
@@ -20,7 +21,8 @@ const ConfirmDialog = ({
   icon,
   loading = false,
 }) => {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   return (
     <Modal
       visible={visible}
@@ -62,7 +64,7 @@ const ConfirmDialog = ({
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   content: {
     alignItems: 'center',
   },
