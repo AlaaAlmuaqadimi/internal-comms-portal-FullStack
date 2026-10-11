@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -76,13 +77,24 @@ const LoginScreen = ({ navigation }) => {
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <View style={styles.logoContainer}>
-                <Ionicons name="business" size={32} color={colors.textGold} />
+                <Image
+                  source={require('../../../assets/logo.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
               </View>
               <View style={styles.headerText}>
                 <Text style={styles.headerTitle}>{t('common.appName')}</Text>
                 <Text style={styles.headerSubtitle}>{t('common.appTagline')}</Text>
               </View>
             </View>
+          </View>
+
+          {/* شعار مركزي */}
+          <View style={styles.heroLogoContainer}>
+            <Logo size={110} style={styles.heroLogo} />
+            <Text style={styles.heroLogoTitle}>{t('common.appName')}</Text>
+            <Text style={styles.heroLogoSubtitle}>{t('common.appTagline')}</Text>
           </View>
 
           {/* المحتوى */}
@@ -186,7 +198,30 @@ const rawStyles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     marginLeft: spacing.md,
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroLogoContainer: {
+    alignItems: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  heroLogo: {
+    marginBottom: spacing.sm,
+  },
+  heroLogoTitle: {
+    ...typography.h3,
+    color: colors.text,
+  },
+  heroLogoSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
+    textAlign: 'center',
   },
   headerText: {
     flex: 1,

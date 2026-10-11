@@ -24,23 +24,35 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // شاشات المصادقة
-const AuthStack = () => (
+const AuthStack = () => {
+  const { isRTL } = useLanguage();
+  return (
   <Stack.Navigator
     screenOptions={{
       headerShown: false,
-      animation: 'slide_from_left',
+      animation: isRTL ? 'slide_from_left' : 'slide_from_right',
     }}
   >
     <Stack.Screen name="Login" component={LoginScreen} />
     <Stack.Screen name="Register" component={RegisterScreen} />
   </Stack.Navigator>
-);
+  );
+};
 
 // التبويبات الرئيسية
 const MainTabs = () => {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
+  const tabs = [
+    { name: 'Calls', component: CallsScreen, label: t('tabs.calls'), icon: 'call' },
+    { name: 'Directory', component: DirectoryScreen, label: t('tabs.directory'), icon: 'people' },
+    { name: 'Org', component: OrgScreen, label: t('tabs.org'), icon: 'business' },
+    { name: 'Notifications', component: NotificationsScreen, label: t('tabs.notifications'), icon: 'notifications' },
+    { name: 'Settings', component: SettingsScreen, label: t('tabs.settings'), icon: 'settings' },
+  ];
+  const orderedTabs = isRTL ? [...tabs].reverse() : tabs;
   return (
   <Tab.Navigator
+    initialRouteName="Calls"
     screenOptions={{
       headerShown: false,
       tabBarActiveTintColor: colors.primaryLight,
@@ -59,66 +71,31 @@ const MainTabs = () => {
       },
     }}
   >
-    <Tab.Screen
-      name="Directory"
-      component={DirectoryScreen}
-      options={{
-        tabBarLabel: t('tabs.directory'),
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="people" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="Calls"
-      component={CallsScreen}
-      options={{
-        tabBarLabel: t('tabs.calls'),
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="call" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="Org"
-      component={OrgScreen}
-      options={{
-        tabBarLabel: t('tabs.org'),
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="business" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="Notifications"
-      component={NotificationsScreen}
-      options={{
-        tabBarLabel: t('tabs.notifications'),
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="notifications" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="Settings"
-      component={SettingsScreen}
-      options={{
-        tabBarLabel: t('tabs.settings'),
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name="settings" size={size} color={color} />
-        ),
-      }}
-    />
+    {orderedTabs.map((tab) => (
+      <Tab.Screen
+        key={tab.name}
+        name={tab.name}
+        component={tab.component}
+        options={{
+          tabBarLabel: tab.label,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name={tab.icon} size={size} color={color} />
+          ),
+        }}
+      />
+    ))}
   </Tab.Navigator>
   );
 };
 
 // الشاشات الرئيسية
-const MainStack = () => (
+const MainStack = () => {
+  const { isRTL } = useLanguage();
+  return (
   <Stack.Navigator
     screenOptions={{
       headerShown: false,
-      animation: 'slide_from_left',
+      animation: isRTL ? 'slide_from_left' : 'slide_from_right',
     }}
   >
     <Stack.Screen name="MainTabs" component={MainTabs} />
@@ -132,7 +109,8 @@ const MainStack = () => (
       }}
     />
   </Stack.Navigator>
-);
+  );
+};
 
 // الملاحي الرئيسي
 const AppNavigator = () => {

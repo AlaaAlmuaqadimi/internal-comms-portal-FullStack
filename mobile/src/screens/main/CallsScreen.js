@@ -18,7 +18,6 @@ import Loading from '../../components/Loading';
 import EmptyState from '../../components/EmptyState';
 import UserAvatar from '../../components/UserAvatar';
 import CustomButton from '../../components/CustomButton';
-import Modal from '../../components/Modal';
 import { mockData } from '../../utils/mockData';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
@@ -40,8 +39,6 @@ const CallsScreen = ({ navigation }) => {
   const [selectedType, setSelectedType] = useState('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedCall, setSelectedCall] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
@@ -91,15 +88,7 @@ const CallsScreen = ({ navigation }) => {
   }, []);
 
   const handleCallPress = (call) => {
-    setSelectedCall(call);
-    setModalVisible(true);
-  };
-
-  const handleStartCall = () => {
-    setModalVisible(false);
-    if (selectedCall) {
-      navigation.navigate('CallActive', { contact: selectedCall.contact });
-    }
+    navigation.navigate('CallActive', { contact: call.contact });
   };
 
   const resetFilters = () => {
@@ -271,37 +260,6 @@ const CallsScreen = ({ navigation }) => {
       )}
 
       {/* نافذة تأكيد الاتصال */}
-      <Modal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        title={t('calls.confirmTitle')}
-        size="small"
-      >
-        {selectedCall && (
-          <View style={styles.modalContent}>
-            <View style={styles.modalIcon}>
-              <Ionicons name="call" size={32} color={colors.primaryLight} />
-            </View>
-            <Text style={styles.modalDescription}>
-              {t('calls.confirmDescription')}
-            </Text>
-            <Text style={styles.modalName}>{localizeText(selectedCall.contact.name)}</Text>
-            <View style={styles.modalActions}>
-              <CustomButton
-                title={t('calls.startCall')}
-                onPress={handleStartCall}
-                style={styles.modalButton}
-              />
-              <CustomButton
-                title={t('common.cancel')}
-                onPress={() => setModalVisible(false)}
-                variant="outline"
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        )}
-      </Modal>
     </SafeAreaView>
   );
 };

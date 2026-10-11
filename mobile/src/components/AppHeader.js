@@ -24,7 +24,7 @@ const AppHeader = ({
         <View style={styles.headerLeft}>
           {showBack && (
             <Pressable onPress={onBackPress} style={styles.backButton}>
-              <Ionicons name="arrow-forward" size={24} color={colors.textWhite} />
+              <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.textWhite} />
             </Pressable>
           )}
           <View style={styles.titleContainer}>

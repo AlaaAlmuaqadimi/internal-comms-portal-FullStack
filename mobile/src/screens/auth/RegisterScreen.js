@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import Logo from '../../components/Logo';
 import {
   View,
   Text,
@@ -118,7 +119,7 @@ const RegisterScreen = ({ navigation }) => {
           <View style={[styles.header, { padding: headerPadding }]}>
             <View style={styles.headerContent}>
               <View style={[styles.logoContainer, { width: logoSize, height: logoSize, borderRadius: logoSize / 4 }]}>
-                <Ionicons name="business" size={logoSize / 2} color={colors.textGold} />
+                <Logo size={logoSize} style={{ borderRadius: logoSize / 4 }} />
               </View>
               <View style={styles.headerText}>
                 <Text style={[styles.headerTitle, isSmallScreen && styles.headerTitleSmall]}>

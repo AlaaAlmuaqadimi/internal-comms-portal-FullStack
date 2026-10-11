@@ -181,7 +181,7 @@ const DirectoryScreen = ({ navigation }) => {
       <View style={[styles.header, { padding: headerPadding }]}>
         <View style={styles.headerTop}>
           <View style={styles.headerTitle}>
-            <View style={styles.titleBorder} />
+          <View style={styles.titleBorder} />
             <View>
               <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
                 {t('directory.title')}
@@ -251,14 +251,6 @@ const DirectoryScreen = ({ navigation }) => {
             {t('directory.resultsCount', { count: filteredEmployees.length })}
           </Text>
         </View>
-      </View>
-
-      {/* تنبيه */}
-      <View style={styles.alert}>
-        <Ionicons name="shield-check" size={isSmallScreen ? 16 : 20} color={colors.primaryLight} />
-        <Text style={[styles.alertText, isSmallScreen && styles.alertTextSmall]}>
-          {t('directory.alert')}
-        </Text>
       </View>
 
       {/* قائمة الموظفين */}
@@ -438,26 +430,6 @@ const rawStyles = StyleSheet.create({
   },
   resultsCountSmall: {
     fontSize: 12,
-  },
-  alert: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#edf5fa',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: '#d9e6ee',
-    padding: spacing.sm,
-    margin: spacing.sm,
-  },
-  alertText: {
-    ...typography.bodySmall,
-    color: '#27455b',
-    flex: 1,
-    marginRight: spacing.sm,
-    lineHeight: 18,
-  },
-  alertTextSmall: {
-    fontSize: 11,
   },
   listContent: {
     padding: spacing.md,

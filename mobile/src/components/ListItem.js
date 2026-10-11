@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
+import { useLanguage } from '../context/LanguageContext';
+import { flipStyles } from '../i18n/rtlStyles';
 
 const ListItem = ({
   title,
@@ -17,6 +19,8 @@ const ListItem = ({
   showArrow = false,
   style,
 }) => {
+  const { isRTL } = useLanguage();
+  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
   const content = (
     <View style={styles.content}>
       {icon && (
@@ -31,7 +35,7 @@ const ListItem = ({
       </View>
       {rightComponent}
       {showArrow && (
-        <Ionicons name="chevron-back" size={20} color={colors.textLight} style={styles.arrow} />
+        <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={20} color={colors.textLight} style={styles.arrow} />
       )}
     </View>
   );
@@ -58,7 +62,7 @@ const ListItem = ({
   );
 };
 
-const styles = StyleSheet.create({
+const rawStyles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,

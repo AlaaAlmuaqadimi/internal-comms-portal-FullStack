@@ -5,6 +5,8 @@ import {
   StyleSheet,
   FlatList,
   RefreshControl,
+  Pressable,
+  ScrollView,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +18,8 @@ import Loading from '../../components/Loading';
 import EmptyState from '../../components/EmptyState';
 import NotificationItem from '../../components/NotificationItem';
 import Modal from '../../components/Modal';
+import CustomInput from '../../components/CustomInput';
+import CustomButton from '../../components/CustomButton';
 import { mockData } from '../../utils/mockData';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
@@ -35,6 +39,75 @@ const NotificationsScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+
+  // نموذج إنشاء إشعار
+  const [createVisible, setCreateVisible] = useState(false);
+  const [newType, setNewType] = useState('إعلان');
+  const [newRecipients, setNewRecipients] = useState([]);
+  const [newBody, setNewBody] = useState('');
+  const [newDuration, setNewDuration] = useState('1d');
+  const [createErrors, setCreateErrors] = useState({});
+
+  const durationOptions = [
+    { key: '1h', label: t('notifications.duration1h') },
+    { key: '4h', label: t('notifications.duration4h') },
+    { key: '1d', label: t('notifications.duration1d') },
+    { key: '7d', label: t('notifications.duration7d') },
+  ];
+
+  const typeOptions = [
+    { key: 'إعلان', label: t('notifications.typeAnnouncement'), icon: 'megaphone' },
+    { key: 'تعميم', label: t('notifications.typeCircular'), icon: 'calendar' },
+    { key: 'مراسلة', label: t('notifications.typeMessage'), icon: 'mail' },
+  ];
+
+  const toggleRecipient = (id) => {
+    setNewRecipients(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const resetCreateForm = () => {
+    setNewType('إعلان');
+    setNewRecipients([]);
+    setNewBody('');
+    setNewDuration('1d');
+    setCreateErrors({});
+  };
+
+  const handleCreateNotification = () => {
+    const errs = {};
+    if (!newRecipients.length) errs.recipients = t('notifications.validationRecipient');
+    if (!newBody.trim()) errs.body = t('notifications.validationBody');
+    setCreateErrors(errs);
+    if (Object.keys(errs).length) return;
+
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const hours24 = now.getHours();
+    const period = hours24 >= 12 ? 'م' : 'ص';
+    const hours12 = hours24 % 12 || 12;
+    const time = `${String(hours12).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${period}`;
+
+    const typeOption = typeOptions.find(x => x.key === newType) || typeOptions[0];
+    const durationLabel = durationOptions.find(x => x.key === newDuration)?.label;
+
+    const notification = {
+      id: `${Date.now()}`,
+      type: newType,
+      title: `${typeOption.label} · ${durationLabel}`,
+      summary: newBody.trim().slice(0, 80),
+      body: newBody.trim(),
+      icon: typeOption.icon,
+      date,
+      time,
+      unread: true,
+    };
+
+    setNotifications(prev => [notification, ...prev]);
+    setCreateVisible(false);
+    resetCreateForm();
+  };
 
   useEffect(() => {
     loadNotifications();
@@ -128,10 +201,16 @@ const NotificationsScreen = () => {
             </Text>
           </View>
         </View>
-        <View style={styles.badge}>
-          <Text style={[styles.badgeText, isSmallScreen && styles.badgeTextSmall]}>
-            {t('notifications.demoBadge')}
-          </Text>
+        <View style={styles.headerActions}>
+          <Pressable style={styles.createButton} onPress={() => setCreateVisible(true)}>
+            <Ionicons name="add" size={18} color={colors.textWhite} />
+            <Text style={styles.createButtonText}>{t('notifications.create')}</Text>
+          </Pressable>
+          <View style={styles.badge}>
+            <Text style={[styles.badgeText, isSmallScreen && styles.badgeTextSmall]}>
+              {t('notifications.demoBadge')}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -193,6 +272,120 @@ const NotificationsScreen = () => {
         )}
       </Modal>
 
+      {/* نافذة إنشاء إشعار */}
+      <Modal
+        visible={createVisible}
+        onClose={() => { setCreateVisible(false); resetCreateForm(); }}
+        title={t('notifications.createTitle')}
+        size="large"
+      >
+        <ScrollView style={styles.createScroll} contentContainerStyle={styles.createContent}>
+          <Text style={styles.createSubtitle}>{t('notifications.createSubtitle')}</Text>
+
+          {/* نوع الإشعار */}
+          <Text style={styles.createLabel}>{t('notifications.typeLabel')}</Text>
+          <View style={styles.chipRow}>
+            {typeOptions.map((opt) => {
+              const active = newType === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setNewType(opt.key)}
+                >
+                  <Ionicons
+                    name={opt.icon}
+                    size={16}
+                    color={active ? colors.textWhite : colors.primaryLight}
+                  />
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* المستهدف */}
+          <Text style={styles.createLabel}>{t('notifications.recipientLabel')}</Text>
+          <View style={styles.chipRow}>
+            <Pressable
+              style={[styles.chip, newRecipients.includes('all') && styles.chipActive]}
+              onPress={() => toggleRecipient('all')}
+            >
+              <Ionicons
+                name="people"
+                size={16}
+                color={newRecipients.includes('all') ? colors.textWhite : colors.primaryLight}
+              />
+              <Text style={[styles.chipText, newRecipients.includes('all') && styles.chipTextActive]}>
+                {t('notifications.recipientsAll')}
+              </Text>
+            </Pressable>
+            {mockData.employees.map((emp) => {
+              const active = newRecipients.includes(emp.id);
+              return (
+                <Pressable
+                  key={emp.id}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => toggleRecipient(emp.id)}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                    {localizeText(emp.name)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {createErrors.recipients && (
+            <Text style={styles.createError}>{createErrors.recipients}</Text>
+          )}
+
+          {/* نص الإشعار */}
+          <CustomInput
+            label={t('notifications.bodyLabel')}
+            placeholder={t('notifications.bodyPlaceholder')}
+            value={newBody}
+            onChangeText={setNewBody}
+            multiline
+            numberOfLines={4}
+            required
+            error={createErrors.body}
+          />
+
+          {/* مدة العرض */}
+          <Text style={styles.createLabel}>{t('notifications.durationLabel')}</Text>
+          <View style={styles.chipRow}>
+            {durationOptions.map((opt) => {
+              const active = newDuration === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setNewDuration(opt.key)}
+                >
+                  <Ionicons
+                    name="time"
+                    size={16}
+                    color={active ? colors.textWhite : colors.primaryLight}
+                  />
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <CustomButton
+            title={t('notifications.submit')}
+            onPress={handleCreateNotification}
+            icon="send"
+            style={styles.createSubmit}
+          />
+        </ScrollView>
+      </Modal>
+
       {/* الفوتر */}
       <View style={styles.footer}>
         <Text style={[styles.footerText, isSmallScreen && styles.footerTextSmall]}>
@@ -247,6 +440,75 @@ const rawStyles = StyleSheet.create({
     borderRadius: borderRadius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+  },
+  headerActions: {
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primaryLight,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  createButtonText: {
+    ...typography.captionBold,
+    color: colors.textWhite,
+  },
+  createScroll: {
+    maxHeight: 480,
+  },
+  createContent: {
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  createSubtitle: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  createLabel: {
+    ...typography.bodyBold,
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  chipActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primaryLight,
+  },
+  chipText: {
+    ...typography.captionBold,
+    color: colors.text,
+  },
+  chipTextActive: {
+    color: colors.textWhite,
+  },
+  createError: {
+    ...typography.caption,
+    color: colors.danger || '#d33',
+  },
+  createSubmit: {
+    marginTop: spacing.lg,
   },
   badgeText: {
     ...typography.captionBold,

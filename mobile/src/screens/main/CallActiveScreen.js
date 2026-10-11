@@ -14,8 +14,6 @@ import { typography } from '../../constants/typography';
 import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import UserAvatar from '../../components/UserAvatar';
 import StatusBadge from '../../components/StatusBadge';
-import CustomButton from '../../components/CustomButton';
-import Modal from '../../components/Modal';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
@@ -33,12 +31,9 @@ const CallActiveScreen = ({ route, navigation }) => {
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
-  const [showKeypad, setShowKeypad] = useState(false);
-  const [keypadInput, setKeypadInput] = useState('');
-  const [showParticipantModal, setShowParticipantModal] = useState(false);
   const [callEnded, setCallEnded] = useState(false);
-  const [selectedParticipant, setSelectedParticipant] = useState(null);
   const timerRef = useRef(null);
+  const endTimeoutRef = useRef(null);
 
   useEffect(() => {
     timerRef.current = setInterval(() => {
@@ -63,40 +58,17 @@ const CallActiveScreen = ({ route, navigation }) => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
+    // العودة تلقائياً لواجهة المكالمات بعد عرض ملخص المكالمة
+    endTimeoutRef.current = setTimeout(() => {
+      navigation.navigate('Calls');
+    }, 2500);
   };
 
-  const handleKeypadPress = (digit) => {
-    if (keypadInput.length < 24) {
-      setKeypadInput(prev => prev + digit);
-    }
-  };
-
-  const handleKeypadClear = () => {
-    setKeypadInput('');
-  };
-
-  const handleAddParticipant = (participant) => {
-    setSelectedParticipant(participant);
-    setShowParticipantModal(false);
-  };
-
-  const handleRestart = () => {
-    setDuration(0);
-    setCallEnded(false);
-    setIsMuted(false);
-    setIsSpeaker(false);
-    setShowKeypad(false);
-    setKeypadInput('');
-    timerRef.current = setInterval(() => {
-      setDuration(prev => prev + 1);
-    }, 1000);
-  };
-
-  const participants = [
-    { id: '1', name: 'أحمد محمد العلي' },
-    { id: '2', name: 'فاطمة عبدالله السعيد' },
-    { id: '3', name: 'خالد إبراهيم الحربي' },
-  ];
+  useEffect(() => {
+    return () => {
+      if (endTimeoutRef.current) clearTimeout(endTimeoutRef.current);
+    };
+  }, []);
 
   // أحجام متجاوبة
   const avatarSize = isSmallScreen ? 'medium' : isLargeScreen ? 'xlarge' : 'large';
@@ -123,29 +95,6 @@ const CallActiveScreen = ({ route, navigation }) => {
               <Text style={styles.summaryLabel}>{t('callActive.durationLabel')}</Text>
               {formatDuration(duration)}
             </Text>
-          </View>
-
-          <View style={styles.summaryActions}>
-            <CustomButton
-              title={t('callActive.backToDirectory')}
-              onPress={() => navigation.navigate('Directory')}
-              style={styles.summaryButton}
-              size="small"
-            />
-            <CustomButton
-              title={t('callActive.recentCalls')}
-              onPress={() => navigation.navigate('Calls')}
-              variant="outline"
-              style={styles.summaryButton}
-              size="small"
-            />
-            <CustomButton
-              title={t('callActive.callAgain')}
-              onPress={handleRestart}
-              variant="outline"
-              style={styles.summaryButton}
-              size="small"
-            />
           </View>
         </View>
       </SafeAreaView>
@@ -231,65 +180,7 @@ const CallActiveScreen = ({ route, navigation }) => {
                 {isSpeaker ? t('callActive.speakerOff') : t('callActive.speaker')}
               </Text>
             </Pressable>
-
-            <Pressable
-              style={[styles.controlButton, showKeypad && styles.controlButtonActive]}
-              onPress={() => setShowKeypad(!showKeypad)}
-            >
-              <Ionicons
-                name="grid"
-                size={controlIconSize}
-                color={showKeypad ? colors.textWhite : colors.text}
-              />
-              <Text style={[styles.controlLabel, showKeypad && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
-                {t('callActive.keypad')}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={styles.controlButton}
-              onPress={() => setShowParticipantModal(true)}
-            >
-              <Ionicons name="person-add" size={controlIconSize} color={colors.text} />
-              <Text style={[styles.controlLabel, isSmallScreen && styles.controlLabelSmall]}>
-                {t('callActive.addParticipant')}
-              </Text>
-            </Pressable>
           </View>
-
-          {/* لوحة الأرقام */}
-          {showKeypad && (
-            <View style={styles.keypad}>
-              <View style={styles.keypadHeader}>
-                <Text style={[styles.keypadTitle, isSmallScreen && styles.keypadTitleSmall]}>
-                  {t('callActive.keypadTitle')}
-                </Text>
-                <Pressable onPress={() => setShowKeypad(false)} style={styles.keypadClose}>
-                  <Text style={styles.keypadCloseText}>{t('common.close')}</Text>
-                </Pressable>
-              </View>
-
-              <Text style={[styles.keypadInput, isSmallScreen && styles.keypadInputSmall]}>
-                {keypadInput || t('callActive.enteredDigits')}
-              </Text>
-
-              <View style={styles.keypadGrid}>
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((digit) => (
-                  <Pressable
-                    key={digit}
-                    style={styles.keypadButton}
-                    onPress={() => handleKeypadPress(digit)}
-                  >
-                    <Text style={styles.keypadButtonText}>{digit}</Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              <Pressable onPress={handleKeypadClear} style={styles.keypadClear}>
-                <Text style={styles.keypadClearText}>{t('callActive.clearDigits')}</Text>
-              </Pressable>
-            </View>
-          )}
 
           {/* زر إنهاء المكالمة */}
           <View style={styles.endCallContainer}>
@@ -306,36 +197,6 @@ const CallActiveScreen = ({ route, navigation }) => {
           {t('callActive.disclaimer')}
         </Text>
       </ScrollView>
-
-      {/* نافذة إضافة مشارك */}
-      <Modal
-        visible={showParticipantModal}
-        onClose={() => setShowParticipantModal(false)}
-        title={t('callActive.addParticipantTitle')}
-        size="medium"
-      >
-        <Text style={styles.modalDescription}>
-          {t('callActive.addParticipantDescription')}
-        </Text>
-
-        <View style={styles.participantsList}>
-          {participants.map((participant) => (
-            <Pressable
-              key={participant.id}
-              style={styles.participantItem}
-              onPress={() => handleAddParticipant(participant)}
-            >
-              <Text style={styles.participantName}>{localizeText(participant.name)}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {selectedParticipant && (
-          <Text style={styles.selectedParticipant}>
-            {t('callActive.selectedParticipant', { name: localizeText(selectedParticipant.name) })}
-          </Text>
-        )}
-      </Modal>
 
     </SafeAreaView>
   );
@@ -475,76 +336,6 @@ const rawStyles = StyleSheet.create({
   controlLabelActive: {
     color: colors.textWhite,
   },
-  keypad: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  keypadHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  keypadTitle: {
-    ...typography.h4,
-    color: colors.text,
-  },
-  keypadTitleSmall: {
-    fontSize: 14,
-  },
-  keypadClose: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-  },
-  keypadCloseText: {
-    ...typography.captionBold,
-    color: colors.text,
-  },
-  keypadInput: {
-    ...typography.h3,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-    minHeight: 36,
-  },
-  keypadInputSmall: {
-    fontSize: 20,
-  },
-  keypadGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    justifyContent: 'center',
-  },
-  keypadButton: {
-    width: '30%',
-    aspectRatio: 1.5,
-    backgroundColor: '#edf3f8',
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  keypadButtonText: {
-    ...typography.h3,
-    color: colors.text,
-  },
-  keypadClear: {
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    alignItems: 'center',
-  },
-  keypadClearText: {
-    ...typography.bodySmallBold,
-    color: colors.primaryLight,
-  },
   endCallContainer: {
     marginTop: spacing.md,
     paddingTop: spacing.md,
@@ -624,39 +415,6 @@ const rawStyles = StyleSheet.create({
   summaryLabel: {
     fontWeight: '700',
     color: colors.textSecondary,
-  },
-  summaryActions: {
-    width: '100%',
-    gap: spacing.sm,
-  },
-  summaryButton: {
-    width: '100%',
-  },
-  modalDescription: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-    lineHeight: 22,
-  },
-  participantsList: {
-    gap: spacing.sm,
-  },
-  participantItem: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    padding: spacing.sm,
-  },
-  participantName: {
-    ...typography.bodyBold,
-    color: colors.text,
-  },
-  selectedParticipant: {
-    ...typography.bodySmallBold,
-    color: colors.primaryLight,
-    marginTop: spacing.sm,
-    textAlign: 'center',
   },
 });
 

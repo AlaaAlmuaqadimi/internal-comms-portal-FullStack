@@ -105,7 +105,7 @@ const SettingsScreen = () => {
         {/* الهيدر */}
         <View style={[styles.header, { padding: headerPadding }]}>
           <View style={styles.headerTitle}>
-            <View style={styles.titleBorder} />
+          <View style={styles.titleBorder} />
             <View>
               <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
                 {t('settings.title')}
@@ -293,7 +293,7 @@ const SettingsScreen = () => {
               </Text>
             </View>
             <Ionicons 
-              name={language === 'ar' ? 'chevron-back' : 'chevron-forward'} 
+              name={isRTL ? 'chevron-back' : 'chevron-forward'}
               size={isSmallScreen ? 16 : 20} 
               color={colors.textLight} 
             />

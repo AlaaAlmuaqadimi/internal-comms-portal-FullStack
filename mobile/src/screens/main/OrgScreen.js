@@ -274,14 +274,6 @@ const OrgScreen = () => {
         </View>
       </View>
 
-      {/* تنبيه */}
-      <View style={styles.alert}>
-        <Ionicons name="information-circle" size={isSmallScreen ? 16 : 20} color={colors.primaryLight} />
-        <Text style={[styles.alertText, isSmallScreen && styles.alertTextSmall]}>
-          {t('org.alert')}
-        </Text>
-      </View>
-
       {/* الهيكل الإداري */}
       <ScrollView style={styles.content} contentContainerStyle={isLandscape && styles.contentLandscape}>
         {orgTree && renderNode(orgTree)}
@@ -325,26 +317,6 @@ const rawStyles = StyleSheet.create({
     lineHeight: 18,
   },
   subtitleSmall: {
-    fontSize: 11,
-  },
-  alert: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#edf5fa',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: '#d9e6ee',
-    padding: spacing.sm,
-    margin: spacing.sm,
-  },
-  alertText: {
-    ...typography.bodySmall,
-    color: '#27455b',
-    flex: 1,
-    marginRight: spacing.sm,
-    lineHeight: 18,
-  },
-  alertTextSmall: {
     fontSize: 11,
   },
   content: {
