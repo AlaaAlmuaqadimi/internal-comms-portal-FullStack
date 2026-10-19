@@ -19,6 +19,7 @@ import { spacing, borderRadius } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
 import CustomButton from '../../components/CustomButton';
 import Loading from '../../components/Loading';
+import Logo from '../../components/Logo';
 import { flipStyles } from '../../i18n/rtlStyles';
 
 const LoginScreen = ({ navigation }) => {

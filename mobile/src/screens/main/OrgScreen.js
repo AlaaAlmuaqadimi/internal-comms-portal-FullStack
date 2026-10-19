@@ -133,7 +133,7 @@ const OrgScreen = () => {
           >
             {hasChildren && (
               <Ionicons
-                name={isExpanded ? 'chevron-down' : (isRTL ? 'chevron-left' : 'chevron-right')}
+                name={isExpanded ? 'chevron-down' : (isRTL ? 'chevron-back' : 'chevron-forward')}
                 size={iconSize}
                 color={colors.textSecondary}
               />
