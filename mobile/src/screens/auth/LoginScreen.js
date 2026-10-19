@@ -57,6 +57,8 @@ const LoginScreen = ({ navigation }) => {
       if (!result.success) {
         setErrors({ general: result.error });
       }
+      // Navigation is handled by AppNavigator re-rendering when
+      // isAuthenticated state changes in AuthContext
     } catch (error) {
       setErrors({ general: t('login.error') });
     } finally {

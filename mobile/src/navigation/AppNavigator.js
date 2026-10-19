@@ -21,21 +21,21 @@ import NotificationsScreen from '../screens/main/NotificationsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 
 const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
+const Tab = createBottomTabNavigator(); // تم تصحيح استدعاء الدالة هنا
 
 // شاشات المصادقة
 const AuthStack = () => {
   const { isRTL } = useLanguage();
   return (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-      animation: isRTL ? 'slide_from_left' : 'slide_from_right',
-    }}
-  >
-    <Stack.Screen name="Login" component={LoginScreen} />
-    <Stack.Screen name="Register" component={RegisterScreen} />
-  </Stack.Navigator>
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: isRTL ? 'slide_from_left' : 'slide_from_right',
+      }}
+    >
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+    </Stack.Navigator>
   );
 };
 
@@ -50,41 +50,42 @@ const MainTabs = () => {
     { name: 'Settings', component: SettingsScreen, label: t('tabs.settings'), icon: 'settings' },
   ];
   const orderedTabs = isRTL ? [...tabs].reverse() : tabs;
+  
   return (
-  <Tab.Navigator
-    initialRouteName="Calls"
-    screenOptions={{
-      headerShown: false,
-      tabBarActiveTintColor: colors.primaryLight,
-      tabBarInactiveTintColor: colors.textLight,
-      tabBarStyle: {
-        backgroundColor: colors.surface,
-        borderTopColor: colors.border,
-        borderTopWidth: 1,
-        height: 60,
-        paddingBottom: spacing.sm,
-        paddingTop: spacing.sm,
-      },
-      tabBarLabelStyle: {
-        fontSize: 12,
-        fontWeight: '600',
-      },
-    }}
-  >
-    {orderedTabs.map((tab) => (
-      <Tab.Screen
-        key={tab.name}
-        name={tab.name}
-        component={tab.component}
-        options={{
-          tabBarLabel: tab.label,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name={tab.icon} size={size} color={color} />
-          ),
-        }}
-      />
-    ))}
-  </Tab.Navigator>
+    <Tab.Navigator
+      initialRouteName="Calls"
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.primaryLight,
+        tabBarInactiveTintColor: colors.textLight,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          height: 60,
+          paddingBottom: spacing.sm,
+          paddingTop: spacing.sm,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
+      }}
+    >
+      {orderedTabs.map((tab) => (
+        <Tab.Screen
+          key={tab.name}
+          name={tab.name}
+          component={tab.component}
+          options={{
+            tabBarLabel: tab.label,
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name={tab.icon} size={size} color={color} />
+            ),
+          }}
+        />
+      ))}
+    </Tab.Navigator>
   );
 };
 
@@ -92,25 +93,25 @@ const MainTabs = () => {
 const MainStack = () => {
   const { isRTL } = useLanguage();
   return (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-      animation: isRTL ? 'slide_from_left' : 'slide_from_right',
-    }}
-  >
-    <Stack.Screen name="MainTabs" component={MainTabs} />
-    <Stack.Screen name="Login" component={LoginScreen} />
-    <Stack.Screen name="Register" component={RegisterScreen} />
-    <Stack.Screen 
-      name="CallActive" 
-      component={CallActiveScreen}
-      options={{
-        presentation: 'fullScreenModal',
-        animation: 'slide_from_bottom',
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: isRTL ? 'slide_from_left' : 'slide_from_right',
       }}
-    />
-  </Stack.Navigator>
-  );
+    >
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen 
+        name="CallActive" 
+        component={CallActiveScreen}
+        options={{
+          presentation: 'fullScreenModal',
+          animation: 'slide_from_bottom',
+        }}
+      />
+    </Stack.Navigator>
+  ); // تم إضافة قوس الإغلاق الناقص هنا
 };
 
 // الملاحي الرئيسي
@@ -118,11 +119,11 @@ const AppNavigator = () => {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
-    return null; // أو يمكن عرض شاشة تحميل
+    return null;
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer key={isAuthenticated ? 'authenticated' : 'unauthenticated'}>
       {isAuthenticated ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );

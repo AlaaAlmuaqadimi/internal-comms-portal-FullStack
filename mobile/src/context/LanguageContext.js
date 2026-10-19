@@ -1,12 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { I18nManager, Alert, DevSettings } from 'react-native';
+import { I18nManager, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLocales } from 'expo-localization';
 import { translations } from '../i18n/translations';
 
 const LanguageContext = createContext();
 
-// لغة حالية على مستوى الوحدة لاستخدامها في الوحدات غير المكونية (validation, formatters, mockData helpers)
 let currentLanguage = 'ar';
 
 export const getCurrentLanguage = () => currentLanguage;
@@ -38,17 +37,8 @@ export const useLanguage = () => {
   return context;
 };
 
-I18nManager.allowRTL(true);
-
 export const LanguageProvider = ({ children }) => {
-  const [language, setLanguageState] = useState(() => {
-    try {
-      const locs = getLocales();
-      return locs && locs.length > 0 && locs[0].languageCode === 'ar' ? 'ar' : 'en';
-    } catch (e) {
-      return 'ar';
-    }
-  });
+  const [language, setLanguageState] = useState('ar');
 
   useEffect(() => {
     loadLanguage();
@@ -57,20 +47,16 @@ export const LanguageProvider = ({ children }) => {
   const loadLanguage = async () => {
     try {
       const stored = await AsyncStorage.getItem('language');
-      if (stored === 'ar' || stored === 'en') {
-        setLanguageState(stored);
-        setModuleLanguage(stored);
-        const wantRTL = stored === 'ar';
-        if (I18nManager.isRTL !== wantRTL) {
-          I18nManager.forceRTL(wantRTL);
-          setTimeout(() => DevSettings.reload(), 100);
-        }
-        return;
-      }
-      const locales = getLocales();
-      const initial = locales && locales.length > 0 && locales[0].languageCode === 'ar' ? 'ar' : 'en';
+      const initial = stored === 'ar' || stored === 'en' ? stored : 'ar';
+      
       setLanguageState(initial);
       setModuleLanguage(initial);
+
+      const wantRTL = initial === 'ar';
+      if (I18nManager.isRTL !== wantRTL) {
+        I18nManager.allowRTL(true);
+        I18nManager.forceRTL(wantRTL);
+      }
     } catch (error) {
       console.error('Error loading language:', error);
     }
@@ -81,11 +67,16 @@ export const LanguageProvider = ({ children }) => {
       setLanguageState(lang);
       setModuleLanguage(lang);
       await AsyncStorage.setItem('language', lang);
+      
       const wantRTL = lang === 'ar';
-      if (I18nManager.isRTL !== wantRTL) {
-        I18nManager.forceRTL(wantRTL);
-        setTimeout(() => DevSettings.reload(), 300);
-      }
+      I18nManager.allowRTL(true);
+      I18nManager.forceRTL(wantRTL);
+
+      Alert.alert(
+        lang === 'ar' ? 'تغيير اللغة' : 'Language Changed',
+        lang === 'ar' ? 'يرجى إعادة تشغيل التطبيق يدوياً لتطبيق اتجاه الشاشة بالكامل.' : 'Please restart the app manually to apply layout changes.',
+        [{ text: 'OK' }]
+      );
     } catch (error) {
       console.error('Error saving language:', error);
     }
@@ -94,11 +85,6 @@ export const LanguageProvider = ({ children }) => {
   const toggleLanguage = () => {
     const next = language === 'ar' ? 'en' : 'ar';
     setLanguage(next);
-    Alert.alert(
-      next === 'ar' ? 'تم تغيير اللغة' : 'Language Changed',
-      translations[next].settings.reloadMessage,
-      [{ text: 'OK' }]
-    );
   };
 
   const t = (key, params) => {
