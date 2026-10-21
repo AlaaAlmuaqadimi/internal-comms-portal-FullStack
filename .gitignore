@@ -1,0 +1,19 @@
+# Environment / secrets - never commit real values
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Signing keys - never commit
+backend/keys/
+*.pem
+
+# Legacy JSON drop folder (imported from git history instead)
+database/legacy/
+
+# OS
+.DS_Store
+Thumbs.db

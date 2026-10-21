@@ -278,17 +278,17 @@ const rawStyles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   headerTitle: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    flex: 1,
-  },
-  titleBorder: {
-    width: 4,
-    height: 50,
-    backgroundColor: colors.accent,
-    borderRadius: 2,
-    marginLeft: spacing.md,
-  },
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: spacing.md,
+  flex: 1,
+},
+titleBorder: {
+  width: 4,
+  height: 50,
+  backgroundColor: colors.accent,
+  borderRadius: 2,
+},
   title: {
     ...typography.h2,
     color: colors.text,
@@ -372,13 +372,13 @@ const rawStyles = StyleSheet.create({
     borderWidth: 2,
   },
   callHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.md,
+  marginBottom: spacing.sm,
   },
   callInfo: {
     flex: 1,
-    marginRight: spacing.md,
   },
   callName: {
     ...typography.h4,
@@ -402,14 +402,14 @@ const rawStyles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   callType: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  callTypeText: {
-    ...typography.bodySmallBold,
-    marginRight: spacing.xs,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.xs,
+  marginBottom: spacing.xs,
+},
+callTypeText: {
+  ...typography.bodySmallBold,
+},
   callTypeTextSmall: {
     fontSize: 11,
   },

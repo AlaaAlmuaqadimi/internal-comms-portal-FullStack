@@ -26,6 +26,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { hasPermission } from '../../utils/permissions';
 
 const DirectoryScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
@@ -182,7 +183,7 @@ const DirectoryScreen = ({ navigation }) => {
         <View style={styles.headerTop}>
           <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
                 {t('directory.title')}
               </Text>
@@ -191,15 +192,17 @@ const DirectoryScreen = ({ navigation }) => {
               </Text>
             </View>
           </View>
-          <Pressable
-            onPress={() => navigation.navigate('Register')}
-            style={styles.addButton}
-          >
-            <Ionicons name="person-add" size={isSmallScreen ? 16 : 20} color={colors.textWhite} />
-            <Text style={[styles.addButtonText, isSmallScreen && styles.addButtonTextSmall]}>
-              {t('directory.createAccount')}
-            </Text>
-          </Pressable>
+          {hasPermission(user, 'users.manage') && (
+            <Pressable
+              onPress={() => navigation.navigate('AddUser')}
+              style={[styles.addButton, { alignSelf: isRTL ? 'flex-start' : 'flex-end' }]}
+            >
+              <Ionicons name="person-add" size={isSmallScreen ? 16 : 20} color={colors.textWhite} />
+              <Text style={[styles.addButtonText, isSmallScreen && styles.addButtonTextSmall]}>
+                {t('addUser.entry')}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
 
@@ -323,22 +326,21 @@ const rawStyles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  headerTitle: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    flex: 1,
-  },
-  titleBorder: {
-    width: 4,
-    height: 50,
-    backgroundColor: colors.accent,
-    borderRadius: 2,
-    marginLeft: spacing.md,
-  },
+  flexDirection: 'column',
+},
+  
+headerTitle: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: spacing.md,
+  width: '100%',
+},
+titleBorder: {
+  width: 4,
+  height: 50,
+  backgroundColor: colors.accent,
+  borderRadius: 2,
+},
   title: {
     ...typography.h2,
     color: colors.text,
@@ -356,18 +358,19 @@ const rawStyles = StyleSheet.create({
     fontSize: 11,
   },
   addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primaryLight,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  addButtonText: {
-    ...typography.buttonSmall,
-    color: colors.textWhite,
-    marginRight: spacing.xs,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.xs,
+  marginTop: spacing.sm,
+  backgroundColor: colors.primaryLight,
+  borderRadius: borderRadius.md,
+  paddingHorizontal: spacing.sm,
+  paddingVertical: spacing.sm,
+},
+addButtonText: {
+  ...typography.buttonSmall,
+  color: colors.textWhite,
+},
   addButtonTextSmall: {
     fontSize: 11,
   },
@@ -446,13 +449,13 @@ const rawStyles = StyleSheet.create({
     ...shadows.sm,
   },
   employeeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.md,
+  marginBottom: spacing.sm,
   },
   employeeInfo: {
     flex: 1,
-    marginRight: spacing.md,
   },
   employeeName: {
     ...typography.h4,
@@ -484,7 +487,7 @@ const rawStyles = StyleSheet.create({
     fontSize: 11,
   },
   detailLabel: {
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     color: colors.text,
   },
   employeeActions: {

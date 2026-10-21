@@ -95,8 +95,9 @@ const rawStyles = StyleSheet.create({
     opacity: 0.8,
   },
   content: {
-    flexDirection: 'row',
-    padding: spacing.md,
+  flexDirection: 'row',
+  gap: spacing.md,
+  padding: spacing.md,
   },
   iconContainer: {
     width: 48,
@@ -104,7 +105,6 @@ const rawStyles = StyleSheet.create({
     borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.md,
   },
   textContainer: {
     flex: 1,

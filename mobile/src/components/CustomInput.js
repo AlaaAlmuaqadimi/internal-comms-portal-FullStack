@@ -50,7 +50,6 @@ const CustomInput = ({
             name={icon} 
             size={20} 
             color={isFocused ? colors.primaryLight : colors.textLight} 
-            style={styles.icon}
           />
         )}
         <TextInput
@@ -107,14 +106,15 @@ const rawStyles = StyleSheet.create({
     color: colors.danger,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.sm,
+  backgroundColor: colors.surface,
+  borderWidth: 1,
+  borderColor: colors.border,
+  borderRadius: borderRadius.md,
+  paddingHorizontal: spacing.md,
+},
   inputContainerFocused: {
     borderColor: colors.primaryLight,
   },
@@ -125,9 +125,7 @@ const rawStyles = StyleSheet.create({
     backgroundColor: colors.background,
     opacity: 0.6,
   },
-  icon: {
-    marginLeft: spacing.sm,
-  },
+  
   input: {
     flex: 1,
     ...typography.body,

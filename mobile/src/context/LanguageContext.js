@@ -3,7 +3,8 @@ import { I18nManager, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLocales } from 'expo-localization';
 import { translations } from '../i18n/translations';
-
+I18nManager.allowRTL(false);
+I18nManager.forceRTL(false);
 const LanguageContext = createContext();
 
 let currentLanguage = 'ar';
@@ -52,11 +53,7 @@ export const LanguageProvider = ({ children }) => {
       setLanguageState(initial);
       setModuleLanguage(initial);
 
-      const wantRTL = initial === 'ar';
-      if (I18nManager.isRTL !== wantRTL) {
-        I18nManager.allowRTL(true);
-        I18nManager.forceRTL(wantRTL);
-      }
+     
     } catch (error) {
       console.error('Error loading language:', error);
     }
@@ -68,15 +65,7 @@ export const LanguageProvider = ({ children }) => {
       setModuleLanguage(lang);
       await AsyncStorage.setItem('language', lang);
       
-      const wantRTL = lang === 'ar';
-      I18nManager.allowRTL(true);
-      I18nManager.forceRTL(wantRTL);
-
-      Alert.alert(
-        lang === 'ar' ? 'تغيير اللغة' : 'Language Changed',
-        lang === 'ar' ? 'يرجى إعادة تشغيل التطبيق يدوياً لتطبيق اتجاه الشاشة بالكامل.' : 'Please restart the app manually to apply layout changes.',
-        [{ text: 'OK' }]
-      );
+      
     } catch (error) {
       console.error('Error saving language:', error);
     }

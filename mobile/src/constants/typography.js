@@ -19,25 +19,25 @@ export const typography = {
   // العناوين
   h1: {
     fontSize: 28,
-    fontWeight: '800',
+    fontFamily: 'Cairo_800ExtraBold',
     lineHeight: 40,
     fontFamily: FONT_FAMILY_EXTRA_BOLD,
   },
   h2: {
     fontSize: 24,
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     lineHeight: 34,
     fontFamily: FONT_FAMILY_BOLD,
   },
   h3: {
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     lineHeight: 28,
     fontFamily: FONT_FAMILY_BOLD,
   },
   h4: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     lineHeight: 26,
     fontFamily: FONT_FAMILY_BOLD,
   },
@@ -51,7 +51,7 @@ export const typography = {
   },
   bodyBold: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     lineHeight: 24,
     fontFamily: FONT_FAMILY_BOLD,
   },
@@ -63,7 +63,7 @@ export const typography = {
   },
   bodySmallBold: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     lineHeight: 20,
     fontFamily: FONT_FAMILY_BOLD,
   },
@@ -75,7 +75,7 @@ export const typography = {
   },
   captionBold: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     lineHeight: 18,
     fontFamily: FONT_FAMILY_BOLD,
   },
@@ -89,12 +89,12 @@ export const typography = {
   // الأزرار
   button: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     fontFamily: FONT_FAMILY_BOLD,
   },
   buttonSmall: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     fontFamily: FONT_FAMILY_BOLD,
   },
 };

@@ -1,8 +1,17 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { translate } from './LanguageContext';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import * as SecureStore from 'expo-secure-store';
+import {
+  api,
+  setAuthTokens,
+  clearAuthTokens,
+  setUnauthorizedHandler,
+  isBackendConfigured,
+} from '../services/api';
 
 const AuthContext = createContext();
+
+const TOKENS_KEY = 'auth.tokens';
+const USER_KEY = 'auth.user';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -12,88 +21,130 @@ export const useAuth = () => {
   return context;
 };
 
+// Refresh tokens are long-lived credentials, so they go in the platform
+// keychain/keystore. Only non-sensitive profile data uses AsyncStorage-free
+// storage here to keep a single source of truth.
+async function persistSession(accessToken, refreshToken, user) {
+  setAuthTokens({ accessToken, refreshToken });
+  await SecureStore.setItemAsync(TOKENS_KEY, JSON.stringify({ accessToken, refreshToken }));
+  await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+}
+
+async function readSession() {
+  const rawTokens = await SecureStore.getItemAsync(TOKENS_KEY);
+  const rawUser = await SecureStore.getItemAsync(USER_KEY);
+  if (!rawTokens || !rawUser) return null;
+  try {
+    return { tokens: JSON.parse(rawTokens), user: JSON.parse(rawUser) };
+  } catch {
+    return null;
+  }
+}
+
+async function clearSession() {
+  clearAuthTokens();
+  await SecureStore.deleteItemAsync(TOKENS_KEY);
+  await SecureStore.deleteItemAsync(USER_KEY);
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  useEffect(() => {
-    checkAuthState();
+  const handleUnauthorized = useCallback(async () => {
+    await clearSession();
+    setUser(null);
+    setIsAuthenticated(false);
   }, []);
 
-  const checkAuthState = async () => {
-    try {
-      const userData = await AsyncStorage.getItem('user');
-      if (userData) {
-        setUser(JSON.parse(userData));
-        setIsAuthenticated(true);
+  useEffect(() => {
+    setUnauthorizedHandler(handleUnauthorized);
+  }, [handleUnauthorized]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const session = await readSession();
+        if (session) {
+          setAuthTokens(session.tokens);
+          setUser(session.user);
+          setIsAuthenticated(true);
+
+          // Validate the stored session against the server; a revoked or
+          // expired token must not keep the user signed in.
+          if (isBackendConfigured()) {
+            try {
+              const freshUser = await api.auth.me();
+              setUser(freshUser);
+              await SecureStore.setItemAsync(USER_KEY, JSON.stringify(freshUser));
+            } catch {
+              await clearSession();
+              setUser(null);
+              setIsAuthenticated(false);
+            }
+          }
+        }
+      } catch {
+        await clearSession();
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error checking auth state:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    })();
+  }, []);
 
   const login = async (username, password) => {
+    const trimmedUsername = (username || '').trim();
+
+    if (!trimmedUsername || !password) {
+      return { success: false, error: 'validation.missingCredentials' };
+    }
+
     try {
-      // محاكاة تسجيل الدخول - في التطبيق الحقيقي سيتم الاتصال بالخادم
-      if (username && password) {
-        const userData = {
-          id: '1',
-          name: translate('mock.defaultUserName'),
-          username: username,
-          management: translate('mock.itDept'),
-          unitName: translate('mock.software'),
-          path: `${translate('mock.orgName')} / ${translate('mock.itDept')} / ${translate('mock.software')}`,
-          status: 'online',
-        };
-        await AsyncStorage.setItem('user', JSON.stringify(userData));
-        setUser(userData);
-        setIsAuthenticated(true);
-        return { success: true };
-      }
-      return { success: false, error: translate('login.invalidCredentials') };
+      const result = await api.auth.login(trimmedUsername, password);
+      await persistSession(result.accessToken, result.refreshToken, result.user);
+      setUser(result.user);
+      setIsAuthenticated(true);
+      return { success: true };
     } catch (error) {
-      return { success: false, error: translate('mock.errorLogin') };
+      return { success: false, error: error.message, code: error.code, status: error.status };
     }
   };
 
   const register = async (userData) => {
     try {
-      // محاكاة إنشاء حساب - في التطبيق الحقيقي سيتم الاتصال بالخادم
-      const newUser = {
-        id: Date.now().toString(),
-        ...userData,
-        status: 'online',
-      };
-      await AsyncStorage.setItem('user', JSON.stringify(newUser));
-      setUser(newUser);
+      const result = await api.auth.register(userData);
+      await persistSession(result.accessToken, result.refreshToken, result.user);
+      setUser(result.user);
       setIsAuthenticated(true);
       return { success: true };
     } catch (error) {
-      return { success: false, error: translate('mock.errorCreateAccount') };
+      return { success: false, error: error.message, code: error.code, status: error.status };
     }
   };
 
+  // Authenticated user creation. Throws on failure so the form can show the
+  // server error; the caller must already hold users.manage.
+  const createUser = async (userData) => {
+    const created = await api.auth.createUser(userData);
+    return created.user;
+  };
+
   const logout = async () => {
-    try {
-      await AsyncStorage.removeItem('user');
-      setUser(null);
-      setIsAuthenticated(false);
-    } catch (error) {
-      console.error('Error logging out:', error);
-    }
+    await api.auth.logout();
+    await clearSession();
+    setUser(null);
+    setIsAuthenticated(false);
   };
 
   const updateUser = async (updates) => {
     try {
       const updatedUser = { ...user, ...updates };
-      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(updatedUser));
       setUser(updatedUser);
       return { success: true };
     } catch (error) {
-      return { success: false, error: translate('mock.errorUpdate') };
+      return { success: false, error: 'mock.errorUpdate' };
     }
   };
 
@@ -103,6 +154,7 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated,
     login,
     register,
+    createUser,
     logout,
     updateUser,
   };

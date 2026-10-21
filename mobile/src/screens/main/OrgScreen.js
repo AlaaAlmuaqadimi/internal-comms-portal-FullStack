@@ -293,15 +293,15 @@ const rawStyles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerTitle: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: spacing.md,
   },
   titleBorder: {
     width: 4,
     height: 50,
     backgroundColor: colors.accent,
     borderRadius: 2,
-    marginLeft: spacing.md,
   },
   title: {
     ...typography.h2,
@@ -330,25 +330,24 @@ const rawStyles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   nodeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.sm,
+  backgroundColor: colors.surface,
+  borderRadius: borderRadius.md,
+  borderWidth: 1,
+  borderColor: colors.border,
+},
+nodeIcon: {},
+nodeName: {
+  ...typography.bodyBold,
+  color: colors.text,
+  flex: 1,
+},
   nodeToggle: {
     padding: spacing.xs,
   },
-  nodeIcon: {
-    marginLeft: spacing.sm,
-  },
-  nodeName: {
-    ...typography.bodyBold,
-    color: colors.text,
-    flex: 1,
-    marginLeft: spacing.sm,
-  },
+  
   nodeNameSmall: {
     fontSize: 13,
   },

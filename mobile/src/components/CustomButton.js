@@ -84,11 +84,11 @@ const CustomButton = ({
         ) : (
           <>
             {icon && iconPosition === 'right' && (
-              <Ionicons name={icon} size={20} color={variant === 'outline' ? colors.primaryLight : colors.textWhite} style={styles.iconRight} />
+              <Ionicons name={icon} size={20} color={variant === 'outline' ? colors.primaryLight : colors.textWhite}  />
             )}
             <Text style={[...getTextStyle(), textStyle]}>{title}</Text>
             {icon && iconPosition === 'left' && (
-              <Ionicons name={icon} size={20} color={variant === 'outline' ? colors.primaryLight : colors.textWhite} style={styles.iconLeft} />
+              <Ionicons name={icon} size={20} color={variant === 'outline' ? colors.primaryLight : colors.textWhite}  />
             )}
           </>
         )}
@@ -107,10 +107,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: spacing.xs,
+},
   
   // Sizes
   small: {
@@ -173,13 +174,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   
-  // Icons
-  iconRight: {
-    marginLeft: spacing.xs,
-  },
-  iconLeft: {
-    marginRight: spacing.xs,
-  },
+
 });
 
 export default CustomButton;

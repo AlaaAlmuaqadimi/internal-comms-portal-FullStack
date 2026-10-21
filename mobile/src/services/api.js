@@ -1,226 +1,230 @@
 import { translate } from '../context/LanguageContext';
 
-// API base URL - set via environment variable
-// For local development with real backend: API_BASE_URL=http://localhost:4000
-// For production or mock mode: leave unset or set to empty
-const API_BASE_URL = process.env.API_BASE_URL || '';
+// API base URL - set via EXPO_PUBLIC_API_BASE_URL in mobile/.env
+// (Expo only inlines env vars prefixed with EXPO_PUBLIC_ into the client
+// bundle; a plain API_BASE_URL is undefined on the device.)
+// For local development: EXPO_PUBLIC_API_BASE_URL=http://<your-machine-ip>:4000
+// A trailing slash is stripped so `base + '/api/...'` never yields '//api/...'.
+const RAW_API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || '';
+const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, '');
 
-const useRealBackend = !!API_BASE_URL && API_BASE_URL.trim() !== '';
+export const isBackendConfigured = () => !!API_BASE_URL && API_BASE_URL.trim() !== '';
 
-// Base delay for mock responses when not using real backend
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// Error carrying the HTTP status and the API error code so callers can react
+// (e.g. distinguish 401 invalid credentials from a network failure).
+export class ApiError extends Error {
+  constructor(message, { status = 0, code = 'NETWORK', details = null } = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
 
-// Helper function to make API calls
-const fetchApi = async (endpoint, options = {}) => {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  if (!useRealBackend) {
-    // Mock mode - return null to indicate use mock data
-    return { useRealBackend: false };
+let accessToken = null;
+let refreshToken = null;
+let onUnauthorized = null;
+
+export function setAuthTokens(tokens) {
+  accessToken = tokens?.accessToken || null;
+  refreshToken = tokens?.refreshToken || null;
+}
+
+export function clearAuthTokens() {
+  accessToken = null;
+  refreshToken = null;
+}
+
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler;
+}
+
+// Low-level request. Throws ApiError on network failure or non-2xx response -
+// it never silently degrades to mock mode.
+const request = async (endpoint, options = {}) => {
+  if (!isBackendConfigured()) {
+    throw new ApiError(
+      'The API is not configured. Set EXPO_PUBLIC_API_BASE_URL in mobile/.env.',
+      { status: 0, code: 'NOT_CONFIGURED' }
+    );
   }
 
-  const defaultOptions = {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
+  const { auth = true, headers, ...rest } = options;
+  const finalHeaders = {
+    'Content-Type': 'application/json',
+    ...(auth && accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    ...headers,
   };
 
+  let response;
   try {
-    const response = await fetch(url, defaultOptions);
-    const data = await response.json();
-    return { useRealBackend: true, data, status: response.status };
+    response = await fetch(`${API_BASE_URL}${endpoint}`, { ...rest, headers: finalHeaders });
   } catch (error) {
-    return { useRealBackend: false, error: error.message };
+    throw new ApiError(translate('login.networkError'), { status: 0, code: 'NETWORK', details: error.message });
   }
+
+  let data = null;
+  const text = await response.text();
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (response.status === 401 && auth && onUnauthorized) {
+    onUnauthorized();
+  }
+
+  if (!response.ok) {
+    throw new ApiError(data?.error || translate('login.error'), {
+      status: response.status,
+      code: data?.code || 'HTTP_ERROR',
+      details: data?.details || null,
+    });
+  }
+
+  return { data, status: response.status };
 };
+
 
 export const api = {
   // Authentication
   auth: {
     login: async (username, password) => {
-      const result = await fetchApi('/api/auth/login', {
+      const { data } = await request('/api/auth/login', {
         method: 'POST',
+        auth: false,
         body: JSON.stringify({ username, password }),
       });
-
-      if (!result.useRealBackend) {
-        // Mock implementation
-        await delay(1000);
-        if (username && password) {
-          return {
-            success: true,
-            user: {
-              id: '1',
-              name: translate('mock.defaultUserName'),
-              username,
-              management: translate('mock.itDept'),
-              unitName: translate('mock.software'),
-              path: `${translate('mock.orgName')} / ${translate('mock.itDept')} / ${translate('mock.software')}`,
-              status: 'online',
-            },
-          };
-        }
-        throw new Error(translate('login.invalidCredentials'));
-      }
-
-      if (!result.data.success) {
-        throw new Error(result.data.error || translate('login.invalidCredentials'));
-      }
-      return { success: true, user: result.data.user };
+      return {
+        success: true,
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        user: data.user,
+      };
     },
 
-    register: async (userData) => {
-      const result = await fetchApi('/api/auth/register', {
+    // Authenticated user creation. Requires the caller to hold users.manage.
+    createUser: async (userData) => {
+      const { data } = await request('/api/users', {
         method: 'POST',
         body: JSON.stringify(userData),
       });
+      return { success: true, user: data.user };
+    },
 
-      if (!result.useRealBackend) {
-        await delay(1500);
-        return {
-          success: true,
-          user: {
-            id: Date.now().toString(),
-            ...userData,
-            status: 'online',
-          },
-        };
-      }
+    listRoles: async () => {
+      const { data } = await request('/api/users/roles');
+      return data.roles;
+    },
 
-      if (!result.data.success) {
-        throw new Error(result.data.error || translate('mock.errorCreateAccount'));
-      }
-      return { success: true, user: result.data.user };
+    listOrgUnits: async () => {
+      const { data } = await request('/api/users/org-units');
+      return data.orgUnits;
+    },
+
+    me: async () => {
+      const { data } = await request('/api/auth/me');
+      return data.user;
+    },
+
+    register: async (userData) => {
+      const { data } = await request('/api/auth/register', {
+        method: 'POST',
+        auth: false,
+        body: JSON.stringify(userData),
+      });
+      return {
+        success: true,
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        user: data.user,
+      };
     },
 
     logout: async () => {
-      if (!useRealBackend) {
-        await delay(500);
-        return { success: true };
+      try {
+        await request('/api/auth/logout', {
+          method: 'POST',
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch {
+        // Best-effort: the client clears local state regardless.
       }
-      const result = await fetchApi('/api/auth/logout', {
-        method: 'POST',
-      });
-      return { success: result.data.success };
+      return { success: true };
     },
   },
 
   // Employees
   employees: {
     getAll: async () => {
-      const result = await fetchApi('/api/employees');
-      if (!result.useRealBackend) {
-        await delay(800);
-        return []; // Will be populated by screen's own mockData
-      }
-      return result.data;
+      const { data } = await request('/api/employees');
+      return data;
     },
 
     getById: async (id) => {
-      const result = await fetchApi(`/api/employees/${id}`);
-      if (!result.useRealBackend) {
-        await delay(500);
-        return null;
-      }
-      return result.data;
+      const { data } = await request(`/api/employees/${id}`);
+      return data;
     },
 
     search: async (query) => {
-      const result = await fetchApi(`/api/employees/search?q=${query}`);
-      if (!result.useRealBackend) {
-        await delay(600);
-        if (!query) return [];
-        const lowerQuery = query.toLowerCase();
-        // Would query DB in real app
-        return [];
-      }
-      return result.data;
+      const { data } = await request(`/api/employees/search?q=${encodeURIComponent(query)}`);
+      return data;
     },
   },
 
   // Calls
   calls: {
     getAll: async () => {
-      const result = await fetchApi('/api/calls');
-      if (!result.useRealBackend) {
-        await delay(800);
-        return [];
-      }
-      return result.data;
+      const { data } = await request('/api/calls');
+      return data;
     },
 
     getById: async (id) => {
-      const result = await fetchApi(`/api/calls/${id}`);
-      if (!result.useRealBackend) {
-        await delay(500);
-        return null;
-      }
-      return result.data;
+      const { data } = await request(`/api/calls/${id}`);
+      return data;
     },
   },
 
   // Notifications
   notifications: {
     getAll: async () => {
-      const result = await fetchApi('/api/notifications');
-      if (!result.useRealBackend) {
-        await delay(800);
-        return [];
-      }
-      return result.data;
+      const { data } = await request('/api/notifications');
+      return data;
     },
 
     markAsRead: async (id) => {
-      if (!useRealBackend) {
-        await delay(300);
-        return { success: true };
-      }
-      const result = await fetchApi(`/api/notifications/${id}/read`, {
-        method: 'POST',
-      });
-      return { success: result.data.success };
+      const { data } = await request(`/api/notifications/${id}/read`, { method: 'POST' });
+      return { success: data.success };
     },
 
     markAllAsRead: async () => {
-      if (!useRealBackend) {
-        await delay(500);
-        return { success: true };
-      }
-      const result = await fetchApi('/api/notifications/read-all', {
-        method: 'POST',
-      });
-      return { success: result.data.success };
+      const { data } = await request('/api/notifications/read-all', { method: 'POST' });
+      return { success: data.success };
     },
   },
 
   // Org structure
   org: {
     getTree: async () => {
-      const result = await fetchApi('/api/org/tree');
-      if (!result.useRealBackend) {
-        await delay(800);
-        return [];
-      }
-      return result.data;
+      const { data } = await request('/api/org/tree');
+      return data;
     },
 
     addUnit: async (unitData) => {
-      if (!useRealBackend) {
-        await delay(1000);
-        return { success: true, id: Date.now().toString() };
-      }
-      const result = await fetchApi('/api/org/unit', {
+      const { data } = await request('/api/org/unit', {
         method: 'POST',
         body: JSON.stringify(unitData),
       });
-      return { success: result.data.success, id: result.data.id };
+      return { success: data.success, id: data.id };
     },
 
     updateUnit: async (id, unitData) => {
-      if (!useRealBackend) {
-        await delay(1000);
-        return { success: true };
-      }
-      await fetchApi(`/api/org/unit/${id}`, {
+      await request(`/api/org/unit/${id}`, {
         method: 'PUT',
         body: JSON.stringify(unitData),
       });
@@ -228,11 +232,7 @@ export const api = {
     },
 
     deleteUnit: async (id) => {
-      if (!useRealBackend) {
-        await delay(1000);
-        return { success: true };
-      }
-      await fetchApi(`/api/org/unit/${id}`, { method: 'DELETE' });
+      await request(`/api/org/unit/${id}`, { method: 'DELETE' });
       return { success: true };
     },
   },
@@ -240,44 +240,28 @@ export const api = {
   // Kitchens
   kitchens: {
     getAll: async () => {
-      const result = await fetchApi('/api/kitchens');
-      if (!result.useRealBackend) {
-        await delay(800);
-        return [];
-      }
-      return result.data;
+      const { data } = await request('/api/kitchens');
+      return data;
     },
 
     getByUnit: async (unitId) => {
-      const result = await fetchApi(`/api/kitchens?unitId=${unitId}`);
-      if (!result.useRealBackend) {
-        await delay(500);
-        return [];
-      }
-      return result.data;
+      const { data } = await request(`/api/kitchens?unitId=${encodeURIComponent(unitId)}`);
+      return data;
     },
   },
 
   // Settings
   settings: {
     updateProfile: async (userData) => {
-      if (!useRealBackend) {
-        await delay(1000);
-        return { success: true };
-      }
-      const result = await fetchApi('/api/auth/update', {
+      const { data } = await request('/api/auth/update', {
         method: 'PUT',
         body: JSON.stringify(userData),
       });
-      return { success: result.data.success };
+      return { success: data.success };
     },
 
     updateContacts: async (contacts) => {
-      if (!useRealBackend) {
-        await delay(1000);
-        return { success: true };
-      }
-      await fetchApi('/api/auth/update', {
+      await request('/api/auth/update', {
         method: 'PUT',
         body: JSON.stringify({ contacts }),
       });
@@ -285,11 +269,7 @@ export const api = {
     },
 
     updateKitchen: async (kitchenId) => {
-      if (!useRealBackend) {
-        await delay(1000);
-        return { success: true };
-      }
-      await fetchApi('/api/auth/update', {
+      await request('/api/auth/update', {
         method: 'PUT',
         body: JSON.stringify({ kitchenChoice: kitchenId }),
       });
@@ -300,21 +280,18 @@ export const api = {
 
 // Check if running with real backend
 export const checkBackendStatus = async () => {
-  if (!useRealBackend) {
-    return { real: false, message: 'Using mock data' };
+  if (!isBackendConfigured()) {
+    return { real: false, message: 'Backend not configured' };
   }
   try {
-    const result = await fetchApi('/api/auth/me');
-    if (!result.useRealBackend) {
-      return { real: false, message: 'Using mock data' };
-    }
-    return { real: true, connected: true, user: result.data.user };
+    const user = await api.auth.me();
+    return { real: true, connected: true, user };
   } catch (error) {
     return { real: true, connected: false, error: error.message };
   }
 };
 
 // Convenience flag
-export const isUsingRealBackend = () => useRealBackend;
+export const isUsingRealBackend = () => isBackendConfigured();
 
 export default api;

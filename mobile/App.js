@@ -6,8 +6,16 @@ import { ThemeProvider } from './src/context/ThemeContext';
 import { LanguageProvider } from './src/context/LanguageContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useFonts, Cairo_400Regular, Cairo_700Bold, Cairo_800ExtraBold } from '@expo-google-fonts/cairo';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Text, TextInput } from 'react-native';
 import { colors } from './src/constants/colors';
+
+const applyDefaultFont = () => {
+  const baseStyle = { fontFamily: 'Cairo_400Regular' };
+  Text.defaultProps = Text.defaultProps || {};
+  Text.defaultProps.style = [baseStyle, Text.defaultProps.style];
+  TextInput.defaultProps = TextInput.defaultProps || {};
+  TextInput.defaultProps.style = [baseStyle, TextInput.defaultProps.style];
+};
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -15,7 +23,7 @@ export default function App() {
     Cairo_700Bold,
     Cairo_800ExtraBold,
   });
-
+  if (fontsLoaded) applyDefaultFont();
   if (!fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>

@@ -3,7 +3,7 @@
     "name": "بوابة التواصل الإداري",
     "slug": "internal-comms-portal",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [

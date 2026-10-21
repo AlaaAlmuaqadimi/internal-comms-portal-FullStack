@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import Logo from '../../components/Logo';
 import {
   View,
@@ -96,7 +96,7 @@ const RegisterScreen = ({ navigation }) => {
     }
   };
 
-  // أحجام متجاوبة
+  // ╪ú╪¡╪¼╪º┘à ┘à╪¬╪¼╪º┘ê╪¿╪⌐
   const logoSize = isSmallScreen ? 40 : isLargeScreen ? 56 : 48;
   const headerPadding = isSmallScreen ? spacing.md : isLargeScreen ? spacing.xl : spacing.lg;
   const contentPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
@@ -115,7 +115,7 @@ const RegisterScreen = ({ navigation }) => {
           ]}
           keyboardShouldPersistTaps="handled"
         >
-          {/* الهيدر */}
+          {/* ╪º┘ä┘ç┘è╪»╪▒ */}
           <View style={[styles.header, { padding: headerPadding }]}>
             <View style={styles.headerContent}>
               <View style={[styles.logoContainer, { width: logoSize, height: logoSize, borderRadius: logoSize / 4 }]}>
@@ -132,7 +132,7 @@ const RegisterScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {/* المحتوى */}
+          {/* ╪º┘ä┘à╪¡╪¬┘ê┘ë */}
           <View style={[styles.content, { padding: contentPadding }]}>
             <View style={styles.titleContainer}>
               <View style={styles.titleBorder} />
@@ -153,7 +153,7 @@ const RegisterScreen = ({ navigation }) => {
                 </View>
               )}
 
-              {/* بيانات الحساب */}
+              {/* ╪¿┘è╪º┘å╪º╪¬ ╪º┘ä╪¡╪│╪º╪¿ */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
                   {t('register.accountInfo')}
@@ -222,7 +222,7 @@ const RegisterScreen = ({ navigation }) => {
                 />
               </View>
 
-              {/* الحسابات المتاحة */}
+              {/* ╪º┘ä╪¡╪│╪º╪¿╪º╪¬ ╪º┘ä┘à╪¬╪º╪¡╪⌐ */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
                   {t('register.contactsTitle')}
@@ -316,6 +316,7 @@ const rawStyles = StyleSheet.create({
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
   },
   logoContainer: {
     borderWidth: 1,
@@ -349,6 +350,7 @@ const rawStyles = StyleSheet.create({
   titleContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    gap: spacing.md,
     marginBottom: spacing.lg,
     marginTop: spacing.lg,
   },
@@ -357,7 +359,6 @@ const rawStyles = StyleSheet.create({
     height: 70,
     backgroundColor: colors.accent,
     borderRadius: 2,
-    marginLeft: spacing.md,
   },
   titleText: {
     flex: 1,
@@ -476,13 +477,14 @@ const rawStyles = StyleSheet.create({
   registerButton: {
     marginTop: spacing.sm,
   },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.md,
-    marginBottom: spacing.xl,
-  },
+footer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: spacing.xs,
+  marginTop: spacing.md,
+  marginBottom: spacing.xl,
+},
   footerText: {
     ...typography.body,
     color: colors.textSecondary,
@@ -490,7 +492,6 @@ const rawStyles = StyleSheet.create({
   footerLink: {
     ...typography.bodyBold,
     color: colors.primaryLight,
-    marginRight: spacing.xs,
     textDecorationLine: 'underline',
   },
 });

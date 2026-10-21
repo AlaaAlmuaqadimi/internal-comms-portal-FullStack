@@ -201,7 +201,7 @@ const NotificationsScreen = () => {
             </Text>
           </View>
         </View>
-        <View style={styles.headerActions}>
+        <View style={[styles.headerActions, { alignItems: 'flex-start' }]}>
           <Pressable style={styles.createButton} onPress={() => setCreateVisible(true)}>
             <Ionicons name="add" size={18} color={colors.textWhite} />
             <Text style={styles.createButtonText}>{t('notifications.create')}</Text>
@@ -407,17 +407,17 @@ const rawStyles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerTitle: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.sm,
-  },
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: spacing.md,
+  marginBottom: spacing.sm,
+},
   titleBorder: {
-    width: 4,
-    height: 50,
-    backgroundColor: colors.accent,
-    borderRadius: 2,
-    marginLeft: spacing.md,
-  },
+  width: 4,
+  height: 50,
+  backgroundColor: colors.accent,
+  borderRadius: 2,
+},
   title: {
     ...typography.h2,
     color: colors.text,
@@ -442,7 +442,6 @@ const rawStyles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   headerActions: {
-    alignItems: 'flex-start',
     gap: spacing.sm,
   },
   createButton: {
@@ -484,7 +483,7 @@ const rawStyles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,

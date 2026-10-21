@@ -19,6 +19,9 @@ import CallActiveScreen from '../screens/main/CallActiveScreen';
 import OrgScreen from '../screens/main/OrgScreen';
 import NotificationsScreen from '../screens/main/NotificationsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
+import AddUserScreen from '../screens/main/AddUserScreen';
+import { hasPermission } from '../utils/permissions';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator(); // تم تصحيح استدعاء الدالة هنا
@@ -42,6 +45,7 @@ const AuthStack = () => {
 // التبويبات الرئيسية
 const MainTabs = () => {
   const { t, isRTL } = useLanguage();
+  const insets = useSafeAreaInsets();
   const tabs = [
     { name: 'Calls', component: CallsScreen, label: t('tabs.calls'), icon: 'call' },
     { name: 'Directory', component: DirectoryScreen, label: t('tabs.directory'), icon: 'people' },
@@ -59,13 +63,13 @@ const MainTabs = () => {
         tabBarActiveTintColor: colors.primaryLight,
         tabBarInactiveTintColor: colors.textLight,
         tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          height: 60,
-          paddingBottom: spacing.sm,
-          paddingTop: spacing.sm,
-        },
+        backgroundColor: colors.surface,
+        borderTopColor: colors.border,
+        borderTopWidth: 1,
+        height: 60 + insets.bottom,
+        paddingBottom: Math.max(insets.bottom, spacing.sm),
+        paddingTop: spacing.sm,
+  },
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: '600',
@@ -92,6 +96,8 @@ const MainTabs = () => {
 // الشاشات الرئيسية
 const MainStack = () => {
   const { isRTL } = useLanguage();
+  const { user } = useAuth();
+  const canManageUsers = hasPermission(user, 'users.manage');
   return (
     <Stack.Navigator
       screenOptions={{
@@ -102,6 +108,11 @@ const MainStack = () => {
       <Stack.Screen name="MainTabs" component={MainTabs} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
+      {/* AddUser is only mounted for principals holding users.manage; the
+          server enforces the same rule on POST /api/users. */}
+      {canManageUsers && (
+        <Stack.Screen name="AddUser" component={AddUserScreen} />
+      )}
       <Stack.Screen 
         name="CallActive" 
         component={CallActiveScreen}

@@ -21,8 +21,9 @@ import { mockData } from '../../utils/mockData';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { hasPermission } from '../../utils/permissions';
 
-const SettingsScreen = () => {
+const SettingsScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
   const { user, logout, updateUser } = useAuth();
   const { t, language, toggleLanguage, isRTL } = useLanguage();
@@ -122,8 +123,10 @@ const SettingsScreen = () => {
           <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
             {t('settings.myAccount')}
           </Text>
-          <View style={styles.profileCard}>
-            <UserAvatar person={user} size={avatarSize} />
+          <View style={[styles.profileCard, { alignItems: 'flex-start' }]}>
+            <View style={{ flexShrink: 0 }}>
+              <UserAvatar person={user} size={avatarSize} />
+            </View>
             <View style={styles.profileInfo}>
               <View style={styles.profileRow}>
                 <Text style={[styles.profileLabel, isSmallScreen && styles.profileLabelSmall]}>
@@ -300,6 +303,33 @@ const SettingsScreen = () => {
           </Pressable>
         </View>
 
+        {/* إدارة المستخدمين - تظهر فقط لمن يملك صلاحية users.manage */}
+        {hasPermission(user, 'users.manage') && (
+          <View style={[styles.section, { padding: sectionPadding }]}>
+            <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+              {t('addUser.title')}
+            </Text>
+            <Pressable
+              style={styles.languageRow}
+              onPress={() => navigation.navigate('AddUser')}
+            >
+              <View style={styles.languageIcon}>
+                <Ionicons name="person-add" size={isSmallScreen ? 16 : 20} color={colors.primaryLight} />
+              </View>
+              <View style={styles.languageInfo}>
+                <Text style={[styles.languageValue, isSmallScreen && styles.languageValueSmall]}>
+                  {t('addUser.entry')}
+                </Text>
+              </View>
+              <Ionicons
+                name={isRTL ? 'chevron-back' : 'chevron-forward'}
+                size={isSmallScreen ? 16 : 20}
+                color={colors.textLight}
+              />
+            </Pressable>
+          </View>
+        )}
+
         {/* تسجيل الخروج */}
         <View style={[styles.section, { padding: sectionPadding }]}>
           <CustomButton
@@ -332,17 +362,17 @@ const rawStyles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  headerTitle: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  titleBorder: {
-    width: 4,
-    height: 50,
-    backgroundColor: colors.accent,
-    borderRadius: 2,
-    marginLeft: spacing.md,
-  },
+ headerTitle: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: spacing.md,
+},
+titleBorder: {
+  width: 4,
+  height: 50,
+  backgroundColor: colors.accent,
+  borderRadius: 2,
+},
   title: {
     ...typography.h2,
     color: colors.text,
@@ -385,14 +415,13 @@ const rawStyles = StyleSheet.create({
     fontSize: 11,
   },
   profileCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  flexDirection: 'row',
+  gap: spacing.md,
   },
-  profileInfo: {
-    flex: 1,
-    marginStart: spacing.md,
-    
-  },
+profileInfo: {
+  flex: 1,
+  minWidth: 0,
+},
   profileRow: {
     marginBottom: spacing.xs,
   },
@@ -421,6 +450,7 @@ const rawStyles = StyleSheet.create({
     backgroundColor: colors.warningLight,
     borderRadius: borderRadius.md,
     borderWidth: 1,
+    gap: spacing.sm,
     borderColor: '#e9dcc2',
     padding: spacing.sm,
   },
@@ -436,7 +466,7 @@ const rawStyles = StyleSheet.create({
     borderColor: colors.warning,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.sm,
+    
   },
   kitchenRadioSelected: {
     width: 10,
@@ -539,19 +569,19 @@ const rawStyles = StyleSheet.create({
   selectedCountSmall: {
     fontSize: 12,
   },
-  languageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  languageIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.md,
-    backgroundColor: '#eaf1f7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
-  },
+languageRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.sm,
+},
+languageIcon: {
+  width: 36,
+  height: 36,
+  borderRadius: borderRadius.md,
+  backgroundColor: '#eaf1f7',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
   languageInfo: {
     flex: 1,
   },

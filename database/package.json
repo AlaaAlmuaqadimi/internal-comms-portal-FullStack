@@ -1,0 +1,15 @@
+{
+  "name": "internal-comms-portal-db",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MySQL 8 schema, migrations and legacy JSON import for the internal communications portal",
+  "license": "UNLICENSED",
+  "scripts": {
+    "import": "node scripts/import-legacy.js",
+    "import:dry": "node scripts/import-legacy.js --dry-run"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "mysql2": "^3.11.5"
+  }
+}

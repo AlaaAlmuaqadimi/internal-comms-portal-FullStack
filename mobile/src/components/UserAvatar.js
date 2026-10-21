@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
   initial: {
     ...typography.h3,
     color: colors.primaryLight,
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
   },
 });
 

@@ -279,13 +279,13 @@ const rawStyles = StyleSheet.create({
     fontSize: 24,
   },
   secureBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.xs,
   },
   secureText: {
     ...typography.captionBold,
     color: colors.primaryLight,
-    marginRight: spacing.xs,
   },
   secureTextSmall: {
     fontSize: 10,
@@ -344,18 +344,18 @@ const rawStyles = StyleSheet.create({
     alignItems: 'center',
   },
   endCallButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.danger,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-  },
-  endCallText: {
-    ...typography.button,
-    color: colors.textWhite,
-    marginRight: spacing.sm,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: spacing.sm,
+  backgroundColor: colors.danger,
+  borderRadius: borderRadius.md,
+  paddingHorizontal: spacing.xl,
+  paddingVertical: spacing.sm,
+},
+endCallText: {
+  ...typography.button,
+  color: colors.textWhite,
+},
   endCallTextSmall: {
     fontSize: 13,
   },
@@ -413,7 +413,7 @@ const rawStyles = StyleSheet.create({
     fontSize: 12,
   },
   summaryLabel: {
-    fontWeight: '700',
+    fontFamily: 'Cairo_700Bold',
     color: colors.textSecondary,
   },
 });

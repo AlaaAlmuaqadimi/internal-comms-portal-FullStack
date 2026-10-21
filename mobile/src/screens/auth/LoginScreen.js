@@ -40,7 +40,7 @@ const LoginScreen = ({ navigation }) => {
       newErrors.username = t('validation.usernameRequired');
     }
 
-    if (!formData.password) {
+    if (!formData.password.trim()) {
       newErrors.password = t('validation.passwordRequired');
     }
 
@@ -49,16 +49,21 @@ const LoginScreen = ({ navigation }) => {
   };
 
   const handleLogin = async () => {
+    if (loading) return;
     if (!validateForm()) return;
 
+    setErrors({});
     setLoading(true);
     try {
       const result = await login(formData.username, formData.password);
       if (!result.success) {
-        setErrors({ general: result.error });
+        const message =
+          result.error && result.error.startsWith('validation.')
+            ? t(result.error)
+            : result.error || t('login.error');
+        setErrors({ general: message });
       }
-      // Navigation is handled by AppNavigator re-rendering when
-      // isAuthenticated state changes in AuthContext
+      // On success, AppNavigator re-renders off isAuthenticated in AuthContext.
     } catch (error) {
       setErrors({ general: t('login.error') });
     } finally {
@@ -158,10 +163,7 @@ const LoginScreen = ({ navigation }) => {
             </Pressable>
 
             <View style={styles.footer}>
-              <Text style={styles.footerText}>{t('login.noAccount')}</Text>
-              <Pressable onPress={() => navigation.navigate('Register')}>
-                <Text style={styles.footerLink}>{t('login.createAccount')}</Text>
-              </Pressable>
+              <Text style={styles.footerText}>{t('login.contactAdmin')}</Text>
             </View>
           </View>
         </ScrollView>
@@ -191,6 +193,8 @@ const rawStyles = StyleSheet.create({
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
+
   },
   logoContainer: {
     width: 48,
@@ -202,7 +206,6 @@ const rawStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    marginLeft: spacing.md,
   },
   logoImage: {
     width: '100%',
@@ -243,17 +246,17 @@ const rawStyles = StyleSheet.create({
     padding: spacing.md,
   },
   titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.lg,
-    marginTop: spacing.lg,
-  },
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: spacing.md,
+  marginBottom: spacing.lg,
+  marginTop: spacing.lg,
+},
   titleBorder: {
     width: 4,
     height: 60,
     backgroundColor: colors.accent,
     borderRadius: 2,
-    marginLeft: spacing.md,
   },
   titleText: {
     flex: 1,
@@ -304,19 +307,21 @@ const rawStyles = StyleSheet.create({
     color: colors.primaryLight,
   },
   footer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
     marginTop: spacing.lg,
   },
   footerText: {
     ...typography.body,
     color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    flexShrink: 1,
   },
   footerLink: {
     ...typography.bodyBold,
     color: colors.primaryLight,
-    marginRight: spacing.xs,
     textDecorationLine: 'underline',
   },
 });
