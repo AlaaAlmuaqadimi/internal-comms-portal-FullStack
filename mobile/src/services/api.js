@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { translate } from '../context/LanguageContext';
 
 // API base URL - set via EXPO_PUBLIC_API_BASE_URL in mobile/.env
@@ -5,8 +6,13 @@ import { translate } from '../context/LanguageContext';
 // bundle; a plain API_BASE_URL is undefined on the device.)
 // For local development: EXPO_PUBLIC_API_BASE_URL=http://<your-machine-ip>:4000
 // A trailing slash is stripped so `base + '/api/...'` never yields '//api/...'.
+const getDevUrl = () => {
+  const host = Constants.expoConfig?.hostUri?.split(':')[0];
+  return host ? `http://${host}:4000` : '';
+};
+
 const RAW_API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || '';
+  process.env.EXPO_PUBLIC_API_BASE_URL || getDevUrl();
 const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, '');
 
 export const isBackendConfigured = () => !!API_BASE_URL && API_BASE_URL.trim() !== '';
