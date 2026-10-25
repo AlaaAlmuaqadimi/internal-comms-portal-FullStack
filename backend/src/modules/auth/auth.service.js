@@ -186,18 +186,18 @@ export async function login({ username, password, ip, userAgent }) {
   if (!user) {
     await dummyVerify(password);
     await recordLoginAttempt({ username, ip, userAgent, success: false });
-    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'Invalid username or password');
+    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'اسم المستخدم أو كلمة المرور غير صحيحة');
   }
 
   if (!isActive(user.is_active)) {
     await recordLoginAttempt({ username, ip, userAgent, success: false });
     await writeAudit({ actorUserId: user.id, action: 'auth.login.inactive', ip, userAgent });
-    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'Invalid username or password');
+    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'اسم المستخدم أو كلمة المرور غير صحيحة');
   }
 
   if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
     await recordLoginAttempt({ username, ip, userAgent, success: false });
-    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'Invalid username or password');
+    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'اسم المستخدم أو كلمة المرور غير صحيحة');
   }
 
   const { ok, upgradedHash } = await verifyPasswordForUser(user, password);
@@ -205,7 +205,7 @@ export async function login({ username, password, ip, userAgent }) {
   if (!ok) {
     await registerFailedLogin(user.id);
     await recordLoginAttempt({ username, ip, userAgent, success: false });
-    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'Invalid username or password');
+    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'اسم المستخدم أو كلمة المرور غير صحيحة');
   }
 
   await completeSuccessfulLogin(user.id, upgradedHash);
@@ -221,15 +221,15 @@ export async function login({ username, password, ip, userAgent }) {
 }
 
 export async function register({ name, username, password, unit, contacts = [], ip, userAgent }) {
-  const normalizedUsername = (username || '').trim().toLowerCase();
-  if (!normalizedUsername) throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'Username is required');
+  if (!normalizedUsername) throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'اسم المستخدم مطلوب');
+  if (!existing.length === false) { /* noop */ }
 
   const [existing] = await pool.execute(
     `SELECT id FROM users WHERE username = ? AND deleted_at IS NULL LIMIT 1`,
     [normalizedUsername]
   );
   if (existing.length > 0) {
-    throw new AppError(409, ErrorCodes.CONFLICT, 'This username is already taken');
+    throw new AppError(409, ErrorCodes.CONFLICT, 'اسم المستخدم مستخدَم بالفعل', { code: ErrorCodes.CONFLICT });
   }
 
   // Find a default org unit to attach the new employee to. The mobile form

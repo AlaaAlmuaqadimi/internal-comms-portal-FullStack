@@ -97,7 +97,7 @@ export const AuthProvider = ({ children }) => {
     const trimmedUsername = (username || '').trim();
 
     if (!trimmedUsername || !password) {
-      return { success: false, error: 'validation.missingCredentials' };
+      return { success: false, error: 'اسم المستخدم أو كلمة المرور غير صحيحة' };
     }
 
     try {
@@ -119,7 +119,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.message, code: error.code, status: error.status };
+      return { success: false, error: error.message || 'حدث خطأ أثناء إنشاء الحساب', code: error.code, status: error.status };
     }
   };
 

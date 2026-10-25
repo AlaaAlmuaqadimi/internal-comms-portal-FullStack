@@ -9,7 +9,7 @@ export function validate(schema) {
         message: i.message,
       }));
       return next(
-        new AppError(422, ErrorCodes.VALIDATION_ERROR, 'Invalid request body', details)
+        new AppError(422, ErrorCodes.VALIDATION_ERROR, 'بيانات الطلب غير صالحة', details)
       );
     }
     req.body = result.data;

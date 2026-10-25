@@ -2,7 +2,7 @@ import { AppError } from '../lib/errors.js';
 import { env } from '../config/env.js';
 
 export function notFoundHandler(_req, res) {
-  res.status(404).json({ success: false, error: 'Not found', code: 'NOT_FOUND' });
+  res.status(404).json({ success: false, error: 'غير موجود', code: 'NOT_FOUND' });
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -18,11 +18,11 @@ export function errorHandler(err, _req, res, _next) {
 
   // Body parser / malformed JSON
   if (err && err.type === 'entity.parse.failed') {
-    return res.status(400).json({ success: false, error: 'Malformed JSON body', code: 'BAD_REQUEST' });
+    return res.status(400).json({ success: false, error: 'بيانات JSON غير صالحة', code: 'BAD_REQUEST' });
   }
 
   if (env.nodeEnv !== 'test') {
     console.error('[error]', err);
   }
-  return res.status(500).json({ success: false, error: 'Internal server error', code: 'INTERNAL' });
+  return res.status(500).json({ success: false, error: 'حدث خطأ في الخادم', code: 'INTERNAL' });
 }
