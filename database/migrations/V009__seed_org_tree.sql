@@ -2,6 +2,19 @@
 -- V009 - Seed organization tree (77 units) from legacy org.json
 -- Generated from git history (FrontEnd/data/org.json @ dd2ee3a).
 -- Parent-before-child inserts; idempotent by unique org_units.code.
+--
+-- Reporting lines under the Head (u77):
+--   u36  Office of the Head of Authority
+--   u1..u5   Monitoring / Internal Audit / Sports / Tax Awareness /
+--            Social Welfare Fund sub-offices
+--   u8, u15, u19, u23   General administrations (Technical Affairs,
+--            Administrative & Financial Affairs, Inspection, Revenue
+--            Accounting) and their sections
+--   u76  Deputy Head of Authority
+--
+-- The Head office and its sub-offices, the general administrations and the
+-- deputy all report directly to u77. The four administrations keep their own
+-- sections; only their top-level parent changes from u36 to u77.
 -- ============================================================================
 
 SET NAMES utf8mb4;
@@ -41,8 +54,8 @@ WHERE u.code = 'u36';
 
 -- u1
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u1', 'مكتب المتابعة', 'office', 0
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u1', 'مكتب المتابعة', 'office', 2
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -58,8 +71,8 @@ WHERE u.code = 'u1';
 
 -- u2
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u2', 'مكتب المراجعة الداخلية', 'office', 1
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u2', 'مكتب المراجعة الداخلية', 'office', 3
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -75,8 +88,8 @@ WHERE u.code = 'u2';
 
 -- u3
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u3', 'مكتب النشاط الرياضي', 'office', 2
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u3', 'مكتب النشاط الرياضي', 'office', 4
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -92,8 +105,8 @@ WHERE u.code = 'u3';
 
 -- u4
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u4', 'مكتب الإعلام والتثقيف الضريبي', 'office', 3
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u4', 'مكتب الإعلام والتثقيف الضريبي', 'office', 5
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -109,8 +122,8 @@ WHERE u.code = 'u4';
 
 -- u5
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u5', 'صندوق الرعاية الاجتماعية', 'office', 4
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u5', 'صندوق الرعاية الاجتماعية', 'office', 6
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -126,8 +139,8 @@ WHERE u.code = 'u5';
 
 -- u8
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u8', 'إدارة الشؤون الفنية', 'directorate', 5
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u8', 'إدارة الشؤون الفنية', 'directorate', 7
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -163,8 +176,8 @@ ON DUPLICATE KEY UPDATE
 
 -- u15
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u15', 'إدارة الشؤون الإدارية والمالية', 'directorate', 6
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u15', 'إدارة الشؤون الإدارية والمالية', 'directorate', 8
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -240,8 +253,8 @@ ON DUPLICATE KEY UPDATE
 
 -- u19
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u19', 'إدارة التفتيش', 'directorate', 7
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u19', 'إدارة التفتيش', 'directorate', 9
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -287,8 +300,8 @@ ON DUPLICATE KEY UPDATE
 
 -- u23
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u23', 'إدارة محاسبة الإيرادات', 'directorate', 8
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u23', 'إدارة محاسبة الإيرادات', 'directorate', 10
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),

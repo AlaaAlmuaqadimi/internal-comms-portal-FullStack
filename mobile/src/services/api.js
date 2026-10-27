@@ -47,13 +47,38 @@ export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
 }
 
+function getLocalizedAuthError(code, fallback) {
+  try {
+    const localized = translate(`authErrors.${code}`);
+    if (localized && localized !== `authErrors.${code}`) {
+      return localized;
+    }
+  } catch {
+    // fall through to fallback
+  }
+  if (fallback && typeof fallback === 'string' && fallback.trim()) {
+    return fallback;
+  }
+  try {
+    const generic = translate('login.error');
+    if (generic && generic !== 'login.error') return generic;
+  } catch {
+    // ignore
+  }
+  return 'حدث خطأ';
+}
+
 // Low-level request. Throws ApiError on network failure or non-2xx response -
 // it never silently degrades to mock mode.
 const request = async (endpoint, options = {}) => {
   if (!isBackendConfigured()) {
+    const code = 'NOT_CONFIGURED';
     throw new ApiError(
-      'The API is not configured. Set EXPO_PUBLIC_API_BASE_URL in mobile/.env.',
-      { status: 0, code: 'NOT_CONFIGURED' }
+      getLocalizedAuthError(
+        code,
+        'The API is not configured. Set EXPO_PUBLIC_API_BASE_URL in mobile/.env.'
+      ),
+      { status: 0, code }
     );
   }
 
@@ -64,11 +89,25 @@ const request = async (endpoint, options = {}) => {
     ...headers,
   };
 
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutMs = 10000;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}${endpoint}`, { ...rest, headers: finalHeaders });
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...rest,
+      headers: finalHeaders,
+      signal: controller ? controller.signal : undefined,
+    });
   } catch (error) {
-    throw new ApiError(translate('login.networkError'), { status: 0, code: 'NETWORK', details: error.message });
+    const code = controller && error.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK';
+    throw new ApiError(
+      getLocalizedAuthError(code, translate('login.networkError')),
+      { status: 0, code, details: error.message }
+    );
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 
   let data = null;
@@ -86,9 +125,10 @@ const request = async (endpoint, options = {}) => {
   }
 
   if (!response.ok) {
-    throw new ApiError(data?.error || translate('login.error'), {
+    const code = data?.code || 'HTTP_ERROR';
+    throw new ApiError(getLocalizedAuthError(code, data?.error), {
       status: response.status,
-      code: data?.code || 'HTTP_ERROR',
+      code,
       details: data?.details || null,
     });
   }
@@ -216,30 +256,56 @@ export const api = {
 
   // Org structure
   org: {
-    getTree: async () => {
-      const { data } = await request('/api/org/tree');
-      return data;
+    // Returns a forest (array of root nodes) with nested `children`.
+    getTree: async ({ rootId, includeInactive = false } = {}) => {
+      // Build the query manually: React Native's URLSearchParams support
+      // varies between platforms and engines.
+      const params = [];
+      if (rootId) params.push(`rootId=${encodeURIComponent(rootId)}`);
+      if (includeInactive) params.push('includeInactive=true');
+      const query = params.length ? `?${params.join('&')}` : '';
+      const { data } = await request(`/api/org-units/tree${query}`);
+      return data.tree;
+    },
+
+    // Flat, scope-aware list.
+    listUnits: async () => {
+      const { data } = await request('/api/org-units');
+      return data.orgUnits;
     },
 
     addUnit: async (unitData) => {
-      const { data } = await request('/api/org/unit', {
+      const { data } = await request('/api/org-units', {
         method: 'POST',
         body: JSON.stringify(unitData),
       });
-      return { success: data.success, id: data.id };
+      return { success: data.success, orgUnit: data.orgUnit };
     },
 
     updateUnit: async (id, unitData) => {
-      await request(`/api/org/unit/${id}`, {
-        method: 'PUT',
+      const { data } = await request(`/api/org-units/${id}`, {
+        method: 'PATCH',
         body: JSON.stringify(unitData),
       });
-      return { success: true };
+      return { success: data.success, orgUnit: data.orgUnit };
+    },
+
+    moveUnit: async (id, parentId) => {
+      const { data } = await request(`/api/org-units/${id}/move`, {
+        method: 'PATCH',
+        body: JSON.stringify({ parentId }),
+      });
+      return { success: data.success, orgUnit: data.orgUnit };
     },
 
     deleteUnit: async (id) => {
-      await request(`/api/org/unit/${id}`, { method: 'DELETE' });
-      return { success: true };
+      const { data } = await request(`/api/org-units/${id}`, { method: 'DELETE' });
+      return { success: data.success, deleted: data.deleted };
+    },
+
+    restoreUnit: async (id) => {
+      const { data } = await request(`/api/org-units/${id}/restore`, { method: 'POST' });
+      return { success: data.success, orgUnit: data.orgUnit };
     },
   },
 

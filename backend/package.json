@@ -14,7 +14,8 @@
     "keys": "node scripts/generate-keys.js",
     "migrate": "node ../database/scripts/run-migrations.mjs",
     "seed": "node scripts/seed-dev-user.js",
-    "smoke": "node scripts/smoke-test.js"
+    "smoke": "node scripts/smoke-test.js",
+    "test:org": "node scripts/org-smoke-test.js"
   },
   "dependencies": {
     "argon2": "^0.41.1",
