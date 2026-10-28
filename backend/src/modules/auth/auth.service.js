@@ -211,13 +211,18 @@ export async function login({ username, password, ip, userAgent }) {
   await completeSuccessfulLogin(user.id, upgradedHash);
   await recordLoginAttempt({ username, ip, userAgent, success: true });
 
-  const { accessToken, expiresIn } = await issueAccessToken(user);
+  const { accessToken, expiresIn, roles } = await issueAccessToken(user);
   const refreshToken = await issueRefreshToken({ userId: user.id, ip, userAgent });
   const path = await getOrgUnitPath(user.org_unit_id);
 
   await writeAudit({ actorUserId: user.id, action: 'auth.login', ip, userAgent });
 
-  return { accessToken, refreshToken, expiresIn, user: publicUser(user, path) };
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn,
+    user: { ...publicUser(user, path), roles },
+  };
 }
 
 export async function register({ name, username, password, unit, contacts = [], ip, userAgent }) {
@@ -302,11 +307,16 @@ export async function register({ name, username, password, unit, contacts = [], 
   });
 
   const user = await findUserById(userId);
-  const { accessToken, expiresIn } = await issueAccessToken(user);
+  const { accessToken, expiresIn, roles } = await issueAccessToken(user);
   const refreshToken = await issueRefreshToken({ userId: user.id, ip, userAgent });
   const path = await getOrgUnitPath(user.org_unit_id);
 
-  return { accessToken, refreshToken, expiresIn, user: publicUser(user, path) };
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn,
+    user: { ...publicUser(user, path), roles },
+  };
 }
 
 export async function rotateRefreshToken({ refreshToken, ip, userAgent }) {
@@ -386,11 +396,16 @@ export async function rotateRefreshToken({ refreshToken, ip, userAgent }) {
     throw new AppError(401, ErrorCodes.REFRESH_REUSED, 'Refresh token reuse detected');
   }
 
-  const { accessToken, expiresIn } = await issueAccessToken(user);
+  const { accessToken, expiresIn, roles } = await issueAccessToken(user);
   const path = await getOrgUnitPath(user.org_unit_id);
   await writeAudit({ actorUserId: user.id, action: 'auth.refresh', ip, userAgent });
 
-  return { accessToken, refreshToken: newRaw, expiresIn, user: publicUser(user, path) };
+  return {
+    accessToken,
+    refreshToken: newRaw,
+    expiresIn,
+    user: { ...publicUser(user, path), roles },
+  };
 }
 
 export async function logout({ refreshToken, ip, userAgent }) {

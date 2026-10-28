@@ -38,14 +38,14 @@ FROM roles r
 CROSS JOIN permissions p
 WHERE r.code = 'admin';
 
--- org_manager: org, people, comms (scoped by user_roles.scope_org_unit_id)
+-- org_manager: legacy operations role, read/comms only (no management powers)
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r
 JOIN permissions p ON p.code IN (
-  'org.read','org.manage','employees.read','employees.manage',
+  'org.read','employees.read',
   'calls.initiate','calls.read',
-  'notifications.read','notifications.create','notifications.broadcast',
+  'notifications.read','notifications.create',
   'kitchens.read','settings.manage'
 )
 WHERE r.code = 'org_manager';

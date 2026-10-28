@@ -1,14 +1,13 @@
 import { Router } from 'express';
 import { createUser, listRoles, listOrgUnits } from './user.controller.js';
 import { authenticate } from '../../middleware/authenticate.js';
-import { requirePermission } from '../../middleware/requirePermission.js';
+import { requireAdmin } from '../../middleware/requireAdmin.js';
 
 const router = Router();
 
-// User administration - all routes require an authenticated principal holding
-// users.manage (admin, or an org_manager scoped to a subtree).
-router.post('/', authenticate, requirePermission('users.manage'), createUser);
-router.get('/roles', authenticate, requirePermission('users.manage'), listRoles);
-router.get('/org-units', authenticate, requirePermission('users.manage'), listOrgUnits);
+// User administration is restricted to the Super Admin role.
+router.post('/', authenticate, requireAdmin, createUser);
+router.get('/roles', authenticate, requireAdmin, listRoles);
+router.get('/org-units', authenticate, requireAdmin, listOrgUnits);
 
 export default router;

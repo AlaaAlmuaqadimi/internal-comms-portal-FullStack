@@ -11,10 +11,17 @@
 --            Administrative & Financial Affairs, Inspection, Revenue
 --            Accounting) and their sections
 --   u76  Deputy Head of Authority
+--   u35  Regional Executive Administrations, with its 11 regional
+--            directorates (u24..u34) kept beneath it
+--   u49, u52, u58   Planning & Development, Tax Evasion Combat and
+--            Information Technology directorates (they report to the Head,
+--            not to the deputy)
 --
--- The Head office and its sub-offices, the general administrations and the
--- deputy all report directly to u77. The four administrations keep their own
--- sections; only their top-level parent changes from u36 to u77.
+-- The Head office and its sub-offices, the general administrations, the
+-- regional executive administrations, the planning/evasion/IT directorates
+-- and the deputy all report directly to u77. The four administrations and the
+-- regional group keep their own sections/children; only their top-level parent
+-- changes from u36 to u77.
 -- ============================================================================
 
 SET NAMES utf8mb4;
@@ -347,8 +354,8 @@ ON DUPLICATE KEY UPDATE
 
 -- u35
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u35', 'الإدارات التنفيذية بالمناطق (فرع مكتب شؤون الرئيس)', 'group', 9
-FROM org_units p WHERE p.code = 'u36'
+SELECT p.id, 'u35', 'الإدارات التنفيذية بالمناطق (فرع مكتب شؤون الرئيس)', 'group', 14
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -679,8 +686,8 @@ ON DUPLICATE KEY UPDATE
 
 -- u49
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u49', 'إدارة التخطيط والتطوير', 'directorate', 4
-FROM org_units p WHERE p.code = 'u76'
+SELECT p.id, 'u49', 'إدارة التخطيط والتطوير', 'directorate', 11
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -726,8 +733,8 @@ ON DUPLICATE KEY UPDATE
 
 -- u52
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u52', 'إدارة مكافحة التهرب الضريبي', 'directorate', 5
-FROM org_units p WHERE p.code = 'u76'
+SELECT p.id, 'u52', 'إدارة مكافحة التهرب الضريبي', 'directorate', 12
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),
@@ -763,8 +770,8 @@ ON DUPLICATE KEY UPDATE
 
 -- u58
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u58', 'إدارة المعلوماتية', 'directorate', 6
-FROM org_units p WHERE p.code = 'u76'
+SELECT p.id, 'u58', 'إدارة المعلوماتية', 'directorate', 13
+FROM org_units p WHERE p.code = 'u77'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
   name_ar = VALUES(name_ar),

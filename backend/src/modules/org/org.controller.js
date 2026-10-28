@@ -1,4 +1,5 @@
 import { AppError, ErrorCodes } from '../../lib/errors.js';
+import { isAdmin } from '../../lib/roles.js';
 import * as orgService from './org.service.js';
 import {
   createOrgUnitSchema,
@@ -22,10 +23,14 @@ function parse(schema, payload) {
 }
 
 /**
- * The access token contains the effective grant for each permission. The org
- * module uses org.read for reads and org.manage for writes.
+ * Resolves the service-layer actor. The Super Admin always acts globally with
+ * unrestricted access; other principals fall back to their token grants for
+ * read-only scoped queries.
  */
 function actorFor(req, permission) {
+  if (isAdmin(req.user)) {
+    return { id: req.user?.id, isGlobal: true, scopes: [] };
+  }
   const grant = req.user?.permissions?.[permission];
   return {
     id: req.user?.id,

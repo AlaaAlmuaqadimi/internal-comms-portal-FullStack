@@ -17,9 +17,9 @@ async function writeAudit(conn, { actorUserId, action, entityType, entityId, ip,
  * role (optionally scoped to an org unit) and default settings, in one
  * transaction.
  *
- * Authorization is enforced by the route (requirePermission('users.manage')).
- * Here we additionally refuse to grant a scoped role outside the actor's own
- * grant, so a scoped admin cannot escalate into another subtree.
+ * Authorization is enforced by the route (requireAdmin). Here we additionally
+ * refuse to grant a scoped role outside the actor's own grant, so a scoped
+ * principal cannot escalate into another subtree if one is ever introduced.
  */
 export async function createUser(input, actor, ctx = {}) {
   return withTransaction(async (conn) => {

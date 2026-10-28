@@ -20,7 +20,7 @@ import OrgScreen from '../screens/main/OrgScreen';
 import NotificationsScreen from '../screens/main/NotificationsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import AddUserScreen from '../screens/main/AddUserScreen';
-import { hasPermission } from '../utils/permissions';
+import { hasRole } from '../utils/permissions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Stack = createNativeStackNavigator();
@@ -97,7 +97,7 @@ const MainTabs = () => {
 const MainStack = () => {
   const { isRTL } = useLanguage();
   const { user } = useAuth();
-  const canManageUsers = hasPermission(user, 'users.manage');
+  const isAdmin = hasRole(user, 'admin');
   return (
     <Stack.Navigator
       screenOptions={{
@@ -108,9 +108,9 @@ const MainStack = () => {
       <Stack.Screen name="MainTabs" component={MainTabs} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
-      {/* AddUser is only mounted for principals holding users.manage; the
-          server enforces the same rule on POST /api/users. */}
-      {canManageUsers && (
+      {/* AddUser is only mounted for the admin role; the server enforces the
+          same rule on POST /api/users. */}
+      {isAdmin && (
         <Stack.Screen name="AddUser" component={AddUserScreen} />
       )}
       <Stack.Screen 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/authenticate.js';
+import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { requirePermission } from '../../middleware/requirePermission.js';
 import { validate } from '../../middleware/validate.js';
 import {
@@ -19,9 +20,9 @@ import { createOrgUnitSchema, moveOrgUnitSchema, updateOrgUnitSchema } from './o
 
 const router = Router();
 
-// List/tree routes have no single target unit. A scoped principal is allowed
-// through when it holds at least one scope; the service then filters every row
-// to the union of its granted subtrees.
+// Reads remain available to authenticated principals holding org.read. The org
+// service still supports scoped reads for non-admin roles. All writes are
+// restricted to the Super Admin role.
 const anyScope = (permission) => (req) => req.user?.permissions?.[permission]?.scopes?.[0] || null;
 const targetUnit = (req) => req.params.id;
 
@@ -67,12 +68,11 @@ router.get(
   getOrgChildren
 );
 
-// A scoped manager may create below a unit in its own subtree. Creating the
-// root (parentId null) is global-only, enforced here and again in the service.
+// Management writes are Super Admin only.
 router.post(
   '/',
   authenticate,
-  requirePermission('org.manage', { resolveScope: (req) => req.body?.parentId || null }),
+  requireAdmin,
   validate(createOrgUnitSchema),
   createOrgUnit
 );
@@ -80,7 +80,7 @@ router.post(
 router.patch(
   '/:id',
   authenticate,
-  requirePermission('org.manage', { resolveScope: targetUnit }),
+  requireAdmin,
   validate(updateOrgUnitSchema),
   updateOrgUnit
 );
@@ -88,7 +88,7 @@ router.patch(
 router.patch(
   '/:id/move',
   authenticate,
-  requirePermission('org.manage', { resolveScope: targetUnit }),
+  requireAdmin,
   validate(moveOrgUnitSchema),
   moveOrgUnit
 );
@@ -96,16 +96,15 @@ router.patch(
 router.delete(
   '/:id',
   authenticate,
-  requirePermission('org.manage', { resolveScope: targetUnit }),
+  requireAdmin,
   deleteOrgUnit
 );
 
-// Restore is checked against the parent subtree because a soft-deleted unit is
-// not reachable through the active-tree recursive scope check.
+// Restore is a management write and is restricted to the Super Admin.
 router.post(
   '/:id/restore',
   authenticate,
-  requirePermission('org.manage', { resolveScope: anyScope('org.manage') }),
+  requireAdmin,
   restoreOrgUnit
 );
 

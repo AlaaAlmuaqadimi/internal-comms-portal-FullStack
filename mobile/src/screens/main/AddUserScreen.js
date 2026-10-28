@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   ActivityIndicator,
+  Modal,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +21,7 @@ import { typography } from '../../constants/typography';
 import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
 import CustomButton from '../../components/CustomButton';
+import SelectField from '../../components/SelectField';
 import { flipStyles } from '../../i18n/rtlStyles';
 import { localizeText } from '../../i18n/localize';
 
@@ -28,7 +30,7 @@ const USERNAME_RE = /^[a-zA-Z0-9._]+$/;
 const AddUserScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
   const { createUser } = useAuth();
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, language, align } = useLanguage();
   const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
 
   const isSmallScreen = width < 375;
@@ -50,21 +52,25 @@ const AddUserScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
 
   const [roles, setRoles] = useState([]);
-  const [orgUnits, setOrgUnits] = useState([]);
+  const [orgTree, setOrgTree] = useState([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [optionsError, setOptionsError] = useState(null);
+
+  const [orgModalVisible, setOrgModalVisible] = useState(false);
+  const [orgQuery, setOrgQuery] = useState('');
+  const [expandedOrgIds, setExpandedOrgIds] = useState(() => new Set());
 
   const loadOptions = useCallback(async () => {
     setOptionsLoading(true);
     setOptionsError(null);
     try {
-      const [roleList, unitList] = await Promise.all([
+      const [roleList, unitTree] = await Promise.all([
         api.auth.listRoles(),
-        api.auth.listOrgUnits(),
+        api.org.getTree(),
       ]);
-      // admin is provisioned out-of-band; it can never be granted here.
-      setRoles(roleList.filter((r) => r.code !== 'admin'));
-      setOrgUnits(unitList);
+      // Both roles are explicitly selectable when an admin creates a user.
+      setRoles(roleList);
+      setOrgTree(Array.isArray(unitTree) ? unitTree : []);
     } catch (error) {
       setOptionsError(error.message || t('addUser.error'));
     } finally {
@@ -78,6 +84,145 @@ const AddUserScreen = ({ navigation }) => {
 
   const update = (field) => (value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const roleOptions = useMemo(
+    () =>
+      roles.map((role) => ({
+        value: role.code,
+        label: localizeText(role.name_ar || role.name_en || role.code),
+      })),
+    [roles]
+  );
+
+  // Resolve the selected unit's ancestor path in the fetched tree so the form
+  // can display the exact hierarchical placement of the employee.
+  const selectedOrgPath = useMemo(() => {
+    if (!formData.orgUnitId) return [];
+
+    const findPath = (nodes, trail) => {
+      for (const unit of nodes || []) {
+        const nextTrail = [...trail, unit];
+        if (unit.id === formData.orgUnitId) return nextTrail;
+        const match = findPath(unit.children, nextTrail);
+        if (match) return match;
+      }
+      return null;
+    };
+
+    return findPath(orgTree, []) || [];
+  }, [orgTree, formData.orgUnitId]);
+
+  // Index every unit with its depth and full path. The modal uses this both for
+  // the expandable tree and for instant search across the entire hierarchy.
+  const orgIndex = useMemo(() => {
+    const entries = new Map();
+    const arrow = isRTL ? '\u2190' : '\u2192';
+
+    const visit = (nodes, depth, parentPath) => {
+      const ids = [];
+      for (const unit of nodes || []) {
+        const name = localizeText(unit.nameAr || unit.nameEn || unit.code);
+        const path = parentPath ? `${parentPath} ${arrow} ${name}` : name;
+        const childIds = (unit.children || []).map((child) => child.id);
+
+        entries.set(unit.id, {
+          id: unit.id,
+          name,
+          path,
+          depth,
+          childIds,
+          hasChildren: childIds.length > 0,
+          searchText: [unit.nameAr, unit.nameEn, unit.code, name]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase(),
+        });
+        ids.push(unit.id);
+        visit(unit.children, depth + 1, path);
+      }
+      return ids;
+    };
+
+    return { entries, rootIds: visit(orgTree, 0, '') };
+  }, [orgTree, isRTL, language]);
+
+  // Without a query, walk only expanded branches. With a query, show every
+  // matching unit in tree order, still indented by its original depth.
+  const orgRows = useMemo(() => {
+    const query = orgQuery.trim().toLowerCase();
+
+    if (query) {
+      return Array.from(orgIndex.entries.values()).filter((entry) =>
+        entry.searchText.includes(query)
+      );
+    }
+
+    const rows = [];
+    const visit = (ids) => {
+      for (const id of ids) {
+        const entry = orgIndex.entries.get(id);
+        if (!entry) continue;
+        rows.push(entry);
+        if (expandedOrgIds.has(id)) visit(entry.childIds);
+      }
+    };
+
+    visit(orgIndex.rootIds);
+    return rows;
+  }, [orgIndex, expandedOrgIds, orgQuery]);
+
+  const isSearchingOrg = orgQuery.trim().length > 0;
+
+  const selectedOrgUnit = selectedOrgPath[selectedOrgPath.length - 1] || null;
+  const selectedOrgUnitName = selectedOrgUnit
+    ? localizeText(selectedOrgUnit.nameAr || selectedOrgUnit.nameEn || selectedOrgUnit.code)
+    : '';
+
+  const selectedOrgPathLabel = useMemo(() => {
+    const arrow = isRTL ? '\u2190' : '\u2192';
+    return selectedOrgPath
+      .map((unit) => localizeText(unit.nameAr || unit.nameEn || unit.code))
+      .join(` ${arrow} `);
+  }, [selectedOrgPath, isRTL, language]);
+
+  const openOrgPicker = () => {
+    setOrgQuery('');
+    setExpandedOrgIds(() => {
+      const next = new Set();
+      if (selectedOrgPath.length > 0) {
+        selectedOrgPath.forEach((unit) => next.add(unit.id));
+      } else {
+        orgIndex.rootIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+    setOrgModalVisible(true);
+  };
+
+  const closeOrgPicker = () => {
+    setOrgModalVisible(false);
+    setOrgQuery('');
+  };
+
+  const toggleOrgUnit = (unitId) => {
+    setExpandedOrgIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(unitId)) next.delete(unitId);
+      else next.add(unitId);
+      return next;
+    });
+  };
+
+  const selectOrgUnit = (unitId) => {
+    setFormData((prev) => ({ ...prev, orgUnitId: unitId }));
+    setErrors((prev) => {
+      if (!prev.orgUnitId) return prev;
+      const next = { ...prev };
+      delete next.orgUnitId;
+      return next;
+    });
+    closeOrgPicker();
   };
 
   const validateForm = () => {
@@ -153,9 +298,6 @@ const AddUserScreen = ({ navigation }) => {
       setLoading(false);
     }
   };
-
-  const unitLabel = (unit) =>
-    localizeText(unit.name_ar || unit.name_en || unit.code);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -300,55 +442,57 @@ const AddUserScreen = ({ navigation }) => {
                   </View>
                 ) : (
                   <>
-                    <Text style={styles.pickerLabel}>
-                      {t('addUser.role')}
-                      <Text style={styles.required}> *</Text>
-                    </Text>
-                    <View style={styles.optionsWrap}>
-                      {roles.map((role) => {
-                        const selected = formData.roleCode === role.code;
-                        return (
-                          <Pressable
-                            key={role.code}
-                            onPress={() => update('roleCode')(role.code)}
-                            style={[styles.optionChip, selected && styles.optionChipSelected]}
-                          >
-                            <Text style={[styles.optionChipText, selected && styles.optionChipTextSelected]}>
-                              {localizeText(role.name_ar || role.name_en || role.code)}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                    {errors.roleCode && <Text style={styles.fieldError}>{errors.roleCode}</Text>}
+                    <SelectField
+                      label={t('addUser.role')}
+                      value={formData.roleCode}
+                      options={roleOptions}
+                      onSelect={update('roleCode')}
+                      placeholder={t('addUser.rolePlaceholder')}
+                      required
+                      error={errors.roleCode}
+                      emptyText={t('org.noOptions')}
+                    />
 
-                    <Text style={[styles.pickerLabel, styles.pickerLabelSpaced]}>
-                      {t('addUser.orgUnit')}
-                      <Text style={styles.required}> *</Text>
-                    </Text>
-                    <View style={styles.unitsList}>
-                      {orgUnits.map((unit) => {
-                        const selected = formData.orgUnitId === unit.id;
-                        return (
-                          <Pressable
-                            key={unit.id}
-                            onPress={() => update('orgUnitId')(unit.id)}
-                            style={[styles.unitItem, selected && styles.unitItemSelected]}
-                          >
-                            <Text
-                              style={[styles.unitText, selected && styles.unitTextSelected]}
-                              numberOfLines={1}
-                            >
-                              {unitLabel(unit)}
-                            </Text>
-                            {selected && (
-                              <Ionicons name="checkmark-circle" size={18} color={colors.primaryLight} />
-                            )}
-                          </Pressable>
-                        );
-                      })}
+                    <View style={styles.orgUnitField}>
+                      <Text style={styles.orgUnitLabel}>
+                        {t('addUser.orgUnit')}
+                        <Text style={styles.orgUnitRequired}> *</Text>
+                      </Text>
+
+                      <Pressable
+                        onPress={openOrgPicker}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: orgModalVisible }}
+                        style={[
+                          styles.orgUnitTrigger,
+                          errors.orgUnitId && styles.orgUnitTriggerError,
+                        ]}
+                      >
+                        <Text
+                          numberOfLines={2}
+                          style={[
+                            styles.orgUnitValue,
+                            { textAlign: align },
+                            !selectedOrgUnitName && styles.orgUnitPlaceholder,
+                          ]}
+                        >
+                          {selectedOrgUnitName || t('addUser.orgUnitPlaceholder')}
+                        </Text>
+                        <Ionicons
+                          name="chevron-down"
+                          size={18}
+                          color={colors.textSecondary}
+                        />
+                      </Pressable>
+
+                      {errors.orgUnitId ? (
+                        <Text style={styles.orgUnitError}>{errors.orgUnitId}</Text>
+                      ) : selectedOrgPathLabel ? (
+                        <Text style={[styles.orgUnitHint, { textAlign: align }]}>
+                          {selectedOrgPathLabel}
+                        </Text>
+                      ) : null}
                     </View>
-                    {errors.orgUnitId && <Text style={styles.fieldError}>{errors.orgUnitId}</Text>}
                   </>
                 )}
               </View>
@@ -366,6 +510,144 @@ const AddUserScreen = ({ navigation }) => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={orgModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeOrgPicker}
+        statusBarTranslucent
+      >
+        <View style={[styles.orgModalBackdrop, { justifyContent: 'flex-end' }]}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={closeOrgPicker}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.cancel')}
+          />
+
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={[
+              styles.orgSheetWrapper,
+              { maxHeight: Math.round(height * 0.88) },
+            ]}
+          >
+            <SafeAreaView style={styles.orgSheet} edges={['bottom']}>
+              <View style={styles.orgSheetHandle} />
+
+              <View style={styles.orgSheetHeader}>
+                <Text style={styles.orgSheetTitle}>{t('addUser.orgUnit')}</Text>
+                <Pressable
+                  onPress={closeOrgPicker}
+                  hitSlop={10}
+                  style={styles.orgSheetClose}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.close')}
+                >
+                  <Ionicons name="close" size={22} color={colors.textSecondary} />
+                </Pressable>
+              </View>
+
+              <CustomInput
+                value={orgQuery}
+                onChangeText={setOrgQuery}
+                placeholder={t('common.search')}
+                icon="search"
+                style={styles.orgSearch}
+              />
+
+              <ScrollView
+                style={[
+                  styles.orgTreeScroll,
+                  { maxHeight: Math.max(160, Math.round(height * 0.55)) },
+                ]}
+                keyboardShouldPersistTaps="handled"
+              >
+                {orgRows.length === 0 ? (
+                  <Text style={[styles.orgEmpty, { textAlign: align }]}>
+                    {t('org.noOptions')}
+                  </Text>
+                ) : (
+                  orgRows.map((row) => {
+                    const isSelected = row.id === formData.orgUnitId;
+                    const isExpanded = expandedOrgIds.has(row.id);
+                    const toggleIcon = isExpanded
+                      ? 'chevron-down'
+                      : isRTL
+                        ? 'chevron-back'
+                        : 'chevron-forward';
+
+                    return (
+                      <View
+                        key={row.id}
+                        style={[
+                          styles.orgRow,
+                          { paddingStart: spacing.sm + row.depth * spacing.md },
+                          isSelected && styles.orgRowSelected,
+                        ]}
+                      >
+                        {row.hasChildren && !isSearchingOrg ? (
+                          <Pressable
+                            onPress={() => toggleOrgUnit(row.id)}
+                            hitSlop={8}
+                            style={styles.orgRowToggle}
+                            accessibilityRole="button"
+                            accessibilityLabel={row.name}
+                            accessibilityState={{ expanded: isExpanded }}
+                          >
+                            <Ionicons
+                              name={toggleIcon}
+                              size={16}
+                              color={colors.textSecondary}
+                            />
+                          </Pressable>
+                        ) : (
+                          <View style={styles.orgRowToggleSpacer} />
+                        )}
+
+                        <Pressable
+                          onPress={() => selectOrgUnit(row.id)}
+                          style={styles.orgRowBody}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isSelected }}
+                        >
+                          <Text
+                            numberOfLines={2}
+                            style={[
+                              styles.orgRowName,
+                              { textAlign: align },
+                              isSelected && styles.orgRowNameSelected,
+                            ]}
+                          >
+                            {row.name}
+                          </Text>
+                          {row.depth > 0 && (
+                            <Text
+                              numberOfLines={1}
+                              style={[styles.orgRowPath, { textAlign: align }]}
+                            >
+                              {row.path}
+                            </Text>
+                          )}
+                        </Pressable>
+
+                        {isSelected && (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={18}
+                            color={colors.primaryLight}
+                          />
+                        )}
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </SafeAreaView>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -460,74 +742,143 @@ optionsLoadingText: {
   color: colors.textSecondary,
 },
 
-  pickerLabel: {
+  orgUnitField: {
+    marginBottom: spacing.md,
+  },
+  orgUnitLabel: {
     ...typography.bodyBold,
     color: colors.text,
     marginBottom: spacing.xs,
   },
-  pickerLabelSpaced: {
-    marginTop: spacing.md,
-  },
-  required: {
+  orgUnitRequired: {
     color: colors.danger,
   },
-  optionsWrap: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  gap: spacing.xs,
-},
-optionChip: {
-  borderWidth: 1,
-  borderColor: colors.border,
-  borderRadius: borderRadius.lg,
-  paddingHorizontal: spacing.md,
-  paddingVertical: spacing.xs,
-  backgroundColor: colors.surface,
-},
-  optionChipSelected: {
-    borderColor: colors.primaryLight,
-    backgroundColor: '#f5f9fc',
-  },
-  optionChipText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
-  optionChipTextSelected: {
-    color: colors.primaryLight,
-    fontFamily: 'Cairo_700Bold',
-  },
-  unitsList: {
-    maxHeight: 240,
+  orgUnitTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: borderRadius.md,
-    overflow: 'hidden',
-  },
-  unitItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    minHeight: 44,
   },
-  unitItemSelected: {
-    backgroundColor: '#f5f9fc',
+  orgUnitTriggerError: {
+    borderColor: colors.danger,
   },
-  unitText: {
-    ...typography.bodySmall,
+  orgUnitValue: {
+    ...typography.body,
     color: colors.text,
     flex: 1,
+    paddingVertical: spacing.xs,
   },
-  unitTextSelected: {
-    color: colors.primaryLight,
-    fontFamily: 'Cairo_700Bold',
+  orgUnitPlaceholder: {
+    color: colors.textLight,
   },
-  fieldError: {
+  orgUnitError: {
     ...typography.caption,
     color: colors.danger,
     marginTop: spacing.xs,
+  },
+  orgUnitHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  orgModalBackdrop: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+  },
+  orgSheetWrapper: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+  },
+  orgSheet: {
+    flexShrink: 1,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    ...shadows.lg,
+  },
+  orgSheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.borderDark,
+    marginBottom: spacing.sm,
+  },
+  orgSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  orgSheetTitle: {
+    ...typography.h4,
+    color: colors.text,
+    flex: 1,
+  },
+  orgSheetClose: {
+    padding: spacing.xs,
+  },
+  orgSearch: {
+    marginBottom: spacing.sm,
+  },
+  orgTreeScroll: {
+    flexGrow: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  orgRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingEnd: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  orgRowSelected: {
+    backgroundColor: '#f5f9fc',
+  },
+  orgRowToggle: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orgRowToggleSpacer: {
+    width: 24,
+    height: 24,
+  },
+  orgRowBody: {
+    flex: 1,
+    marginStart: spacing.xs,
+  },
+  orgRowName: {
+    ...typography.bodySmall,
+    color: colors.text,
+  },
+  orgRowNameSelected: {
+    color: colors.primaryLight,
+    fontFamily: 'Cairo_700Bold',
+  },
+  orgRowPath: {
+    ...typography.caption,
+    color: colors.textLight,
+    marginTop: 1,
+  },
+  orgEmpty: {
+    ...typography.bodySmall,
+    color: colors.textLight,
+    paddingVertical: spacing.xl,
   },
   submitButton: {
     marginTop: spacing.sm,

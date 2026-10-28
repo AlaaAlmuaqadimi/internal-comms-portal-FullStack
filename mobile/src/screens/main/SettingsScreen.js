@@ -21,7 +21,7 @@ import { mockData } from '../../utils/mockData';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
-import { hasPermission } from '../../utils/permissions';
+import { hasRole } from '../../utils/permissions';
 
 const SettingsScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
@@ -303,8 +303,8 @@ const SettingsScreen = ({ navigation }) => {
           </Pressable>
         </View>
 
-        {/* إدارة المستخدمين - تظهر فقط لمن يملك صلاحية users.manage */}
-        {hasPermission(user, 'users.manage') && (
+        {/* إدارة المستخدمين - تظهر فقط لمدير النظام */}
+        {hasRole(user, 'admin') && (
           <View style={[styles.section, { padding: sectionPadding }]}>
             <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
               {t('addUser.title')}

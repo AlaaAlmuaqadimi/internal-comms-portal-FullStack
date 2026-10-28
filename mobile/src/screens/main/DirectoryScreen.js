@@ -26,7 +26,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 import { flipStyles } from '../../i18n/rtlStyles';
-import { hasPermission } from '../../utils/permissions';
+import { hasRole } from '../../utils/permissions';
 
 const DirectoryScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
@@ -192,7 +192,7 @@ const DirectoryScreen = ({ navigation }) => {
               </Text>
             </View>
           </View>
-          {hasPermission(user, 'users.manage') && (
+          {hasRole(user, 'admin') && (
             <Pressable
               onPress={() => navigation.navigate('AddUser')}
               style={[styles.addButton, { alignSelf: isRTL ? 'flex-start' : 'flex-end' }]}

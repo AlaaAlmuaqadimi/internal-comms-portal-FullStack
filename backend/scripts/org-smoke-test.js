@@ -4,11 +4,13 @@
  *   npm run test:org --prefix backend
  *
  * Creates a disposable subtree under the existing Head, verifies the V009
- * Head reporting lines (office, deputy, sub-offices and administrations all
- * directly under u77), confirms that V012 flattened the legacy regional units,
- * exercises the tree builder, move/cycle rules, scope filtering, delete guards
- * and restore, then hard-deletes its own rows. Requires the migrations to have
- * been applied.
+ * Head reporting lines (office, deputy, sub-offices, administrations,
+ * planning/evasion/IT directorates and the regional executive administrations
+ * all directly under u77), confirms that only the `admin` role holds
+ * management permissions, checks that V012 flattened the legacy deputy regions
+ * while u35 keeps its own directorates, exercises the tree builder, move/cycle
+ * rules, scope filtering, delete guards and restore, then hard-deletes its own
+ * rows. Requires the migrations to have been applied.
  */
 import assert from 'node:assert/strict';
 import { pool } from '../src/db/pool.js';
@@ -18,28 +20,35 @@ const prefix = `T${Date.now().toString(36).toUpperCase()}`;
 const created = [];
 const actor = { id: null, isGlobal: true, scopes: [] };
 
-// V009 legacy containers and their regional directorates. V012 must flatten
-// these regions directly under the Head.
+// V009 legacy containers and their regional directorates. u35 is a real
+// directorate under the Head and keeps u24..u34. u75 is a legacy deputy-level
+// container, so V012 flattens u59..u74 directly under the Head.
 const LEGACY_GROUP_CODES = ['u35', 'u75'];
 const U35_REGIONAL_CODES = ['u24', 'u25', 'u26', 'u27', 'u28', 'u29', 'u30', 'u31', 'u32', 'u33', 'u34'];
 const U75_REGIONAL_CODES = [
   'u59', 'u60', 'u61', 'u62', 'u63', 'u64', 'u65', 'u66', 'u67', 'u68', 'u69', 'u70', 'u71',
   'u72', 'u73', 'u74',
 ];
-const REGIONAL_CODES = [...U35_REGIONAL_CODES, ...U75_REGIONAL_CODES];
 
-// V009 reporting lines: the Head office, the deputy, the five sub-offices and
-// the four general administrations all report directly to the Head. Each
-// administration keeps its own sections.
+// V009 reporting lines: the Head office, the deputy, the five sub-offices, the
+// four general administrations, the planning / tax-evasion / IT directorates
+// and the regional executive administrations all report directly to the Head.
+// Each administration/directorate keeps its own sections or children.
 const HEAD_OFFICE_CODE = 'u36';
 const HEAD_DEPUTY_CODE = 'u76';
 const HEAD_SUB_OFFICE_CODES = ['u1', 'u2', 'u3', 'u4', 'u5'];
 const HEAD_ADMINISTRATION_CODES = ['u8', 'u15', 'u19', 'u23'];
+// These three directorates report to the Head, not to the deputy (u76).
+const HEAD_DIRECTORATE_CODES = ['u49', 'u52', 'u58'];
+// u35 reports to the Head and keeps its 11 regional directorates.
+const HEAD_REGIONAL_GROUP_CODE = 'u35';
 const HEAD_DIRECT_CHILD_ORDER = [
   HEAD_OFFICE_CODE,
   HEAD_DEPUTY_CODE,
   ...HEAD_SUB_OFFICE_CODES,
   ...HEAD_ADMINISTRATION_CODES,
+  ...HEAD_DIRECTORATE_CODES,
+  HEAD_REGIONAL_GROUP_CODE,
 ];
 const ADMINISTRATION_SECTIONS = {
   u8: ['u6', 'u7'],
@@ -47,6 +56,45 @@ const ADMINISTRATION_SECTIONS = {
   u19: ['u16', 'u17', 'u18'],
   u23: ['u20', 'u21', 'u22'],
 };
+const DIRECTORATE_SECTIONS = {
+  u49: ['u46', 'u47', 'u48'],
+  u52: ['u50', 'u51'],
+  u58: ['u53', 'u54', 'u55', 'u56', 'u57'],
+};
+
+// The simplified RBAC model grants these only to the Super Admin.
+const MANAGEMENT_PERMISSION_CODES = [
+  'org.manage',
+  'users.manage',
+  'roles.manage',
+  'employees.manage',
+  'notifications.broadcast',
+];
+
+async function assertAdminOnlyManagementPermissions() {
+  const [rows] = await pool.execute(
+    `SELECT r.code AS role_code, p.code AS permission_code
+     FROM role_permissions rp
+     JOIN roles r ON r.id = rp.role_id
+     JOIN permissions p ON p.id = rp.permission_id
+     WHERE p.code IN (${MANAGEMENT_PERMISSION_CODES.map(() => '?').join(', ')})`,
+    MANAGEMENT_PERMISSION_CODES
+  );
+
+  const adminPermissions = new Set(
+    rows.filter((row) => row.role_code === 'admin').map((row) => row.permission_code)
+  );
+  for (const code of MANAGEMENT_PERMISSION_CODES) {
+    assert.ok(adminPermissions.has(code), `The admin role is missing ${code}`);
+  }
+
+  const nonAdminRows = rows.filter((row) => row.role_code !== 'admin');
+  assert.deepEqual(
+    nonAdminRows,
+    [],
+    `Management permissions must be admin-only: ${JSON.stringify(nonAdminRows)}`
+  );
+}
 
 async function assertHeadReportingLines(root) {
   const directCodes = HEAD_DIRECT_CHILD_ORDER;
@@ -61,9 +109,10 @@ async function assertHeadReportingLines(root) {
     assert.equal(row.is_active, 1, `${row.code} should remain active`);
   }
 
-  const sectionCodes = Object.values(ADMINISTRATION_SECTIONS).flat();
+  const allSections = { ...ADMINISTRATION_SECTIONS, ...DIRECTORATE_SECTIONS };
+  const sectionCodes = Object.values(allSections).flat();
   const expectedParent = new Map();
-  for (const [adminCode, codes] of Object.entries(ADMINISTRATION_SECTIONS)) {
+  for (const [adminCode, codes] of Object.entries(allSections)) {
     for (const code of codes) expectedParent.set(code, adminCode);
   }
 
@@ -105,32 +154,59 @@ async function assertNormalizedLegacyTree(root) {
     [...LEGACY_GROUP_CODES].sort(),
     'V009/V012 legacy group containers are missing'
   );
+  const groupByCode = new Map(groups.map((group) => [group.code, group]));
 
-  const groupIds = groups.map((group) => group.id);
+  // u35 reports to the Head and keeps u24..u34 underneath it.
+  const u35 = groupByCode.get('u35');
+  const [[u35Row]] = await pool.execute(
+    'SELECT parent_id, kind FROM org_units WHERE id = ?',
+    [u35.id]
+  );
+  assert.equal(u35Row.parent_id, root.id, 'u35 must report directly to the Head');
+
+  const [u35Children] = await pool.execute(
+    `SELECT code, kind, parent_id FROM org_units
+     WHERE parent_id = ? AND deleted_at IS NULL
+     ORDER BY sort_order, code`,
+    [u35.id]
+  );
+  assert.deepEqual(
+    u35Children.map((unit) => unit.code),
+    U35_REGIONAL_CODES,
+    'u24..u34 must remain under u35 in their original order'
+  );
+  for (const child of u35Children) {
+    assert.equal(child.parent_id, u35.id, `${child.code} must stay under u35`);
+    assert.equal(child.kind, 'directorate', `${child.code} should remain a directorate`);
+  }
+
+  // u75 is a legacy deputy container: V012 flattens its children onto the root.
+  const u75 = groupByCode.get('u75');
   const [remainingChildren] = await pool.execute(
-    `SELECT code FROM org_units
-     WHERE parent_id IN (${groupIds.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
-    groupIds
+    'SELECT code FROM org_units WHERE parent_id = ? AND deleted_at IS NULL',
+    [u75.id]
   );
   assert.deepEqual(
     remainingChildren.map((unit) => unit.code),
     [],
-    'V012 did not flatten every regional unit out of u35/u75'
+    'V012 did not flatten every regional unit out of u75'
   );
-
-  const groupChildren = await Promise.all(
-    groups.map((group) => org.getChildren(group.id, actor))
+  assert.deepEqual(
+    await org.getChildren(u75.id, actor),
+    [],
+    'Legacy u75 group still has children in the service tree'
   );
-  for (const children of groupChildren) {
-    assert.deepEqual(children, [], 'Legacy group still has children in the service tree');
-  }
 
   const [regions] = await pool.execute(
     `SELECT id, code, parent_id, kind, sort_order, is_active FROM org_units
-     WHERE code IN (${REGIONAL_CODES.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
-    REGIONAL_CODES
+     WHERE code IN (${U75_REGIONAL_CODES.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
+    U75_REGIONAL_CODES
   );
-  assert.equal(regions.length, REGIONAL_CODES.length, 'Not all 27 legacy regional units were found');
+  assert.equal(
+    regions.length,
+    U75_REGIONAL_CODES.length,
+    'Not all 16 deputy regional units were found'
+  );
   for (const region of regions) {
     assert.equal(region.parent_id, root.id, `${region.code} is not a direct child of the Head`);
     assert.equal(region.kind, 'directorate', `${region.code} should remain a directorate`);
@@ -142,21 +218,33 @@ async function assertNormalizedLegacyTree(root) {
   assert.ok(baselineRoot, 'Root missing from the service tree');
 
   const rootChildren = baselineRoot.children;
-  const regionalSet = new Set(REGIONAL_CODES);
+  const regionalSet = new Set(U75_REGIONAL_CODES);
   const regionsInRoot = rootChildren.filter((node) => regionalSet.has(node.code));
-  assert.equal(regionsInRoot.length, REGIONAL_CODES.length, 'Not all regions are root children');
+  assert.equal(
+    regionsInRoot.length,
+    U75_REGIONAL_CODES.length,
+    'Not all deputy regions are root children'
+  );
+  assert.ok(
+    !rootChildren.some((node) => U35_REGIONAL_CODES.includes(node.code)),
+    'u24..u34 must not be promoted to root children'
+  );
 
-  // V012 deliberately appends regions after the existing root children and
-  // preserves each group's relative order through the sort_order base.
+  const u35InRoot = rootChildren.find((node) => node.code === 'u35');
+  assert.ok(u35InRoot, 'u35 is missing from the root children');
+  assert.deepEqual(
+    u35InRoot.children.map((node) => node.code),
+    U35_REGIONAL_CODES,
+    'u35 regional directorates are not in the expected order'
+  );
+
+  // V012 deliberately appends the deputy regions after the existing root
+  // children and preserves their relative order through the sort_order base.
   const firstRegionalIndex = rootChildren.findIndex((node) => regionalSet.has(node.code));
   const officeIndex = rootChildren.findIndex((node) => node.code === 'u36');
   const deputyIndex = rootChildren.findIndex((node) => node.code === 'u76');
   assert.ok(officeIndex !== -1 && deputyIndex !== -1, 'Head office/deputy root children are missing');
   assert.ok(firstRegionalIndex > officeIndex && firstRegionalIndex > deputyIndex);
-  assert.deepEqual(
-    rootChildren.filter((node) => U35_REGIONAL_CODES.includes(node.code)).map((node) => node.code),
-    U35_REGIONAL_CODES
-  );
   assert.deepEqual(
     rootChildren.filter((node) => U75_REGIONAL_CODES.includes(node.code)).map((node) => node.code),
     U75_REGIONAL_CODES
@@ -211,6 +299,7 @@ async function main() {
   );
   assert.ok(root, 'No root org unit found. Run `npm run migrate` first.');
 
+  await assertAdminOnlyManagementPermissions();
   await assertNormalizedLegacyTree(root);
   await assertHeadReportingLines(root);
 

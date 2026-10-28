@@ -1,8 +1,12 @@
 import { createUserSchema } from './user.schemas.js';
 import * as userService from './user.service.js';
 import { AppError } from '../../lib/errors.js';
+import { isAdmin } from '../../lib/roles.js';
 
 function actorContext(req) {
+  if (isAdmin(req.user)) {
+    return { id: req.user.id, isGlobal: true, scopes: [] };
+  }
   const grant = (req.user.permissions || {})['users.manage'];
   return {
     id: req.user.id,

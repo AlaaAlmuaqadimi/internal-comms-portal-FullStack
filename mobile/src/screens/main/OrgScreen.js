@@ -23,7 +23,7 @@ import EmptyState from '../../components/EmptyState';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { api, ApiError } from '../../services/api';
-import { hasPermission } from '../../utils/permissions';
+import { hasRole } from '../../utils/permissions';
 import { flipStyles } from '../../i18n/rtlStyles';
 
 // Mirrors the backend ALLOWED_PARENT_KINDS matrix in org.service.js. Keeping it
@@ -74,7 +74,7 @@ const OrgScreen = () => {
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
   const isLandscape = width > height;
-  const canManage = hasPermission(user, 'org.manage');
+  const canManage = hasRole(user, 'admin');
 
   const [tree, setTree] = useState([]);
   const [loading, setLoading] = useState(true);

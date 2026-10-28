@@ -12,10 +12,6 @@ const password = z
   .min(8, 'Password must be at least 8 characters')
   .max(200);
 
-// Roles that may never be granted through the user-creation API, to avoid
-// privilege escalation by a scoped admin.
-const RESERVED_ROLE_CODES = ['admin'];
-
 export const createUserSchema = z
   .object({
     username,
@@ -27,13 +23,8 @@ export const createUserSchema = z
     jobTitleAr: z.string().trim().max(255).optional().or(z.literal('')),
     email: z.string().trim().email('Invalid email').max(255).optional().or(z.literal('')),
     extension: z.string().trim().max(32).optional().or(z.literal('')),
-    roleCode: z
-      .string()
-      .trim()
-      .min(1, 'A role is required')
-      .refine((code) => !RESERVED_ROLE_CODES.includes(code), {
-        message: 'This role cannot be assigned here',
-      }),
+    // The route is admin-only, so an admin may grant either admin or employee.
+    roleCode: z.string().trim().min(1, 'A role is required'),
     scopeOrgUnitId: z.string().uuid().optional().nullable(),
     language: z.enum(['ar', 'en']).optional().default('ar'),
   })
