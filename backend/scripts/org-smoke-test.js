@@ -3,14 +3,13 @@
  *
  *   npm run test:org --prefix backend
  *
- * Creates a disposable subtree under the existing Head, verifies the V009
- * Head reporting lines (office, deputy, sub-offices, administrations,
- * planning/evasion/IT directorates and the regional executive administrations
- * all directly under u77), confirms that only the `admin` role holds
- * management permissions, checks that V012 flattened the legacy deputy regions
- * while u35 keeps its own directorates, exercises the tree builder, move/cycle
- * rules, scope filtering, delete guards and restore, then hard-deletes its own
- * rows. Requires the migrations to have been applied.
+ * Creates a disposable subtree under the existing Head, verifies the V015
+ * chart hierarchy (Head office, deputy, central directorate/office group and
+ * regional group directly under u77, with every directorate and region nested
+ * correctly), confirms that only the `admin` role holds management
+ * permissions, exercises the tree builder, move/cycle rules, scope filtering,
+ * delete guards and restore, then hard-deletes its own rows. Requires the
+ * migrations to have been applied.
  */
 import assert from 'node:assert/strict';
 import { pool } from '../src/db/pool.js';
@@ -20,46 +19,47 @@ const prefix = `T${Date.now().toString(36).toUpperCase()}`;
 const created = [];
 const actor = { id: null, isGlobal: true, scopes: [] };
 
-// V009 legacy containers and their regional directorates. u35 is a real
-// directorate under the Head and keeps u24..u34. u75 is a legacy deputy-level
-// container, so V012 flattens u59..u74 directly under the Head.
-const LEGACY_GROUP_CODES = ['u35', 'u75'];
+// V015 chart hierarchy.
+//   u77 -> u36 (head office), u76 (deputy), u78 (central group), u35 (regions)
+//   u78 -> the seven directorates, the offices and their sections
+//   u35 -> all 27 regional directorates
+const HEAD_OFFICE_CODE = 'u36';
+const HEAD_DEPUTY_CODE = 'u76';
+const CENTRAL_GROUP_CODE = 'u78';
+const REGIONAL_GROUP_CODE = 'u35';
+const CENTRAL_GROUP_NAME = 'الادرات داخل الادارة العامه';
+const HEAD_DIRECT_CHILD_ORDER = [
+  HEAD_OFFICE_CODE,
+  HEAD_DEPUTY_CODE,
+  CENTRAL_GROUP_CODE,
+  REGIONAL_GROUP_CODE,
+];
+
+// Chart order inside the central group.
+const CENTRAL_CHILD_ORDER = [
+  'u19', 'u23', 'u58', 'u52', 'u49', 'u15', 'u8',
+  'u2', 'u38', 'u45', 'u3', 'u4', 'u5', 'u1',
+];
+
+// All 27 regional directorates, in chart order.
 const U35_REGIONAL_CODES = ['u24', 'u25', 'u26', 'u27', 'u28', 'u29', 'u30', 'u31', 'u32', 'u33', 'u34'];
 const U75_REGIONAL_CODES = [
   'u59', 'u60', 'u61', 'u62', 'u63', 'u64', 'u65', 'u66', 'u67', 'u68', 'u69', 'u70', 'u71',
   'u72', 'u73', 'u74',
 ];
+const REGIONAL_CODES = [...U35_REGIONAL_CODES, ...U75_REGIONAL_CODES];
 
-// V009 reporting lines: the Head office, the deputy, the five sub-offices, the
-// four general administrations, the planning / tax-evasion / IT directorates
-// and the regional executive administrations all report directly to the Head.
-// Each administration/directorate keeps its own sections or children.
-const HEAD_OFFICE_CODE = 'u36';
-const HEAD_DEPUTY_CODE = 'u76';
-const HEAD_SUB_OFFICE_CODES = ['u1', 'u2', 'u3', 'u4', 'u5'];
-const HEAD_ADMINISTRATION_CODES = ['u8', 'u15', 'u19', 'u23'];
-// These three directorates report to the Head, not to the deputy (u76).
-const HEAD_DIRECTORATE_CODES = ['u49', 'u52', 'u58'];
-// u35 reports to the Head and keeps its 11 regional directorates.
-const HEAD_REGIONAL_GROUP_CODE = 'u35';
-const HEAD_DIRECT_CHILD_ORDER = [
-  HEAD_OFFICE_CODE,
-  HEAD_DEPUTY_CODE,
-  ...HEAD_SUB_OFFICE_CODES,
-  ...HEAD_ADMINISTRATION_CODES,
-  ...HEAD_DIRECTORATE_CODES,
-  HEAD_REGIONAL_GROUP_CODE,
-];
 const ADMINISTRATION_SECTIONS = {
   u8: ['u6', 'u7'],
-  u15: ['u9', 'u10', 'u11', 'u12', 'u13', 'u14'],
+  u15: ['u9', 'u10', 'u13', 'u12', 'u11', 'u14'],
   u19: ['u16', 'u17', 'u18'],
-  u23: ['u20', 'u21', 'u22'],
+  u23: ['u20', 'u21', 'u79', 'u22'],
 };
 const DIRECTORATE_SECTIONS = {
   u49: ['u46', 'u47', 'u48'],
   u52: ['u50', 'u51'],
   u58: ['u53', 'u54', 'u55', 'u56', 'u57'],
+  u45: ['u40', 'u41', 'u43', 'u44', 'u42', 'u39'],
 };
 
 // The simplified RBAC model grants these only to the Super Admin.
@@ -109,6 +109,52 @@ async function assertHeadReportingLines(root) {
     assert.equal(row.is_active, 1, `${row.code} should remain active`);
   }
 
+  // Only the deputy's own office remains under the Deputy Head. The legacy
+  // administrative section (u39) belongs to the legal affairs office.
+  const [deputyChildren] = await pool.execute(
+    `SELECT child.code
+     FROM org_units child
+     JOIN org_units parent ON parent.id = child.parent_id
+     WHERE parent.code = ? AND child.deleted_at IS NULL AND child.is_active = 1
+     ORDER BY child.sort_order, child.code`,
+    [HEAD_DEPUTY_CODE]
+  );
+  assert.deepEqual(
+    deputyChildren.map((unit) => unit.code),
+    ['u37'],
+    'Only the deputy office (u37) should remain under the Deputy Head'
+  );
+
+  // The central group holds the general directorates and the offices.
+  const [[central]] = await pool.execute(
+    'SELECT id, parent_id, kind, name_ar, is_active FROM org_units WHERE code = ?',
+    [CENTRAL_GROUP_CODE]
+  );
+  assert.ok(central, 'The central group is missing');
+  assert.equal(central.parent_id, root.id, 'The central group must report to the Head');
+  assert.equal(central.kind, 'group', 'The central group must be a group');
+  assert.equal(Number(central.is_active), 1, 'The central group must be active');
+  assert.equal(central.name_ar, CENTRAL_GROUP_NAME, 'The central group name changed');
+
+  const [centralChildren] = await pool.execute(
+    `SELECT code, parent_id, kind FROM org_units
+     WHERE parent_id = ? AND deleted_at IS NULL
+     ORDER BY sort_order, code`,
+    [central.id]
+  );
+  assert.deepEqual(
+    centralChildren.map((unit) => unit.code),
+    CENTRAL_CHILD_ORDER,
+    'Central group children are not in the chart order'
+  );
+  for (const child of centralChildren) {
+    assert.equal(child.parent_id, central.id, `${child.code} must be under the central group`);
+    assert.ok(
+      ['directorate', 'office'].includes(child.kind),
+      `${child.code} has an unexpected kind`
+    );
+  }
+
   const allSections = { ...ADMINISTRATION_SECTIONS, ...DIRECTORATE_SECTIONS };
   const sectionCodes = Object.values(allSections).flat();
   const expectedParent = new Map();
@@ -133,121 +179,120 @@ async function assertHeadReportingLines(root) {
     assert.equal(section.kind, 'section', `${section.code} should remain a section`);
   }
 
-  const tree = await org.getOrgTree({}, actor);
-  const rootNode = tree.find((node) => node.id === root.id);
-  assert.ok(rootNode, 'Root missing from the service tree');
-  assert.deepEqual(
-    rootNode.children.slice(0, HEAD_DIRECT_CHILD_ORDER.length).map((node) => node.code),
-    HEAD_DIRECT_CHILD_ORDER,
-    'Head-level children are not in the expected order'
+  // Every administration lists its sections in the expected order.
+  const [ordered] = await pool.execute(
+    `SELECT child.code, parent.code AS parent_code
+     FROM org_units child
+     JOIN org_units parent ON parent.id = child.parent_id
+     WHERE parent.code IN (${Object.keys(allSections).map(() => '?').join(', ')})
+       AND child.deleted_at IS NULL
+     ORDER BY parent.code, child.sort_order, child.code`,
+    Object.keys(allSections)
   );
+  const byParent = new Map();
+  for (const row of ordered) {
+    if (!byParent.has(row.parent_code)) byParent.set(row.parent_code, []);
+    byParent.get(row.parent_code).push(row.code);
+  }
+  for (const [adminCode, codes] of Object.entries(allSections)) {
+    assert.deepEqual(
+      byParent.get(adminCode) ?? [],
+      codes,
+      `${adminCode} sections are not in the expected order`
+    );
+  }
+
+  // Spot-check section names that were corrected to match the printed chart.
+  const names = new Map();
+  const [named] = await pool.execute(
+    `SELECT code, name_ar FROM org_units
+     WHERE code IN ('u14', 'u21', 'u79') AND deleted_at IS NULL`
+  );
+  for (const child of named) names.set(child.code, child.name_ar);
+  assert.equal(names.get('u14'), 'قسم المخازن', 'u14 must be the stores section');
+  assert.equal(names.get('u21'), 'قسم الإحصاء', 'u21 must be the statistics section');
+  assert.equal(names.get('u79'), 'قسم مطابقة الحسابات', 'u79 must be the reconciliation section');
 }
 
-async function assertNormalizedLegacyTree(root) {
-  const [groups] = await pool.execute(
-    `SELECT id, code FROM org_units
-     WHERE code IN (${LEGACY_GROUP_CODES.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
-    LEGACY_GROUP_CODES
+async function assertRegionalHierarchy(root) {
+  const [[u35]] = await pool.execute(
+    'SELECT id, parent_id, kind, is_active FROM org_units WHERE code = ?',
+    [REGIONAL_GROUP_CODE]
   );
-  assert.deepEqual(
-    groups.map((group) => group.code).sort(),
-    [...LEGACY_GROUP_CODES].sort(),
-    'V009/V012 legacy group containers are missing'
-  );
-  const groupByCode = new Map(groups.map((group) => [group.code, group]));
+  assert.ok(u35, 'The regional group is missing');
+  assert.equal(u35.parent_id, root.id, 'The regional group must report to the Head');
+  assert.equal(u35.kind, 'group', 'The regional group must be a group');
 
-  // u35 reports to the Head and keeps u24..u34 underneath it.
-  const u35 = groupByCode.get('u35');
-  const [[u35Row]] = await pool.execute(
-    'SELECT parent_id, kind FROM org_units WHERE id = ?',
-    [u35.id]
-  );
-  assert.equal(u35Row.parent_id, root.id, 'u35 must report directly to the Head');
-
-  const [u35Children] = await pool.execute(
-    `SELECT code, kind, parent_id FROM org_units
+  const [children] = await pool.execute(
+    `SELECT code, parent_id, kind, is_active FROM org_units
      WHERE parent_id = ? AND deleted_at IS NULL
      ORDER BY sort_order, code`,
     [u35.id]
   );
   assert.deepEqual(
-    u35Children.map((unit) => unit.code),
-    U35_REGIONAL_CODES,
-    'u24..u34 must remain under u35 in their original order'
+    children.map((unit) => unit.code),
+    REGIONAL_CODES,
+    'All 27 regional directorates must sit under the regional group in chart order'
   );
-  for (const child of u35Children) {
-    assert.equal(child.parent_id, u35.id, `${child.code} must stay under u35`);
+  for (const child of children) {
+    assert.equal(child.parent_id, u35.id, `${child.code} must stay under the regional group`);
     assert.equal(child.kind, 'directorate', `${child.code} should remain a directorate`);
+    assert.equal(child.is_active, 1, `${child.code} should remain active`);
   }
 
-  // u75 is a legacy deputy container: V012 flattens its children onto the root.
-  const u75 = groupByCode.get('u75');
-  const [remainingChildren] = await pool.execute(
+  // The old deputy-level regional container is empty and hidden.
+  const [[u75]] = await pool.execute(
+    'SELECT id, is_active FROM org_units WHERE code = ?',
+    ['u75']
+  );
+  assert.ok(u75, 'The legacy u75 container is missing');
+  assert.equal(Number(u75.is_active), 0, 'The legacy u75 container must be inactive');
+  const [u75Children] = await pool.execute(
     'SELECT code FROM org_units WHERE parent_id = ? AND deleted_at IS NULL',
     [u75.id]
   );
-  assert.deepEqual(
-    remainingChildren.map((unit) => unit.code),
-    [],
-    'V012 did not flatten every regional unit out of u75'
-  );
+  assert.deepEqual(u75Children.map((unit) => unit.code), [], 'u75 must have no children');
   assert.deepEqual(
     await org.getChildren(u75.id, actor),
     [],
     'Legacy u75 group still has children in the service tree'
   );
+}
 
-  const [regions] = await pool.execute(
-    `SELECT id, code, parent_id, kind, sort_order, is_active FROM org_units
-     WHERE code IN (${U75_REGIONAL_CODES.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
-    U75_REGIONAL_CODES
+async function assertTreeShape(root) {
+  const tree = await org.getOrgTree({}, actor);
+  const rootNode = tree.find((node) => node.id === root.id);
+  assert.ok(rootNode, 'Root missing from the service tree');
+
+  assert.deepEqual(
+    rootNode.children.map((node) => node.code),
+    HEAD_DIRECT_CHILD_ORDER,
+    'Head-level children are not in the expected order'
   );
-  assert.equal(
-    regions.length,
-    U75_REGIONAL_CODES.length,
-    'Not all 16 deputy regional units were found'
+
+  const centralNode = rootNode.children.find((node) => node.code === CENTRAL_GROUP_CODE);
+  assert.ok(centralNode, 'Central group missing from the service tree');
+  assert.deepEqual(
+    centralNode.children.map((node) => node.code),
+    CENTRAL_CHILD_ORDER,
+    'Central group children are not in the chart order'
   );
-  for (const region of regions) {
-    assert.equal(region.parent_id, root.id, `${region.code} is not a direct child of the Head`);
-    assert.equal(region.kind, 'directorate', `${region.code} should remain a directorate`);
-    assert.equal(region.is_active, 1, `${region.code} should remain active`);
-  }
 
-  const baselineTree = await org.getOrgTree({}, actor);
-  const baselineRoot = baselineTree.find((node) => node.id === root.id);
-  assert.ok(baselineRoot, 'Root missing from the service tree');
-
-  const rootChildren = baselineRoot.children;
-  const regionalSet = new Set(U75_REGIONAL_CODES);
-  const regionsInRoot = rootChildren.filter((node) => regionalSet.has(node.code));
-  assert.equal(
-    regionsInRoot.length,
-    U75_REGIONAL_CODES.length,
-    'Not all deputy regions are root children'
+  const regionalNode = rootNode.children.find((node) => node.code === REGIONAL_GROUP_CODE);
+  assert.ok(regionalNode, 'Regional group missing from the service tree');
+  assert.deepEqual(
+    regionalNode.children.map((node) => node.code),
+    REGIONAL_CODES,
+    'Regional directorates are not in the chart order'
   );
   assert.ok(
-    !rootChildren.some((node) => U35_REGIONAL_CODES.includes(node.code)),
-    'u24..u34 must not be promoted to root children'
+    regionalNode.children.every((node) => node.depth === 2),
+    'Regional directorates should be at depth 2'
   );
 
-  const u35InRoot = rootChildren.find((node) => node.code === 'u35');
-  assert.ok(u35InRoot, 'u35 is missing from the root children');
-  assert.deepEqual(
-    u35InRoot.children.map((node) => node.code),
-    U35_REGIONAL_CODES,
-    'u35 regional directorates are not in the expected order'
-  );
-
-  // V012 deliberately appends the deputy regions after the existing root
-  // children and preserves their relative order through the sort_order base.
-  const firstRegionalIndex = rootChildren.findIndex((node) => regionalSet.has(node.code));
-  const officeIndex = rootChildren.findIndex((node) => node.code === 'u36');
-  const deputyIndex = rootChildren.findIndex((node) => node.code === 'u76');
-  assert.ok(officeIndex !== -1 && deputyIndex !== -1, 'Head office/deputy root children are missing');
-  assert.ok(firstRegionalIndex > officeIndex && firstRegionalIndex > deputyIndex);
-  assert.deepEqual(
-    rootChildren.filter((node) => U75_REGIONAL_CODES.includes(node.code)).map((node) => node.code),
-    U75_REGIONAL_CODES
+  assert.ok(
+    !rootNode.children.some((node) => REGIONAL_CODES.includes(node.code)),
+    'A regional directorate must not be promoted to a Head-level child'
   );
 }
 
@@ -300,8 +345,9 @@ async function main() {
   assert.ok(root, 'No root org unit found. Run `npm run migrate` first.');
 
   await assertAdminOnlyManagementPermissions();
-  await assertNormalizedLegacyTree(root);
   await assertHeadReportingLines(root);
+  await assertRegionalHierarchy(root);
+  await assertTreeShape(root);
 
   const ga = await make({ nameAr: 'إدارة اختبار', kind: 'directorate', parentId: root.id, sortOrder: 900 });
   const branch = await make({ nameAr: 'مكتب اختبار', kind: 'office', parentId: root.id, sortOrder: 901 });

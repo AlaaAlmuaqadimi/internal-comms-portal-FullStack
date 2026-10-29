@@ -250,7 +250,7 @@ ON DUPLICATE KEY UPDATE
 
 -- u14
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u14', 'قسم الحركة / الصيانة', 'section', 5
+SELECT p.id, 'u14', 'قسم المخازن', 'section', 5
 FROM org_units p WHERE p.code = 'u15'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
@@ -334,7 +334,17 @@ ON DUPLICATE KEY UPDATE
 
 -- u21
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u21', 'قسم الإحصاء ومطابقة الحسابات', 'section', 1
+SELECT p.id, 'u21', 'قسم الإحصاء', 'section', 1
+FROM org_units p WHERE p.code = 'u23'
+ON DUPLICATE KEY UPDATE
+  parent_id = VALUES(parent_id),
+  name_ar = VALUES(name_ar),
+  kind = VALUES(kind),
+  sort_order = VALUES(sort_order);
+
+-- u79 (split from the old combined statistics/reconciliation section)
+INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
+SELECT p.id, 'u79', 'قسم مطابقة الحسابات', 'section', 2
 FROM org_units p WHERE p.code = 'u23'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
@@ -344,7 +354,7 @@ ON DUPLICATE KEY UPDATE
 
 -- u22
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u22', 'قسم إدخال البيانات', 'section', 2
+SELECT p.id, 'u22', 'قسم إدخال البيانات', 'section', 3
 FROM org_units p WHERE p.code = 'u23'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
@@ -750,7 +760,7 @@ WHERE u.code = 'u52';
 
 -- u50
 INSERT INTO org_units (parent_id, code, name_ar, kind, sort_order)
-SELECT p.id, 'u50', 'قسم المعلومات والمتابعة الميدانية', 'section', 0
+SELECT p.id, 'u50', 'قسم المعلومات والمتابعة الضبطية', 'section', 0
 FROM org_units p WHERE p.code = 'u52'
 ON DUPLICATE KEY UPDATE
   parent_id = VALUES(parent_id),
