@@ -2,6 +2,7 @@
   "expo": {
     "name": "بوابة التواصل الإداري",
     "slug": "internal-comms-portal",
+    "scheme": "internalcommsportal",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -34,7 +35,8 @@
           "backgroundColor": "#14283f"
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store"
     ]
   }
 }

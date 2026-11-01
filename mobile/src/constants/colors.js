@@ -20,6 +20,7 @@ export const colors = {
   warning: '#8a6a2f',        // الذهبي الداكن - المطبخ
   warningLight: '#fbf6ec',   // خلفية المطبخ
   danger: '#b84a4a',         // الأحمر - الحذف/الإنهاء
+  dangerStrong: '#DC2626',   // الأحمر الصريح - أخطاء التحقق في النماذج
   dangerLight: '#fdf0ec',    // خلفية الخطأ
   
   // حدود

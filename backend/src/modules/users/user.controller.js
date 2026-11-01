@@ -1,4 +1,8 @@
-import { createUserSchema } from './user.schemas.js';
+import {
+  createUserSchema,
+  previewUsernameSchema,
+  availabilitySchema,
+} from './user.schemas.js';
 import * as userService from './user.service.js';
 import { AppError } from '../../lib/errors.js';
 import { isAdmin } from '../../lib/roles.js';
@@ -15,16 +19,24 @@ function actorContext(req) {
   };
 }
 
+// Keep one message per field: zod reports every failing check on a chain, but
+// the form only renders the first one for each input.
+function validationError(parsed) {
+  const seen = new Set();
+  const details = [];
+  for (const issue of parsed.error.issues) {
+    const field = issue.path.join('.') || '(root)';
+    if (seen.has(field)) continue;
+    seen.add(field);
+    details.push({ field, message: issue.message });
+  }
+  return new AppError(422, 'VALIDATION_ERROR', 'Invalid request body', details);
+}
+
 export async function createUser(req, res, next) {
   try {
     const parsed = createUserSchema.safeParse(req.body);
-    if (!parsed.success) {
-      const details = parsed.error.issues.map((i) => ({
-        field: i.path.join('.') || '(root)',
-        message: i.message,
-      }));
-      throw new AppError(422, 'VALIDATION_ERROR', 'Invalid request body', details);
-    }
+    if (!parsed.success) throw validationError(parsed);
 
     const created = await userService.createUser(parsed.data, actorContext(req), {
       ip: req.ip,
@@ -32,6 +44,28 @@ export async function createUser(req, res, next) {
     });
 
     res.status(201).json({ success: true, user: created });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function previewUsername(req, res, next) {
+  try {
+    const parsed = previewUsernameSchema.safeParse(req.body);
+    if (!parsed.success) throw validationError(parsed);
+
+    res.json({ success: true, ...(await userService.previewUsername(parsed.data.fullNameEn)) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function checkAvailability(req, res, next) {
+  try {
+    const parsed = availabilitySchema.safeParse(req.query);
+    if (!parsed.success) throw validationError(parsed);
+
+    res.json({ success: true, ...(await userService.checkAvailability(parsed.data)) });
   } catch (err) {
     next(err);
   }

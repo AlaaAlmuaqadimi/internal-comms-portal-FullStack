@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   View,
   Text,
@@ -6,6 +12,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,8 +27,10 @@ import EmptyState from '../../components/EmptyState';
 import UserAvatar from '../../components/UserAvatar';
 import StatusBadge from '../../components/StatusBadge';
 import CustomButton from '../../components/CustomButton';
+import SelectField from '../../components/SelectField';
 import Modal from '../../components/Modal';
-import { mockData } from '../../utils/mockData';
+import EditEmployeeModal from './EditEmployeeModal';
+import { api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
@@ -31,78 +40,122 @@ import { hasRole } from '../../utils/permissions';
 const DirectoryScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
   const { user } = useAuth();
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, language } = useLanguage();
   const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
-  
+
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
   const isLandscape = width > height;
-  
+  const isAdmin = hasRole(user, 'admin');
+
   const [employees, setEmployees] = useState([]);
-  const [filteredEmployees, setFilteredEmployees] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDepartment, setSelectedDepartment] = useState('');
-  const [selectedSection, setSelectedSection] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
   const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [orgFilter, setOrgFilter] = useState('');
+
+  const [orgTree, setOrgTree] = useState([]);
+
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState(null);
+  const [toast, setToast] = useState('');
 
-  const debouncedSearch = useDebounce(searchQuery, 300);
+  const debouncedSearch = useDebounce(searchQuery, 350);
+  const requestRef = useRef(0);
+  const hasLoadedRef = useRef(false);
+  const toastTimer = useRef(null);
 
-  useEffect(() => {
-    loadEmployees();
+  const showToast = useCallback((message) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 3500);
   }, []);
 
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    []
+  );
+
+  const loadEmployees = useCallback(
+    async (overrides = {}) => {
+      const q = overrides.q ?? debouncedSearch;
+      const roleCode = overrides.roleCode ?? roleFilter;
+      const orgUnitId = overrides.orgUnitId ?? orgFilter;
+
+      const requestId = requestRef.current + 1;
+      requestRef.current = requestId;
+
+      if (!hasLoadedRef.current) setLoading(true);
+      else setFetching(true);
+
+      try {
+        const list = await api.employees.list({
+          q: q.trim(),
+          roleCode,
+          orgUnitId,
+        });
+        if (requestRef.current !== requestId) return;
+        setEmployees(Array.isArray(list) ? list : []);
+        setError(null);
+      } catch (err) {
+        if (requestRef.current !== requestId) return;
+        setEmployees([]);
+        setError(err.message || t('directory.fetchError'));
+      } finally {
+        if (requestRef.current === requestId) {
+          hasLoadedRef.current = true;
+          setLoading(false);
+          setFetching(false);
+        }
+      }
+    },
+    [debouncedSearch, roleFilter, orgFilter, t]
+  );
+
+  // Re-query whenever the debounced search or a filter changes.
   useEffect(() => {
-    filterEmployees();
-  }, [debouncedSearch, selectedDepartment, selectedSection, selectedStatus, employees]);
+    loadEmployees();
+  }, [loadEmployees]);
 
-  const loadEmployees = async () => {
-    try {
-      setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setEmployees(mockData.employees);
-    } catch (error) {
-      console.error('Error loading employees:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterEmployees = () => {
-    let filtered = [...employees];
-
-    if (debouncedSearch) {
-      const query = debouncedSearch.toLowerCase();
-      filtered = filtered.filter(emp =>
-        emp.name.toLowerCase().includes(query) ||
-        emp.management.toLowerCase().includes(query) ||
-        emp.unitName.toLowerCase().includes(query)
-      );
-    }
-
-    if (selectedDepartment) {
-      filtered = filtered.filter(emp => emp.management === selectedDepartment);
-    }
-
-    if (selectedSection) {
-      filtered = filtered.filter(emp => emp.unitName === selectedSection);
-    }
-
-    if (selectedStatus) {
-      filtered = filtered.filter(emp => emp.status === selectedStatus);
-    }
-
-    setFilteredEmployees(filtered);
-  };
+  // Org units power the filter dropdown and the edit form. A failure here only
+  // disables those controls; the directory itself still works.
+  useEffect(() => {
+    let active = true;
+    api.org
+      .getTree()
+      .then((tree) => {
+        if (active) setOrgTree(Array.isArray(tree) ? tree : []);
+      })
+      .catch(() => {
+        if (active) setOrgTree([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadEmployees();
     setRefreshing(false);
-  }, []);
+  }, [loadEmployees]);
+
+  const resetFilters = useCallback(() => {
+    setSearchQuery('');
+    setRoleFilter('');
+    setOrgFilter('');
+    // Run the unfiltered query immediately instead of waiting for the search
+    // debounce, so the reset feels instantaneous.
+    loadEmployees({ q: '', roleCode: '', orgUnitId: '' });
+  }, [loadEmployees]);
 
   const handleContactPress = (employee) => {
     setSelectedEmployee(employee);
@@ -111,66 +164,172 @@ const DirectoryScreen = ({ navigation }) => {
 
   const handleCall = () => {
     setModalVisible(false);
-    if (selectedEmployee) {
-      navigation.navigate('CallActive', { contact: selectedEmployee });
-    }
+    if (!selectedEmployee) return;
+    navigation.navigate('CallActive', {
+      contact: {
+        ...selectedEmployee,
+        name: selectedEmployee.fullNameAr,
+        unitName: selectedEmployee.orgUnitNameAr,
+        isKitchen: false,
+      },
+    });
   };
 
-  const handleMessage = () => {
-    setModalVisible(false);
+  const openEdit = (employee) => {
+    if (!isAdmin) return;
+    setEditingEmployee(employee);
+    setEditVisible(true);
   };
 
-  const resetFilters = () => {
-    setSearchQuery('');
-    setSelectedDepartment('');
-    setSelectedSection('');
-    setSelectedStatus('');
-  };
+  const handleEditSaved = useCallback(async () => {
+    setEditVisible(false);
+    setEditingEmployee(null);
+    showToast(t('editEmployee.saveSuccess'));
+    await loadEmployees();
+  }, [loadEmployees, showToast, t]);
 
-  const departments = [...new Set(employees.map(emp => emp.management))];
-  const sections = [...new Set(employees.map(emp => emp.unitName))];
+  const roleFilterOptions = useMemo(
+    () => [
+      { value: '', label: t('directory.allRoles') },
+      { value: 'admin', label: t('directory.admin') },
+      { value: 'employee', label: t('directory.employee') },
+    ],
+    [t]
+  );
+
+  const orgFilterOptions = useMemo(() => {
+    const options = [{ value: '', label: t('directory.allUnits') }];
+    const arrow = isRTL ? '\u2190' : '\u2192';
+
+    const visit = (nodes, depth, parentPath) => {
+      for (const unit of nodes || []) {
+        const name = localizeText(unit.nameAr || unit.nameEn || unit.code);
+        const path = parentPath ? `${parentPath} ${arrow} ${name}` : name;
+        options.push({
+          value: unit.id,
+          label: name,
+          description: depth > 0 ? path : undefined,
+        });
+        visit(unit.children, depth + 1, path);
+      }
+    };
+
+    visit(orgTree, 0, '');
+    return options;
+  }, [orgTree, isRTL, language, t]);
 
   // أحجام متجاوبة
   const avatarSize = isSmallScreen ? 'small' : isLargeScreen ? 'large' : 'medium';
   const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.lg : spacing.md;
   const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
 
-  const renderEmployee = ({ item }) => (
-    <View style={[styles.employeeCard, { padding: cardPadding }]}>
-      <View style={styles.employeeHeader}>
-        <UserAvatar person={item} size={avatarSize} />
-        <View style={styles.employeeInfo}>
-          <Text style={[styles.employeeName, isSmallScreen && styles.employeeNameSmall]}>
-            {localizeText(item.name)}
-          </Text>
-          <Text style={[styles.employeeUnit, isSmallScreen && styles.employeeUnitSmall]}>
-            {localizeText(item.unitName)}
-          </Text>
+  const notAvailable = t('directory.notAvailable');
+
+  const renderEmployee = ({ item }) => {
+    const detailRows = [
+      {
+        icon: 'business-outline',
+        label: t('directory.managementLabel'),
+        value: item.parentUnitNameAr || item.orgUnitNameAr || notAvailable,
+      },
+      {
+        icon: 'git-branch-outline',
+        label: t('directory.unitLabel'),
+        value: item.orgUnitNameAr || notAvailable,
+      },
+      {
+        icon: 'call-outline',
+        label: t('directory.extensionLabel'),
+        value: item.extension || notAvailable,
+      },
+      {
+        icon: 'mail-outline',
+        label: t('directory.emailLabel'),
+        value: item.email || notAvailable,
+      },
+      {
+        icon: 'at-outline',
+        label: t('directory.usernameLabel'),
+        value: item.username || t('directory.noAccount'),
+      },
+    ];
+
+    return (
+      <View style={[styles.employeeCard, { padding: cardPadding }]}>
+        <View style={styles.employeeHeader}>
+          <UserAvatar
+            person={{ name: item.fullNameAr, avatar: item.avatarUrl }}
+            size={avatarSize}
+          />
+          <View style={styles.employeeInfo}>
+            <Text style={[styles.employeeName, isSmallScreen && styles.employeeNameSmall]}>
+              {item.fullNameAr}
+            </Text>
+            {item.fullNameEn ? (
+              <Text style={styles.employeeEnglishName}>{item.fullNameEn}</Text>
+            ) : null}
+            <Text style={[styles.employeeUnit, isSmallScreen && styles.employeeUnitSmall]}>
+              {item.jobTitleAr || notAvailable}
+            </Text>
+          </View>
+
+          {isAdmin ? (
+            <Pressable
+              onPress={() => openEdit(item)}
+              style={styles.editButton}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('directory.editEmployee')}
+            >
+              <Ionicons name="create-outline" size={20} color={colors.primaryLight} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        <View style={styles.employeeDetails}>
+          {detailRows.map((row) => (
+            <View key={row.label} style={styles.detailRow}>
+              <Ionicons name={row.icon} size={14} color={colors.textLight} />
+              <Text style={[styles.employeeDetail, isSmallScreen && styles.employeeDetailSmall]}>
+                <Text style={styles.detailLabel}>{row.label}</Text>
+                {row.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.employeeActions}>
+          <View style={styles.employeeBadges}>
+            <StatusBadge status={item.presence === 'online' ? 'online' : 'offline'} />
+            <View
+              style={[
+                styles.roleBadge,
+                item.roleCode === 'admin' && styles.roleBadgeAdmin,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.roleBadgeText,
+                  item.roleCode === 'admin' && styles.roleBadgeTextAdmin,
+                ]}
+              >
+                {item.roleCode === 'admin'
+                  ? t('directory.admin')
+                  : t('directory.employee')}
+              </Text>
+            </View>
+          </View>
+
+          <CustomButton
+            title={t('directory.callButton')}
+            onPress={() => handleContactPress(item)}
+            icon="call"
+            size="small"
+          />
         </View>
       </View>
-
-      <View style={styles.employeeDetails}>
-        <Text style={[styles.employeeDetail, isSmallScreen && styles.employeeDetailSmall]}>
-          <Text style={styles.detailLabel}>{t('directory.managementLabel')}</Text>
-          {localizeText(item.management) || '—'}
-        </Text>
-        <Text style={[styles.employeeDetail, isSmallScreen && styles.employeeDetailSmall]}>
-          <Text style={styles.detailLabel}>{t('directory.unitLabel')}</Text>
-          {localizeText(item.unitName) || '—'}
-        </Text>
-      </View>
-
-      <View style={styles.employeeActions}>
-        <StatusBadge status={item.status} />
-        <CustomButton
-          title={t('directory.callButton')}
-          onPress={() => handleContactPress(item)}
-          icon="call"
-          size="small"
-        />
-      </View>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return <Loading fullScreen text={t('directory.loading')} />;
@@ -182,7 +341,7 @@ const DirectoryScreen = ({ navigation }) => {
       <View style={[styles.header, { padding: headerPadding }]}>
         <View style={styles.headerTop}>
           <View style={styles.headerTitle}>
-          <View style={styles.titleBorder} />
+            <View style={styles.titleBorder} />
             <View style={{ flex: 1 }}>
               <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
                 {t('directory.title')}
@@ -192,7 +351,7 @@ const DirectoryScreen = ({ navigation }) => {
               </Text>
             </View>
           </View>
-          {hasRole(user, 'admin') && (
+          {isAdmin && (
             <Pressable
               onPress={() => navigation.navigate('AddUser')}
               style={[styles.addButton, { alignSelf: isRTL ? 'flex-start' : 'flex-end' }]}
@@ -208,56 +367,78 @@ const DirectoryScreen = ({ navigation }) => {
 
       {/* البحث والتصفية */}
       <View style={[styles.filtersContainer, { padding: headerPadding }]}>
-        <SearchBar
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder={t('directory.searchPlaceholder')}
-          onClear={() => setSearchQuery('')}
-        />
+        <View style={styles.searchRow}>
+          <SearchBar
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={t('directory.searchPlaceholder')}
+            onClear={() => setSearchQuery('')}
+            style={styles.searchBar}
+          />
+          <Pressable
+            onPress={resetFilters}
+            style={styles.resetIconButton}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t('directory.resetFilters')}
+          >
+            <Ionicons name="refresh" size={20} color={colors.primaryLight} />
+          </Pressable>
+        </View>
 
         <View style={styles.filterRow}>
-          <Pressable
-            style={[styles.filterChip, selectedDepartment && styles.filterChipActive]}
-            onPress={() => setSelectedDepartment(selectedDepartment ? '' : departments[0])}
-          >
-            <Text style={[styles.filterChipText, selectedDepartment && styles.filterChipTextActive, isSmallScreen && styles.filterChipTextSmall]}>
-              {localizeText(selectedDepartment) || t('directory.allDepartments')}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.filterChip, selectedSection && styles.filterChipActive]}
-            onPress={() => setSelectedSection(selectedSection ? '' : sections[0])}
-          >
-            <Text style={[styles.filterChipText, selectedSection && styles.filterChipTextActive, isSmallScreen && styles.filterChipTextSmall]}>
-              {localizeText(selectedSection) || t('directory.allSections')}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.filterChip, selectedStatus && styles.filterChipActive]}
-            onPress={() => setSelectedStatus(selectedStatus ? '' : 'online')}
-          >
-            <Text style={[styles.filterChipText, selectedStatus && styles.filterChipTextActive, isSmallScreen && styles.filterChipTextSmall]}>
-              {selectedStatus === 'online' ? t('directory.online') : selectedStatus === 'offline' ? t('directory.offline') : t('directory.allStatuses')}
-            </Text>
-          </Pressable>
+          <SelectField
+            label={t('directory.roleFilter')}
+            value={roleFilter}
+            options={roleFilterOptions}
+            onSelect={setRoleFilter}
+            placeholder={t('directory.allRoles')}
+            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
+            maxListHeight={200}
+          />
+          <SelectField
+            label={t('directory.orgFilter')}
+            value={orgFilter}
+            options={orgFilterOptions}
+            onSelect={setOrgFilter}
+            placeholder={t('directory.allUnits')}
+            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
+            maxListHeight={240}
+            emptyText={t('org.noOptions')}
+          />
         </View>
 
         <View style={styles.filterFooter}>
           <Pressable onPress={resetFilters} style={styles.resetButton}>
+            <Ionicons name="refresh-outline" size={14} color={colors.primaryLight} />
             <Text style={[styles.resetButtonText, isSmallScreen && styles.resetButtonTextSmall]}>
               {t('directory.resetFilters')}
             </Text>
           </Pressable>
-          <Text style={[styles.resultsCount, isSmallScreen && styles.resultsCountSmall]}>
-            {t('directory.resultsCount', { count: filteredEmployees.length })}
-          </Text>
+          <View style={styles.resultsWrap}>
+            {fetching ? (
+              <ActivityIndicator size="small" color={colors.primaryLight} />
+            ) : null}
+            <Text style={[styles.resultsCount, isSmallScreen && styles.resultsCountSmall]}>
+              {t('directory.resultsCount', { count: employees.length })}
+            </Text>
+          </View>
         </View>
       </View>
 
       {/* قائمة الموظفين */}
-      {filteredEmployees.length === 0 ? (
+      {error ? (
+        <View style={styles.errorState}>
+          <Ionicons name="alert-circle-outline" size={40} color={colors.danger} />
+          <Text style={styles.errorStateText}>{error}</Text>
+          <CustomButton
+            title={t('common.retry')}
+            onPress={() => loadEmployees()}
+            variant="outline"
+            size="small"
+          />
+        </View>
+      ) : employees.length === 0 ? (
         <EmptyState
           icon="search"
           title={t('directory.noResultsTitle')}
@@ -267,13 +448,14 @@ const DirectoryScreen = ({ navigation }) => {
         />
       ) : (
         <FlatList
-          data={filteredEmployees}
+          data={employees}
           renderItem={renderEmployee}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
             styles.listContent,
             isLandscape && styles.listContentLandscape,
           ]}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
@@ -289,7 +471,7 @@ const DirectoryScreen = ({ navigation }) => {
       >
         {selectedEmployee && (
           <View style={styles.modalContent}>
-            <Text style={styles.modalName}>{localizeText(selectedEmployee.name)}</Text>
+            <Text style={styles.modalName}>{selectedEmployee.fullNameAr}</Text>
             <Text style={styles.modalDescription}>
               {t('directory.contactDescription')}
             </Text>
@@ -302,7 +484,7 @@ const DirectoryScreen = ({ navigation }) => {
               />
               <CustomButton
                 title={t('directory.sendMessage')}
-                onPress={handleMessage}
+                onPress={() => setModalVisible(false)}
                 variant="outline"
                 icon="mail"
                 style={styles.modalButton}
@@ -311,6 +493,24 @@ const DirectoryScreen = ({ navigation }) => {
           </View>
         )}
       </Modal>
+
+      <EditEmployeeModal
+        visible={editVisible}
+        employee={editingEmployee}
+        orgTree={orgTree}
+        onClose={() => {
+          setEditVisible(false);
+          setEditingEmployee(null);
+        }}
+        onSaved={handleEditSaved}
+      />
+
+      {toast ? (
+        <View style={styles.toast} pointerEvents="none">
+          <Ionicons name="checkmark-circle" size={20} color={colors.textWhite} />
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 };
@@ -326,21 +526,20 @@ const rawStyles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerTop: {
-  flexDirection: 'column',
-},
-  
-headerTitle: {
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-  gap: spacing.md,
-  width: '100%',
-},
-titleBorder: {
-  width: 4,
-  height: 50,
-  backgroundColor: colors.accent,
-  borderRadius: 2,
-},
+    flexDirection: 'column',
+  },
+  headerTitle: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    width: '100%',
+  },
+  titleBorder: {
+    width: 4,
+    height: 50,
+    backgroundColor: colors.accent,
+    borderRadius: 2,
+  },
   title: {
     ...typography.h2,
     color: colors.text,
@@ -358,19 +557,19 @@ titleBorder: {
     fontSize: 11,
   },
   addButton: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: spacing.xs,
-  marginTop: spacing.sm,
-  backgroundColor: colors.primaryLight,
-  borderRadius: borderRadius.md,
-  paddingHorizontal: spacing.sm,
-  paddingVertical: spacing.sm,
-},
-addButtonText: {
-  ...typography.buttonSmall,
-  color: colors.textWhite,
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    backgroundColor: colors.primaryLight,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  addButtonText: {
+    ...typography.buttonSmall,
+    color: colors.textWhite,
+  },
   addButtonTextSmall: {
     fontSize: 11,
   },
@@ -378,6 +577,25 @@ addButtonText: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    zIndex: 10,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  searchBar: {
+    flex: 1,
+  },
+  resetIconButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    backgroundColor: colors.surface,
   },
   filterRow: {
     flexDirection: 'row',
@@ -385,37 +603,27 @@ addButtonText: {
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
-  filterChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    backgroundColor: colors.surface,
+  filterField: {
+    flex: 1,
+    minWidth: 140,
+    marginBottom: 0,
   },
-  filterChipActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primaryLight,
-  },
-  filterChipText: {
-    ...typography.captionBold,
-    color: colors.text,
-  },
-  filterChipTextSmall: {
-    fontSize: 11,
-  },
-  filterChipTextActive: {
-    color: colors.textWhite,
+  filterFieldSmall: {
+    minWidth: '100%',
   },
   filterFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
     marginTop: spacing.sm,
   },
   resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.borderDark,
@@ -426,6 +634,11 @@ addButtonText: {
   },
   resetButtonTextSmall: {
     fontSize: 11,
+  },
+  resultsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   resultsCount: {
     ...typography.bodyBold,
@@ -449,10 +662,10 @@ addButtonText: {
     ...shadows.sm,
   },
   employeeHeader: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: spacing.md,
-  marginBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.sm,
   },
   employeeInfo: {
     flex: 1,
@@ -464,6 +677,11 @@ addButtonText: {
   employeeNameSmall: {
     fontSize: 14,
   },
+  employeeEnglishName: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
   employeeUnit: {
     ...typography.bodySmall,
     color: colors.textSecondary,
@@ -472,16 +690,32 @@ addButtonText: {
   employeeUnitSmall: {
     fontSize: 11,
   },
+  editButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    backgroundColor: colors.surface,
+  },
   employeeDetails: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
     marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   employeeDetail: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    marginBottom: spacing.xs,
+    flex: 1,
   },
   employeeDetailSmall: {
     fontSize: 11,
@@ -494,6 +728,45 @@ addButtonText: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  employeeBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    flex: 1,
+  },
+  roleBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+  },
+  roleBadgeAdmin: {
+    backgroundColor: colors.warningLight,
+    borderColor: colors.accent,
+  },
+  roleBadgeText: {
+    ...typography.captionBold,
+    color: colors.textSecondary,
+  },
+  roleBadgeTextAdmin: {
+    color: colors.warning,
+  },
+  errorState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.lg,
+  },
+  errorStateText: {
+    ...typography.body,
+    color: colors.danger,
+    textAlign: 'center',
   },
   modalContent: {
     alignItems: 'center',
@@ -517,6 +790,28 @@ addButtonText: {
   },
   modalButton: {
     flex: 1,
+  },
+  toast: {
+    position: 'absolute',
+    bottom: spacing.lg,
+    left: spacing.lg,
+    right: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.success,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...shadows.md,
+    zIndex: 100,
+    elevation: 100,
+  },
+  toastText: {
+    ...typography.bodyBold,
+    color: colors.textWhite,
+    flexShrink: 1,
   },
 });
 

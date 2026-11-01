@@ -101,24 +101,53 @@ yarn install
 
 3. تشغيل التطبيق:
 ```bash
-npx expo start
+npm start
 ```
 
-### التشغيل على الأجهزة
+> **مهم:** يعمل المشروع بنظام **Development Build** بدلاً من Expo Go، لأن إصدار Expo SDK المستخدم (58) أحدث من إصدار Expo Go المثبت على أجهزة الاختبار. لا حاجة لتثبيت Expo Go بعد الآن.
 
-#### Android:
+### أول مرة فقط: بناء نسخة التطوير
+
+#### الخيار أ: بناء سحابي عبر EAS (لا يحتاج Android SDK على جهازك)
 ```bash
-npx expo start --android
+npm install -g eas-cli
+eas login                       # يتطلب حساب Expo
+npm run build:dev:android       # ينتج ملف APK للتثبيت المباشر
+```
+بعد انتهاء البناء، حمّل ملف APK من الرابط الذي يظهر في الطرفية وثبّته على الجهاز.
+
+#### الخيار ب: بناء محلي (يتطلب Android SDK و Java 17)
+```bash
+npx expo prebuild --clean
+npx expo run:android
 ```
 
-#### iOS:
+#### iOS (يتطلب macOS أو EAS)
 ```bash
-npx expo start --ios
+npm run build:dev:ios
 ```
 
-#### على الويب:
+### تشغيل خادم التطوير بعد تثبيت النسخة
+
 ```bash
-npx expo start --web
+npm start          # expo start --dev-client
+```
+
+ثم افتح تطبيق **بوابة التواصل الإداري** المثبّت على الجهاز، أو امسح رمز QR من داخل التطبيق.
+
+### بعد تعديل الإعدادات الأصلية (app.json / الصلاحيات / الحزم الأصلية)
+
+```bash
+npx expo prebuild --clean
+npm run build:dev:android
+```
+
+### الرجوع إلى Expo Go (اختياري)
+
+إذا كان Expo Go على الجهاز يدعم SDK 58:
+
+```bash
+npm run start:go
 ```
 
 ## الهوية البصرية

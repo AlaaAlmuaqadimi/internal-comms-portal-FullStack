@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -24,8 +24,17 @@ import CustomButton from '../../components/CustomButton';
 import SelectField from '../../components/SelectField';
 import { flipStyles } from '../../i18n/rtlStyles';
 import { localizeText } from '../../i18n/localize';
+import {
+  FIELD_ORDER,
+  ROLE_VALUES,
+  validateField,
+  validateEmployeeForm,
+  previewUsernameLocally,
+} from '../../utils/employeeValidation';
 
-const USERNAME_RE = /^[a-zA-Z0-9._]+$/;
+const ENGLISH_NAME_RE = /^[A-Za-z ]+$/;
+const USERNAME_CHECK_DEBOUNCE = 400;
+const AVAILABILITY_FIELDS = ['email', 'extension'];
 
 const AddUserScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
@@ -50,6 +59,7 @@ const AddUserScreen = ({ navigation }) => {
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [savedUsername, setSavedUsername] = useState('');
 
   const [roles, setRoles] = useState([]);
   const [orgTree, setOrgTree] = useState([]);
@@ -59,6 +69,20 @@ const AddUserScreen = ({ navigation }) => {
   const [orgModalVisible, setOrgModalVisible] = useState(false);
   const [orgQuery, setOrgQuery] = useState('');
   const [expandedOrgIds, setExpandedOrgIds] = useState(() => new Set());
+
+  // Username generation state: idle -> checking -> ready.
+  const [usernameState, setUsernameState] = useState('idle');
+  const [checkingFields, setCheckingFields] = useState({});
+
+  const scrollRef = useRef(null);
+  const scrollOffset = useRef(0);
+  const fieldRefs = useRef({});
+  const usernameRequest = useRef(0);
+  const availabilityRequest = useRef({});
+
+  const fieldRef = (field) => (node) => {
+    fieldRefs.current[field] = node;
+  };
 
   const loadOptions = useCallback(async () => {
     setOptionsLoading(true);
@@ -82,16 +106,154 @@ const AddUserScreen = ({ navigation }) => {
     loadOptions();
   }, [loadOptions]);
 
-  const update = (field) => (value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  const clearError = useCallback((field) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }, []);
+
+  const setFieldError = useCallback((field, message) => {
+    setErrors((prev) => ({ ...prev, [field]: message }));
+  }, []);
+
+  /**
+   * Generate the username from the English name. The local slug appears
+   * immediately and the debounced server call replaces it with the exact
+   * unique value (with a numeric suffix on collision).
+   */
+  useEffect(() => {
+    const name = formData.fullNameEn.trim();
+
+    if (name.length < 1 || !ENGLISH_NAME_RE.test(name)) {
+      // Invalidate any in-flight preview so it cannot repopulate a stale value.
+      usernameRequest.current += 1;
+      setUsernameState('idle');
+      return undefined;
+    }
+
+    const requestId = usernameRequest.current + 1;
+    usernameRequest.current = requestId;
+    setUsernameState('checking');
+
+    const timer = setTimeout(async () => {
+      try {
+        const username = await api.auth.previewUsername(name);
+        if (usernameRequest.current !== requestId) return;
+        setFormData((prev) =>
+          prev.fullNameEn.trim() === name ? { ...prev, username } : prev
+        );
+        setUsernameState('ready');
+        setErrors((prev) => {
+          if (!prev.username) return prev;
+          const next = { ...prev };
+          delete next.username;
+          return next;
+        });
+      } catch {
+        if (usernameRequest.current !== requestId) return;
+        // Keep the locally generated slug; the server allocates the final
+        // value on submit, so this is only a preview failure.
+        setUsernameState('idle');
+      }
+    }, USERNAME_CHECK_DEBOUNCE);
+
+    return () => clearTimeout(timer);
+  }, [formData.fullNameEn]);
+
+  const updateField = useCallback(
+    (field) => (value) => {
+      if (field === 'fullNameEn') {
+        setFormData((prev) => ({
+          ...prev,
+          fullNameEn: value,
+          username: previewUsernameLocally(value),
+        }));
+        clearError('fullNameEn');
+        clearError('username');
+        return;
+      }
+
+      if (field === 'extension') {
+        value = String(value).replace(/[^0-9]/g, '').slice(0, 32);
+      }
+
+      if (AVAILABILITY_FIELDS.includes(field)) {
+        // A change invalidates an in-flight availability check.
+        availabilityRequest.current[field] = (availabilityRequest.current[field] || 0) + 1;
+        setCheckingFields((prev) => (prev[field] ? { ...prev, [field]: false } : prev));
+      }
+
+      setFormData((prev) => ({ ...prev, [field]: value }));
+      clearError(field);
+      clearError('general');
+      if (field === 'password') clearError('confirmPassword');
+    },
+    [clearError]
+  );
+
+  const checkAvailability = useCallback(
+    async (field) => {
+      const value = formData[field].trim();
+      if (!value) return;
+      if (validateField(field, formData, t)) return;
+
+      const requestId = (availabilityRequest.current[field] || 0) + 1;
+      availabilityRequest.current[field] = requestId;
+      setCheckingFields((prev) => ({ ...prev, [field]: true }));
+
+      try {
+        const result = await api.auth.checkAvailability(field, value);
+        if (availabilityRequest.current[field] !== requestId) return;
+        if (!result.available) {
+          setFieldError(
+            field,
+            field === 'email' ? t('addUser.emailTaken') : t('addUser.extensionTaken')
+          );
+        }
+      } catch {
+        // Non-blocking: the submit request performs the authoritative check.
+      } finally {
+        if (availabilityRequest.current[field] === requestId) {
+          setCheckingFields((prev) => ({ ...prev, [field]: false }));
+        }
+      }
+    },
+    [formData, t, setFieldError]
+  );
+
+  const handleBlur = useCallback(
+    (field) => {
+      const message = validateField(field, formData, t);
+      if (message) {
+        setFieldError(field, message);
+        return;
+      }
+
+      clearError(field);
+
+      if (field === 'password' && formData.confirmPassword) {
+        const confirmError = validateField('confirmPassword', formData, t);
+        if (confirmError) setFieldError('confirmPassword', confirmError);
+      }
+
+      if (AVAILABILITY_FIELDS.includes(field)) {
+        checkAvailability(field);
+      }
+    },
+    [formData, t, clearError, setFieldError, checkAvailability]
+  );
 
   const roleOptions = useMemo(
     () =>
-      roles.map((role) => ({
-        value: role.code,
-        label: localizeText(role.name_ar || role.name_en || role.code),
-      })),
+      roles
+        .filter((role) => ROLE_VALUES.includes(role.code))
+        .map((role) => ({
+          value: role.code,
+          label: localizeText(role.name_ar || role.name_en || role.code),
+        })),
     [roles]
   );
 
@@ -216,88 +378,142 @@ const AddUserScreen = ({ navigation }) => {
 
   const selectOrgUnit = (unitId) => {
     setFormData((prev) => ({ ...prev, orgUnitId: unitId }));
-    setErrors((prev) => {
-      if (!prev.orgUnitId) return prev;
-      const next = { ...prev };
-      delete next.orgUnitId;
-      return next;
-    });
+    clearError('orgUnitId');
+    clearError('general');
     closeOrgPicker();
   };
 
-  const validateForm = () => {
-    const newErrors = {};
+  /**
+   * Scroll the first errored field near the top of the viewport. Uses window
+   * coordinates so it works regardless of section nesting.
+   */
+  const scrollToFirstError = (errorMap) => {
+    const first = FIELD_ORDER.find((field) => errorMap[field]);
+    if (!first) return;
 
-    if (!formData.fullNameAr.trim()) {
-      newErrors.fullNameAr = t('addUser.nameRequired');
+    const node = fieldRefs.current[first];
+    const scrollView = scrollRef.current;
+    if (!node || !scrollView) return;
+    if (typeof node.measureInWindow !== 'function') return;
+
+    node.measureInWindow((_x, y) => {
+      if (typeof scrollView.measureInWindow !== 'function') return;
+      scrollView.measureInWindow((_sx, sy) => {
+        const target = scrollOffset.current + (y - sy) - spacing.md;
+        scrollView.scrollTo({ y: Math.max(0, target), animated: true });
+      });
+    });
+  };
+
+  const applyServerError = (error) => {
+    if (!(error instanceof ApiError)) {
+      setErrors({ general: t('addUser.error') });
+      return;
     }
 
-    const username = formData.username.trim();
-    if (!username) {
-      newErrors.username = t('validation.usernameRequired');
-    } else if (username.length < 3) {
-      newErrors.username = t('validation.usernameMin');
-    } else if (username.length > 30) {
-      newErrors.username = t('validation.usernameMax');
-    } else if (!USERNAME_RE.test(username)) {
-      newErrors.username = t('validation.usernameInvalid');
+    const byCode = {
+      EMAIL_TAKEN: { field: 'email', message: t('addUser.emailTaken') },
+      EXTENSION_TAKEN: { field: 'extension', message: t('addUser.extensionTaken') },
+      USERNAME_TAKEN: { field: 'username', message: t('addUser.usernameTaken') },
+      EMPLOYEE_CODE_TAKEN: { field: 'username', message: t('addUser.usernameTaken') },
+    };
+
+    // Prefer localized messages for the known uniqueness codes.
+    if (error.code && byCode[error.code]) {
+      const { field, message } = byCode[error.code];
+      const next = { [field]: message };
+      setErrors(next);
+      scrollToFirstError(next);
+      return;
     }
 
-    if (!formData.password) {
-      newErrors.password = t('validation.passwordRequired');
-    } else if (formData.password.length < 8) {
-      newErrors.password = t('validation.passwordMin');
+    const fieldErrors = {};
+    if (Array.isArray(error.details)) {
+      for (const detail of error.details) {
+        if (!detail || !detail.field || !FIELD_ORDER.includes(detail.field)) continue;
+        if (!fieldErrors[detail.field]) fieldErrors[detail.field] = detail.message;
+      }
     }
 
-    if (!formData.confirmPassword) {
-      newErrors.confirmPassword = t('validation.confirmPasswordRequired');
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = t('validation.passwordsMismatch');
+    if (Object.keys(fieldErrors).length > 0) {
+      setErrors(fieldErrors);
+      scrollToFirstError(fieldErrors);
+      return;
     }
 
-    if (!formData.roleCode) {
-      newErrors.roleCode = t('addUser.roleRequired');
+    if (error.status === 403) {
+      setErrors({ general: t('addUser.forbidden') });
+      return;
     }
 
-    if (!formData.orgUnitId) {
-      newErrors.orgUnitId = t('addUser.unitRequired');
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setErrors({ general: error.message || t('addUser.error') });
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) return;
+    if (loading) return;
+
+    const nextErrors = validateEmployeeForm(formData, t);
+
+    if (usernameState === 'checking' && !nextErrors.username) {
+      setErrors({ general: t('addUser.usernameChecking') });
+      return;
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      scrollToFirstError(nextErrors);
+      return;
+    }
 
     setErrors({});
     setLoading(true);
     try {
-      await createUser({
-        username: formData.username.trim(),
+      const created = await createUser({
+        // Send the confirmed preview only; otherwise let the server allocate
+        // the authoritative unique value from the English name.
+        username: usernameState === 'ready' ? formData.username.trim() : undefined,
         password: formData.password,
         fullNameAr: formData.fullNameAr.trim(),
-        fullNameEn: formData.fullNameEn.trim() || undefined,
-        email: formData.email.trim() || undefined,
-        jobTitleAr: formData.jobTitleAr.trim() || undefined,
-        extension: formData.extension.trim() || undefined,
+        fullNameEn: formData.fullNameEn.trim(),
+        email: formData.email.trim(),
+        jobTitleAr: formData.jobTitleAr.trim(),
+        extension: formData.extension.trim(),
         roleCode: formData.roleCode,
         orgUnitId: formData.orgUnitId,
       });
-      navigation.goBack();
+      setSavedUsername(created?.username || formData.username.trim());
     } catch (error) {
-      let message = t('addUser.error');
-      if (error instanceof ApiError) {
-        if (error.status === 409) message = t('addUser.duplicate');
-        else if (error.status === 403) message = t('addUser.forbidden');
-        else if (error.status === 422 && error.details?.length) message = error.details[0].message;
-        else if (error.message) message = error.message;
-      }
-      setErrors({ general: message });
+      applyServerError(error);
     } finally {
       setLoading(false);
     }
   };
+
+  const usernameHint =
+    usernameState === 'checking'
+      ? t('addUser.usernameChecking')
+      : usernameState === 'ready'
+        ? t('addUser.usernameAuto')
+        : t('addUser.usernameHint');
+
+  const renderSuccess = () => (
+    <View style={styles.successCard}>
+      <View style={styles.successIcon}>
+        <Ionicons name="checkmark-circle" size={48} color={colors.success} />
+      </View>
+      <Text style={styles.successTitle}>{t('addUser.success')}</Text>
+      <View style={styles.successRow}>
+        <Text style={styles.successLabel}>{t('addUser.username')}</Text>
+        <Text style={styles.successValue}>{savedUsername}</Text>
+      </View>
+      <CustomButton
+        title={t('common.close')}
+        onPress={() => navigation.goBack()}
+        variant="primary"
+        style={styles.successButton}
+      />
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -306,8 +522,13 @@ const AddUserScreen = ({ navigation }) => {
         style={styles.keyboardView}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[styles.scrollContent, isLandscape && styles.scrollContentLandscape]}
           keyboardShouldPersistTaps="handled"
+          onScroll={(event) => {
+            scrollOffset.current = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
         >
           <View style={styles.header}>
             <Pressable onPress={() => navigation.goBack()} style={styles.backButton} hitSlop={10}>
@@ -324,189 +545,235 @@ const AddUserScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.content}>
-            <View style={styles.form}>
-              {errors.general && (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{errors.general}</Text>
-                </View>
-              )}
-
-              {optionsError && (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{optionsError}</Text>
-                  <CustomButton
-                    title={t('common.retry', { defaultValue: 'Retry' })}
-                    onPress={loadOptions}
-                    variant="outline"
-                    size="small"
-                    style={styles.retryButton}
-                  />
-                </View>
-              )}
-
-              <View style={styles.section}>
-                <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
-                  {t('addUser.accountInfo')}
-                </Text>
-
-                <CustomInput
-                  label={t('addUser.fullName')}
-                  value={formData.fullNameAr}
-                  onChangeText={update('fullNameAr')}
-                  placeholder={t('addUser.fullNamePlaceholder')}
-                  required
-                  error={errors.fullNameAr}
-                  icon="person"
-                />
-
-                <CustomInput
-                  label={t('addUser.fullNameEn')}
-                  value={formData.fullNameEn}
-                  onChangeText={update('fullNameEn')}
-                  placeholder={t('addUser.fullNameEnPlaceholder')}
-                  icon="text"
-                />
-
-                <CustomInput
-                  label={t('addUser.username')}
-                  value={formData.username}
-                  onChangeText={update('username')}
-                  placeholder={t('addUser.usernamePlaceholder')}
-                  autoCapitalize="none"
-                  required
-                  error={errors.username}
-                  hint={t('addUser.usernameHint')}
-                  icon="at"
-                />
-
-                <CustomInput
-                  label={t('addUser.password')}
-                  value={formData.password}
-                  onChangeText={update('password')}
-                  placeholder={t('addUser.passwordPlaceholder')}
-                  secureTextEntry
-                  required
-                  error={errors.password}
-                  hint={t('addUser.passwordHint')}
-                  icon="lock-closed"
-                />
-
-                <CustomInput
-                  label={t('addUser.confirmPassword')}
-                  value={formData.confirmPassword}
-                  onChangeText={update('confirmPassword')}
-                  placeholder={t('addUser.confirmPasswordPlaceholder')}
-                  secureTextEntry
-                  required
-                  error={errors.confirmPassword}
-                  icon="lock-closed"
-                />
-
-                <CustomInput
-                  label={t('addUser.email')}
-                  value={formData.email}
-                  onChangeText={update('email')}
-                  placeholder={t('addUser.emailPlaceholder')}
-                  keyboardType="email-address"
-                  icon="mail"
-                />
-              </View>
-
-              <View style={styles.section}>
-                <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
-                  {t('addUser.orgInfo')}
-                </Text>
-
-                <CustomInput
-                  label={t('addUser.jobTitle')}
-                  value={formData.jobTitleAr}
-                  onChangeText={update('jobTitleAr')}
-                  placeholder={t('addUser.jobTitlePlaceholder')}
-                  icon="briefcase"
-                />
-
-                <CustomInput
-                  label={t('addUser.extension')}
-                  value={formData.extension}
-                  onChangeText={update('extension')}
-                  placeholder={t('addUser.extensionPlaceholder')}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  icon="call"
-                />
-
-                {optionsLoading ? (
-                  <View style={styles.optionsLoading}>
-                    <ActivityIndicator size="small" color={colors.primaryLight} />
-                    <Text style={styles.optionsLoadingText}>{t('addUser.loadingOptions')}</Text>
+            {savedUsername ? (
+              renderSuccess()
+            ) : (
+              <View style={styles.form}>
+                {errors.general && (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{errors.general}</Text>
                   </View>
-                ) : (
-                  <>
-                    <SelectField
-                      label={t('addUser.role')}
-                      value={formData.roleCode}
-                      options={roleOptions}
-                      onSelect={update('roleCode')}
-                      placeholder={t('addUser.rolePlaceholder')}
-                      required
-                      error={errors.roleCode}
-                      emptyText={t('org.noOptions')}
+                )}
+
+                {optionsError && (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{optionsError}</Text>
+                    <CustomButton
+                      title={t('common.retry', { defaultValue: 'Retry' })}
+                      onPress={loadOptions}
+                      variant="outline"
+                      size="small"
+                      style={styles.retryButton}
                     />
+                  </View>
+                )}
 
-                    <View style={styles.orgUnitField}>
-                      <Text style={styles.orgUnitLabel}>
-                        {t('addUser.orgUnit')}
-                        <Text style={styles.orgUnitRequired}> *</Text>
-                      </Text>
+                <View style={styles.section}>
+                  <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+                    {t('addUser.accountInfo')}
+                  </Text>
 
-                      <Pressable
-                        onPress={openOrgPicker}
-                        accessibilityRole="button"
-                        accessibilityState={{ expanded: orgModalVisible }}
-                        style={[
-                          styles.orgUnitTrigger,
-                          errors.orgUnitId && styles.orgUnitTriggerError,
-                        ]}
-                      >
-                        <Text
-                          numberOfLines={2}
+                  <View ref={fieldRef('fullNameAr')} collapsable={false}>
+                    <CustomInput
+                      label={t('addUser.fullName')}
+                      value={formData.fullNameAr}
+                      onChangeText={updateField('fullNameAr')}
+                      onBlur={() => handleBlur('fullNameAr')}
+                      placeholder={t('addUser.fullNamePlaceholder')}
+                      maxLength={100}
+                      required
+                      error={errors.fullNameAr}
+                      icon="person"
+                    />
+                  </View>
+
+                  <View ref={fieldRef('fullNameEn')} collapsable={false}>
+                    <CustomInput
+                      label={t('addUser.fullNameEn')}
+                      value={formData.fullNameEn}
+                      onChangeText={updateField('fullNameEn')}
+                      onBlur={() => handleBlur('fullNameEn')}
+                      placeholder={t('addUser.fullNameEnPlaceholder')}
+                      maxLength={100}
+                      required
+                      error={errors.fullNameEn}
+                      icon="text"
+                    />
+                  </View>
+
+                  <View ref={fieldRef('username')} collapsable={false}>
+                    <CustomInput
+                      label={t('addUser.username')}
+                      value={formData.username}
+                      placeholder={t('addUser.usernamePlaceholder')}
+                      required
+                      disabled
+                      error={errors.username}
+                      hint={usernameHint}
+                      icon="at"
+                    />
+                  </View>
+
+                  <View ref={fieldRef('password')} collapsable={false}>
+                    <CustomInput
+                      label={t('addUser.password')}
+                      value={formData.password}
+                      onChangeText={updateField('password')}
+                      onBlur={() => handleBlur('password')}
+                      placeholder={t('addUser.passwordPlaceholder')}
+                      secureTextEntry
+                      maxLength={200}
+                      required
+                      error={errors.password}
+                      hint={t('addUser.passwordHint')}
+                      icon="lock-closed"
+                    />
+                  </View>
+
+                  <View ref={fieldRef('confirmPassword')} collapsable={false}>
+                    <CustomInput
+                      label={t('addUser.confirmPassword')}
+                      value={formData.confirmPassword}
+                      onChangeText={updateField('confirmPassword')}
+                      onBlur={() => handleBlur('confirmPassword')}
+                      placeholder={t('addUser.confirmPasswordPlaceholder')}
+                      secureTextEntry
+                      maxLength={200}
+                      required
+                      error={errors.confirmPassword}
+                      icon="lock-closed"
+                    />
+                  </View>
+
+                  <View ref={fieldRef('email')} collapsable={false}>
+                    <CustomInput
+                      label={t('addUser.email')}
+                      value={formData.email}
+                      onChangeText={updateField('email')}
+                      onBlur={() => handleBlur('email')}
+                      placeholder={t('addUser.emailPlaceholder')}
+                      keyboardType="email-address"
+                      maxLength={255}
+                      required
+                      error={errors.email}
+                      hint={checkingFields.email ? t('addUser.availabilityChecking') : undefined}
+                      icon="mail"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.section}>
+                  <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+                    {t('addUser.orgInfo')}
+                  </Text>
+
+                  <View ref={fieldRef('jobTitleAr')} collapsable={false}>
+                    <CustomInput
+                      label={t('addUser.jobTitle')}
+                      value={formData.jobTitleAr}
+                      onChangeText={updateField('jobTitleAr')}
+                      onBlur={() => handleBlur('jobTitleAr')}
+                      placeholder={t('addUser.jobTitlePlaceholder')}
+                      maxLength={255}
+                      required
+                      error={errors.jobTitleAr}
+                      icon="briefcase"
+                    />
+                  </View>
+
+                  <View ref={fieldRef('extension')} collapsable={false}>
+                    <CustomInput
+                      label={t('addUser.extension')}
+                      value={formData.extension}
+                      onChangeText={updateField('extension')}
+                      onBlur={() => handleBlur('extension')}
+                      placeholder={t('addUser.extensionPlaceholder')}
+                      keyboardType="number-pad"
+                      maxLength={32}
+                      required
+                      error={errors.extension}
+                      hint={
+                        checkingFields.extension ? t('addUser.availabilityChecking') : undefined
+                      }
+                      icon="call"
+                    />
+                  </View>
+
+                  {optionsLoading ? (
+                    <View style={styles.optionsLoading}>
+                      <ActivityIndicator size="small" color={colors.primaryLight} />
+                      <Text style={styles.optionsLoadingText}>{t('addUser.loadingOptions')}</Text>
+                    </View>
+                  ) : (
+                    <>
+                      <View ref={fieldRef('roleCode')} collapsable={false}>
+                        <SelectField
+                          label={t('addUser.role')}
+                          value={formData.roleCode}
+                          options={roleOptions}
+                          onSelect={updateField('roleCode')}
+                          placeholder={t('addUser.rolePlaceholder')}
+                          required
+                          error={errors.roleCode}
+                          emptyText={t('org.noOptions')}
+                        />
+                      </View>
+
+                      <View ref={fieldRef('orgUnitId')} collapsable={false} style={styles.orgUnitField}>
+                        <Text style={styles.orgUnitLabel}>
+                          {t('addUser.orgUnit')}
+                          <Text style={styles.orgUnitRequired}> *</Text>
+                        </Text>
+
+                        <Pressable
+                          onPress={openOrgPicker}
+                          accessibilityRole="button"
+                          accessibilityState={{ expanded: orgModalVisible }}
                           style={[
-                            styles.orgUnitValue,
-                            { textAlign: align },
-                            !selectedOrgUnitName && styles.orgUnitPlaceholder,
+                            styles.orgUnitTrigger,
+                            errors.orgUnitId && styles.orgUnitTriggerError,
                           ]}
                         >
-                          {selectedOrgUnitName || t('addUser.orgUnitPlaceholder')}
-                        </Text>
-                        <Ionicons
-                          name="chevron-down"
-                          size={18}
-                          color={colors.textSecondary}
-                        />
-                      </Pressable>
+                          <Text
+                            numberOfLines={2}
+                            style={[
+                              styles.orgUnitValue,
+                              { textAlign: align },
+                              !selectedOrgUnitName && styles.orgUnitPlaceholder,
+                            ]}
+                          >
+                            {selectedOrgUnitName || t('addUser.orgUnitPlaceholder')}
+                          </Text>
+                          <Ionicons
+                            name="chevron-down"
+                            size={18}
+                            color={colors.textSecondary}
+                          />
+                        </Pressable>
 
-                      {errors.orgUnitId ? (
-                        <Text style={styles.orgUnitError}>{errors.orgUnitId}</Text>
-                      ) : selectedOrgPathLabel ? (
-                        <Text style={[styles.orgUnitHint, { textAlign: align }]}>
-                          {selectedOrgPathLabel}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </>
-                )}
+                        {errors.orgUnitId ? (
+                          <Text style={styles.orgUnitError}>{errors.orgUnitId}</Text>
+                        ) : selectedOrgPathLabel ? (
+                          <Text style={[styles.orgUnitHint, { textAlign: align }]}>
+                            {selectedOrgPathLabel}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </>
+                  )}
+                </View>
+
+                <CustomButton
+                  title={t('addUser.submit')}
+                  onPress={handleSubmit}
+                  loading={loading}
+                  disabled={optionsLoading || !!optionsError || loading}
+                  icon="person-add"
+                  style={styles.submitButton}
+                  iconPosition="left"
+                />
               </View>
-
-              <CustomButton
-                title={t('addUser.submit')}
-                onPress={handleSubmit}
-                loading={loading}
-                disabled={optionsLoading || !!optionsError}
-                icon="person-add"
-                style={styles.submitButton}
-                iconPosition="left"
-              />
-            </View>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -666,18 +933,18 @@ const rawStyles = StyleSheet.create({
   scrollContentLandscape: {
     paddingHorizontal: '15%',
   },
- header: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: spacing.sm,
-  backgroundColor: colors.surfaceDark,
-  borderBottomWidth: 4,
-  borderBottomColor: colors.accent,
-  padding: spacing.md,
-},
-backButton: {
-  padding: spacing.xs,
-},
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceDark,
+    borderBottomWidth: 4,
+    borderBottomColor: colors.accent,
+    padding: spacing.md,
+  },
+  backButton: {
+    padding: spacing.xs,
+  },
   headerText: {
     flex: 1,
   },
@@ -713,7 +980,7 @@ backButton: {
   },
   errorText: {
     ...typography.bodySmall,
-    color: '#8a3a24',
+    color: colors.dangerStrong,
     textAlign: 'center',
   },
   retryButton: {
@@ -731,17 +998,16 @@ backButton: {
     fontSize: 16,
   },
   optionsLoading: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: spacing.sm,
-  paddingVertical: spacing.md,
-},
-optionsLoadingText: {
-  ...typography.bodySmall,
-  color: colors.textSecondary,
-},
-
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  optionsLoadingText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
   orgUnitField: {
     marginBottom: spacing.md,
   },
@@ -751,7 +1017,7 @@ optionsLoadingText: {
     marginBottom: spacing.xs,
   },
   orgUnitRequired: {
-    color: colors.danger,
+    color: colors.dangerStrong,
   },
   orgUnitTrigger: {
     flexDirection: 'row',
@@ -766,7 +1032,7 @@ optionsLoadingText: {
     minHeight: 44,
   },
   orgUnitTriggerError: {
-    borderColor: colors.danger,
+    borderColor: colors.dangerStrong,
   },
   orgUnitValue: {
     ...typography.body,
@@ -779,13 +1045,50 @@ optionsLoadingText: {
   },
   orgUnitError: {
     ...typography.caption,
-    color: colors.danger,
+    color: colors.dangerStrong,
     marginTop: spacing.xs,
   },
   orgUnitHint: {
     ...typography.caption,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  successCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.xl,
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    ...shadows.sm,
+  },
+  successIcon: {
+    marginBottom: spacing.sm,
+  },
+  successTitle: {
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  successRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  successLabel: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  successValue: {
+    ...typography.bodyBold,
+    color: colors.primaryLight,
+  },
+  successButton: {
+    alignSelf: 'stretch',
   },
   orgModalBackdrop: {
     flex: 1,

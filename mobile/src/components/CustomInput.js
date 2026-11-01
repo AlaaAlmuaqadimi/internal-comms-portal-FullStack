@@ -25,6 +25,10 @@ const CustomInput = ({
   style,
   inputStyle,
   disabled = false,
+  onBlur,
+  onFocus,
+  autoCorrect = false,
+  textContentType,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [isSecure, setIsSecure] = useState(secureTextEntry);
@@ -70,8 +74,16 @@ const CustomInput = ({
           editable={!disabled}
           multiline={multiline}
           numberOfLines={numberOfLines}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          autoCorrect={autoCorrect}
+          textContentType={textContentType}
+          onFocus={() => {
+            setIsFocused(true);
+            if (onFocus) onFocus();
+          }}
+          onBlur={() => {
+            setIsFocused(false);
+            if (onBlur) onBlur();
+          }}
         />
         {secureTextEntry && (
           <Pressable onPress={() => setIsSecure(!isSecure)} style={styles.eyeIcon}>
@@ -119,7 +131,7 @@ const rawStyles = StyleSheet.create({
     borderColor: colors.primaryLight,
   },
   inputContainerError: {
-    borderColor: colors.danger,
+    borderColor: colors.dangerStrong,
   },
   inputContainerDisabled: {
     backgroundColor: colors.background,
@@ -143,7 +155,7 @@ const rawStyles = StyleSheet.create({
   },
   error: {
     ...typography.caption,
-    color: colors.danger,
+    color: colors.dangerStrong,
     marginTop: spacing.xs,
   },
   hint: {

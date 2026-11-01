@@ -173,6 +173,30 @@ export const api = {
       return data.orgUnits;
     },
 
+    // Username preview for the Add Employee form. The server derives a unique
+    // value from the English name and appends a numeric suffix on collision.
+    previewUsername: async (fullNameEn) => {
+      const { data } = await request('/api/users/preview-username', {
+        method: 'POST',
+        body: JSON.stringify({ fullNameEn }),
+      });
+      return data.username;
+    },
+
+    // Pre-submit uniqueness check for email / extension / username. Edit mode
+    // passes the current employee id so its own values stay "available".
+    checkAvailability: async (field, value, { excludeEmployeeId } = {}) => {
+      const params = [
+        `field=${encodeURIComponent(field)}`,
+        `value=${encodeURIComponent(value)}`,
+      ];
+      if (excludeEmployeeId) {
+        params.push(`excludeEmployeeId=${encodeURIComponent(excludeEmployeeId)}`);
+      }
+      const { data } = await request(`/api/users/availability?${params.join('&')}`);
+      return { available: data.available, field: data.field, value: data.value };
+    },
+
     me: async () => {
       const { data } = await request('/api/auth/me');
       return data.user;
@@ -207,19 +231,35 @@ export const api = {
 
   // Employees
   employees: {
-    getAll: async () => {
-      const { data } = await request('/api/employees');
-      return data;
+    // Server-side search across name (AR/EN), username, email and extension.
+    // Role and org-unit filters are applied in SQL; the org-unit filter also
+    // includes every descendant unit.
+    list: async ({ q, roleCode, orgUnitId } = {}) => {
+      const params = [];
+      if (q) params.push(`q=${encodeURIComponent(q)}`);
+      if (roleCode) params.push(`roleCode=${encodeURIComponent(roleCode)}`);
+      if (orgUnitId) params.push(`orgUnitId=${encodeURIComponent(orgUnitId)}`);
+      const query = params.length ? `?${params.join('&')}` : '';
+      const { data } = await request(`/api/employees${query}`);
+      return data.employees;
     },
 
     getById: async (id) => {
       const { data } = await request(`/api/employees/${id}`);
-      return data;
+      return data.employee;
     },
 
-    search: async (query) => {
-      const { data } = await request(`/api/employees/search?q=${encodeURIComponent(query)}`);
-      return data;
+    listRoles: async () => {
+      const { data } = await request('/api/employees/roles');
+      return data.roles;
+    },
+
+    update: async (id, payload) => {
+      const { data } = await request(`/api/employees/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+      return { success: data.success, employee: data.employee };
     },
   },
 

@@ -145,7 +145,7 @@ const rawStyles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   required: {
-    color: colors.danger,
+    color: colors.dangerStrong,
   },
   field: {
     flexDirection: 'row',
@@ -163,7 +163,7 @@ const rawStyles = StyleSheet.create({
     borderColor: colors.primaryLight,
   },
   fieldError: {
-    borderColor: colors.danger,
+    borderColor: colors.dangerStrong,
   },
   fieldDisabled: {
     backgroundColor: colors.background,
@@ -227,7 +227,7 @@ const rawStyles = StyleSheet.create({
   },
   error: {
     ...typography.caption,
-    color: colors.danger,
+    color: colors.dangerStrong,
     marginTop: spacing.xs,
   },
   hint: {
