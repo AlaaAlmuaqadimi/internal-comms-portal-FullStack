@@ -142,7 +142,7 @@ async function writeAudit(conn, { actorUserId, action, entityType, entityId, ip,
  * employees without a login account) is "employee". `orgUnitId` matches the
  * selected unit and all of its descendants.
  */
-export async function listEmployees({ q = '', roleCode, orgUnitId } = {}) {
+export async function listEmployees({ q = '', roleCode, orgUnitId, status } = {}) {
   const params = [];
   const conditions = ['e.deleted_at IS NULL'];
   let cte = '';
@@ -184,6 +184,18 @@ export async function listEmployees({ q = '', roleCode, orgUnitId } = {}) {
       JOIN roles r ON r.id = ur.role_id
       WHERE ur.user_id = u.id AND r.code = 'admin'
     )`);
+  }
+
+  // Account status vs. live presence. Deactivated employees are never shown as
+  // online, so both presence filters require an active row.
+  if (status === 'active') {
+    conditions.push('e.is_active = 1');
+  } else if (status === 'inactive') {
+    conditions.push('e.is_active = 0');
+  } else if (status === 'online') {
+    conditions.push("e.is_active = 1 AND e.presence = 'online'");
+  } else if (status === 'offline') {
+    conditions.push("e.is_active = 1 AND e.presence <> 'online'");
   }
 
   const [rows] = await pool.execute(
@@ -235,11 +247,13 @@ function validationError(field, message) {
  * - Extension is unique among active, non-deleted employees, excluding the
  *   current one.
  * - A blank password leaves the existing credential untouched.
+ * - `isActive` deactivates the employee record and its login account, forces
+ *   presence to offline and revokes the account's active refresh tokens.
  */
 export async function updateEmployee(employeeId, input, actor, ctx = {}) {
   return withTransaction(async (conn) => {
     const [employeeRows] = await conn.execute(
-      `SELECT e.id, u.id AS user_id, u.username
+      `SELECT e.id, e.is_active, u.id AS user_id, u.username
        FROM employees e
        LEFT JOIN users u ON u.employee_id = e.id AND u.deleted_at IS NULL
        WHERE e.id = ? AND e.deleted_at IS NULL
@@ -251,6 +265,10 @@ export async function updateEmployee(employeeId, input, actor, ctx = {}) {
       throw new AppError(404, ErrorCodes.EMPLOYEE_NOT_FOUND, 'Employee not found');
     }
     const existing = employeeRows[0];
+    const nextIsActive =
+      typeof input.isActive === 'boolean'
+        ? input.isActive
+        : Number(existing.is_active) === 1;
 
     const [orgRows] = await conn.execute(
       'SELECT id FROM org_units WHERE id = ? AND deleted_at IS NULL LIMIT 1',
@@ -283,7 +301,8 @@ export async function updateEmployee(employeeId, input, actor, ctx = {}) {
       await conn.execute(
         `UPDATE employees
          SET org_unit_id = ?, full_name_ar = ?, full_name_en = ?,
-             job_title_ar = ?, email = ?, extension = ?
+             job_title_ar = ?, email = ?, extension = ?,
+             is_active = ?, presence = IF(? = 1, presence, 'offline')
          WHERE id = ?`,
         [
           input.orgUnitId,
@@ -292,6 +311,8 @@ export async function updateEmployee(employeeId, input, actor, ctx = {}) {
           input.jobTitleAr,
           input.email,
           input.extension,
+          nextIsActive ? 1 : 0,
+          nextIsActive ? 1 : 0,
           employeeId,
         ]
       );
@@ -299,15 +320,34 @@ export async function updateEmployee(employeeId, input, actor, ctx = {}) {
       let userId = existing.user_id;
 
       if (userId) {
-        if (input.password) {
-          const passwordHash = await hashPassword(input.password);
+        const passwordHash = input.password ? await hashPassword(input.password) : null;
+        const assignments = ['is_active = ?'];
+        const params = [nextIsActive ? 1 : 0];
+
+        if (passwordHash) {
+          assignments.push(
+            'password_hash = ?',
+            "password_algo = 'argon2id'",
+            'password_changed_at = UTC_TIMESTAMP(3)',
+            'failed_login_count = 0',
+            'locked_until = NULL'
+          );
+          params.push(passwordHash);
+        }
+
+        params.push(userId);
+        await conn.execute(
+          `UPDATE users SET ${assignments.join(', ')} WHERE id = ?`,
+          params
+        );
+
+        // Deactivation must end the account's active sessions immediately.
+        if (!nextIsActive) {
           await conn.execute(
-            `UPDATE users
-             SET password_hash = ?, password_algo = 'argon2id',
-                 password_changed_at = UTC_TIMESTAMP(3),
-                 failed_login_count = 0, locked_until = NULL
-             WHERE id = ?`,
-            [passwordHash, userId]
+            `UPDATE refresh_tokens
+             SET revoked_at = UTC_TIMESTAMP(3)
+             WHERE user_id = ? AND revoked_at IS NULL`,
+            [userId]
           );
         }
       } else {
@@ -318,8 +358,8 @@ export async function updateEmployee(employeeId, input, actor, ctx = {}) {
         await conn.execute(
           `INSERT INTO users
              (id, employee_id, username, password_hash, password_algo, password_changed_at, is_active)
-           VALUES (?, ?, ?, ?, 'argon2id', UTC_TIMESTAMP(3), 1)`,
-          [userId, employeeId, username, passwordHash]
+           VALUES (?, ?, ?, ?, 'argon2id', UTC_TIMESTAMP(3), ?)`,
+          [userId, employeeId, username, passwordHash, nextIsActive ? 1 : 0]
         );
 
         await conn.execute(

@@ -25,7 +25,6 @@ import SearchBar from '../../components/SearchBar';
 import Loading from '../../components/Loading';
 import EmptyState from '../../components/EmptyState';
 import UserAvatar from '../../components/UserAvatar';
-import StatusBadge from '../../components/StatusBadge';
 import CustomButton from '../../components/CustomButton';
 import SelectField from '../../components/SelectField';
 import Modal from '../../components/Modal';
@@ -34,6 +33,7 @@ import { api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
+import usePresence from '../../hooks/usePresence';
 import { flipStyles } from '../../i18n/rtlStyles';
 import { hasRole } from '../../utils/permissions';
 
@@ -56,7 +56,9 @@ const DirectoryScreen = ({ navigation }) => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
-  const [orgFilter, setOrgFilter] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [unitId, setUnitId] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const [orgTree, setOrgTree] = useState([]);
 
@@ -88,7 +90,13 @@ const DirectoryScreen = ({ navigation }) => {
     async (overrides = {}) => {
       const q = overrides.q ?? debouncedSearch;
       const roleCode = overrides.roleCode ?? roleFilter;
-      const orgUnitId = overrides.orgUnitId ?? orgFilter;
+      const department = overrides.departmentId ?? departmentId;
+      const unit = overrides.unitId ?? unitId;
+      // A unit always lives inside the selected department, so the unit id
+      // alone narrows the SQL query enough. The department dropdown only scopes
+      // which units are offered.
+      const orgUnitId = overrides.orgUnitId ?? (unit || department);
+      const status = overrides.status ?? statusFilter;
 
       const requestId = requestRef.current + 1;
       requestRef.current = requestId;
@@ -101,6 +109,7 @@ const DirectoryScreen = ({ navigation }) => {
           q: q.trim(),
           roleCode,
           orgUnitId,
+          status,
         });
         if (requestRef.current !== requestId) return;
         setEmployees(Array.isArray(list) ? list : []);
@@ -117,7 +126,7 @@ const DirectoryScreen = ({ navigation }) => {
         }
       }
     },
-    [debouncedSearch, roleFilter, orgFilter, t]
+    [debouncedSearch, roleFilter, departmentId, unitId, statusFilter, t]
   );
 
   // Re-query whenever the debounced search or a filter changes.
@@ -151,11 +160,30 @@ const DirectoryScreen = ({ navigation }) => {
   const resetFilters = useCallback(() => {
     setSearchQuery('');
     setRoleFilter('');
-    setOrgFilter('');
+    setDepartmentId('');
+    setUnitId('');
+    setStatusFilter('');
     // Run the unfiltered query immediately instead of waiting for the search
     // debounce, so the reset feels instantaneous.
-    loadEmployees({ q: '', roleCode: '', orgUnitId: '' });
+    loadEmployees({
+      q: '',
+      roleCode: '',
+      departmentId: '',
+      unitId: '',
+      orgUnitId: '',
+      status: '',
+    });
   }, [loadEmployees]);
+
+  const handleDepartmentChange = useCallback((value) => {
+    setDepartmentId(value);
+    // Units are scoped to the selected department, so clear a stale unit.
+    setUnitId('');
+  }, []);
+
+  // Live online/offline indicators. The server presence seeds the map; while no
+  // status filter is active the hook keeps a simulated heartbeat running.
+  const { isOnline } = usePresence(employees, { simulate: !statusFilter });
 
   const handleContactPress = (employee) => {
     setSelectedEmployee(employee);
@@ -197,26 +225,79 @@ const DirectoryScreen = ({ navigation }) => {
     [t]
   );
 
-  const orgFilterOptions = useMemo(() => {
-    const options = [{ value: '', label: t('directory.allUnits') }];
+  const departmentOptions = useMemo(() => {
+    const options = [{ value: '', label: t('directory.allDepartments') }];
     const arrow = isRTL ? '\u2190' : '\u2192';
 
-    const visit = (nodes, depth, parentPath) => {
+    const visit = (nodes, parentKind, parentPath) => {
       for (const unit of nodes || []) {
         const name = localizeText(unit.nameAr || unit.nameEn || unit.code);
         const path = parentPath ? `${parentPath} ${arrow} ${name}` : name;
-        options.push({
-          value: unit.id,
-          label: name,
-          description: depth > 0 ? path : undefined,
-        });
-        visit(unit.children, depth + 1, path);
+        const isAdministration =
+          ['directorate', 'office', 'deputy'].includes(unit.kind) &&
+          ['root', 'deputy', 'group'].includes(parentKind);
+
+        if (isAdministration) {
+          options.push({
+            value: unit.id,
+            label: name,
+            description: parentPath || undefined,
+          });
+        }
+
+        visit(unit.children, unit.kind, path);
       }
     };
 
-    visit(orgTree, 0, '');
+    visit(orgTree, 'root', '');
     return options;
   }, [orgTree, isRTL, language, t]);
+
+  const unitOptions = useMemo(() => {
+    const options = [{ value: '', label: t('directory.allUnits') }];
+    const arrow = isRTL ? '\u2190' : '\u2192';
+
+    const findUnit = (nodes) => {
+      for (const unit of nodes || []) {
+        if (unit.id === departmentId) return unit;
+        const match = findUnit(unit.children);
+        if (match) return match;
+      }
+      return null;
+    };
+
+    // With a department selected the unit list is scoped to its descendants;
+    // otherwise every section in the tree is offered.
+    const roots = departmentId ? findUnit(orgTree)?.children || [] : orgTree;
+
+    const visit = (nodes, parentPath) => {
+      for (const unit of nodes || []) {
+        const name = localizeText(unit.nameAr || unit.nameEn || unit.code);
+        if (unit.kind === 'section') {
+          options.push({
+            value: unit.id,
+            label: name,
+            description: parentPath || undefined,
+          });
+        }
+        visit(unit.children, parentPath ? `${parentPath} ${arrow} ${name}` : name);
+      }
+    };
+
+    visit(roots, '');
+    return options;
+  }, [orgTree, departmentId, isRTL, language, t]);
+
+  const statusOptions = useMemo(
+    () => [
+      { value: '', label: t('directory.allStatuses') },
+      { value: 'active', label: t('directory.statusActive') },
+      { value: 'inactive', label: t('directory.statusInactive') },
+      { value: 'online', label: t('directory.statusOnline') },
+      { value: 'offline', label: t('directory.statusOffline') },
+    ],
+    [t]
+  );
 
   // أحجام متجاوبة
   const avatarSize = isSmallScreen ? 'small' : isLargeScreen ? 'large' : 'medium';
@@ -226,33 +307,18 @@ const DirectoryScreen = ({ navigation }) => {
   const notAvailable = t('directory.notAvailable');
 
   const renderEmployee = ({ item }) => {
-    const detailRows = [
-      {
-        icon: 'business-outline',
-        label: t('directory.managementLabel'),
-        value: item.parentUnitNameAr || item.orgUnitNameAr || notAvailable,
-      },
-      {
-        icon: 'git-branch-outline',
-        label: t('directory.unitLabel'),
-        value: item.orgUnitNameAr || notAvailable,
-      },
-      {
-        icon: 'call-outline',
-        label: t('directory.extensionLabel'),
-        value: item.extension || notAvailable,
-      },
-      {
-        icon: 'mail-outline',
-        label: t('directory.emailLabel'),
-        value: item.email || notAvailable,
-      },
-      {
-        icon: 'at-outline',
-        label: t('directory.usernameLabel'),
-        value: item.username || t('directory.noAccount'),
-      },
-    ];
+    const online = isOnline(item);
+    const accountActive = item.isActive !== false;
+    // Employees attached to a section show both the parent administration and
+    // the section; employees attached directly to an administration show only
+    // that administration.
+    const isSection = item.orgUnitKind === 'section';
+    const departmentName =
+      (isSection ? item.parentUnitNameAr : item.orgUnitNameAr) ||
+      item.parentUnitNameAr ||
+      item.orgUnitNameAr ||
+      notAvailable;
+    const showUnit = isSection && !!item.orgUnitNameAr;
 
     return (
       <View style={[styles.employeeCard, { padding: cardPadding }]}>
@@ -261,16 +327,58 @@ const DirectoryScreen = ({ navigation }) => {
             person={{ name: item.fullNameAr, avatar: item.avatarUrl }}
             size={avatarSize}
           />
+
           <View style={styles.employeeInfo}>
-            <Text style={[styles.employeeName, isSmallScreen && styles.employeeNameSmall]}>
+            <Text
+              style={[styles.employeeName, isSmallScreen && styles.employeeNameSmall]}
+              numberOfLines={2}
+            >
               {item.fullNameAr}
             </Text>
+
             {item.fullNameEn ? (
-              <Text style={styles.employeeEnglishName}>{item.fullNameEn}</Text>
+              <Text style={styles.employeeEnglishName} numberOfLines={1}>
+                {item.fullNameEn}
+              </Text>
             ) : null}
-            <Text style={[styles.employeeUnit, isSmallScreen && styles.employeeUnitSmall]}>
+
+            <Text
+              style={[styles.employeeUnit, isSmallScreen && styles.employeeUnitSmall]}
+              numberOfLines={1}
+            >
               {item.jobTitleAr || notAvailable}
             </Text>
+
+            <View style={styles.presenceRow}>
+              <View
+                style={[
+                  styles.presenceBadge,
+                  online ? styles.presenceBadgeOnline : styles.presenceBadgeOffline,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.presenceDotHalo,
+                    online ? styles.presenceDotHaloOnline : styles.presenceDotHaloOffline,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.presenceDot,
+                      online ? styles.presenceDotOnline : styles.presenceDotOffline,
+                    ]}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.presenceText,
+                    online ? styles.presenceTextOnline : styles.presenceTextOffline,
+                  ]}
+                >
+                  {online ? t('directory.statusOnline') : t('directory.statusOffline')}
+                </Text>
+              </View>
+            </View>
           </View>
 
           {isAdmin ? (
@@ -286,21 +394,57 @@ const DirectoryScreen = ({ navigation }) => {
           ) : null}
         </View>
 
-        <View style={styles.employeeDetails}>
-          {detailRows.map((row) => (
-            <View key={row.label} style={styles.detailRow}>
-              <Ionicons name={row.icon} size={14} color={colors.textLight} />
-              <Text style={[styles.employeeDetail, isSmallScreen && styles.employeeDetailSmall]}>
-                <Text style={styles.detailLabel}>{row.label}</Text>
-                {row.value}
+        <View style={styles.orgBlock}>
+          <View style={styles.orgRow}>
+            <View style={styles.orgIcon}>
+              <Ionicons name="business" size={15} color={colors.primaryLight} />
+            </View>
+            <View style={styles.orgTextWrap}>
+              <Text style={styles.orgLabel}>{t('directory.managementLabel')}</Text>
+              <Text style={styles.orgValue} numberOfLines={2}>
+                {departmentName}
               </Text>
             </View>
-          ))}
+          </View>
+
+          {showUnit ? (
+            <View style={styles.orgRow}>
+              <View style={styles.orgIcon}>
+                <Ionicons name="git-branch" size={15} color={colors.primaryLight} />
+              </View>
+              <View style={styles.orgTextWrap}>
+                <Text style={styles.orgLabel}>{t('directory.unitLabel')}</Text>
+                <Text style={styles.orgValue} numberOfLines={2}>
+                  {item.orgUnitNameAr}
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </View>
+
+        <View style={styles.metaRow}>
+          <View style={styles.metaItem}>
+            <Ionicons name="call-outline" size={14} color={colors.textLight} />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {item.extension || notAvailable}
+            </Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Ionicons name="mail-outline" size={14} color={colors.textLight} />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {item.email || notAvailable}
+            </Text>
+          </View>
+        </View>
+
+        {item.username ? (
+          <Text style={styles.usernameText} numberOfLines={1}>
+            @{item.username}
+          </Text>
+        ) : null}
 
         <View style={styles.employeeActions}>
           <View style={styles.employeeBadges}>
-            <StatusBadge status={item.presence === 'online' ? 'online' : 'offline'} />
             <View
               style={[
                 styles.roleBadge,
@@ -316,6 +460,31 @@ const DirectoryScreen = ({ navigation }) => {
                 {item.roleCode === 'admin'
                   ? t('directory.admin')
                   : t('directory.employee')}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.accountBadge,
+                accountActive ? styles.accountBadgeActive : styles.accountBadgeInactive,
+              ]}
+            >
+              <Ionicons
+                name={accountActive ? 'checkmark-circle' : 'pause-circle'}
+                size={12}
+                color={accountActive ? colors.success : colors.danger}
+              />
+              <Text
+                style={[
+                  styles.accountBadgeText,
+                  accountActive
+                    ? styles.accountBadgeTextActive
+                    : styles.accountBadgeTextInactive,
+                ]}
+              >
+                {accountActive
+                  ? t('directory.activeAccount')
+                  : t('directory.inactiveAccount')}
               </Text>
             </View>
           </View>
@@ -388,23 +557,42 @@ const DirectoryScreen = ({ navigation }) => {
 
         <View style={styles.filterRow}>
           <SelectField
+            label={t('directory.departmentFilter')}
+            value={departmentId}
+            options={departmentOptions}
+            onSelect={handleDepartmentChange}
+            placeholder={t('directory.allDepartments')}
+            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
+            maxListHeight={240}
+            emptyText={t('org.noOptions')}
+          />
+          <SelectField
+            label={t('directory.unitFilter')}
+            value={unitId}
+            options={unitOptions}
+            onSelect={setUnitId}
+            placeholder={t('directory.allUnits')}
+            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
+            maxListHeight={220}
+            emptyText={t('org.noOptions')}
+          />
+          <SelectField
+            label={t('directory.statusFilter')}
+            value={statusFilter}
+            options={statusOptions}
+            onSelect={setStatusFilter}
+            placeholder={t('directory.allStatuses')}
+            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
+            maxListHeight={220}
+          />
+          <SelectField
             label={t('directory.roleFilter')}
             value={roleFilter}
             options={roleFilterOptions}
             onSelect={setRoleFilter}
             placeholder={t('directory.allRoles')}
             style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
-            maxListHeight={200}
-          />
-          <SelectField
-            label={t('directory.orgFilter')}
-            value={orgFilter}
-            options={orgFilterOptions}
-            onSelect={setOrgFilter}
-            placeholder={t('directory.allUnits')}
-            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
-            maxListHeight={240}
-            emptyText={t('org.noOptions')}
+            maxListHeight={180}
           />
         </View>
 
@@ -655,11 +843,11 @@ const rawStyles = StyleSheet.create({
   },
   employeeCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.md,
-    ...shadows.sm,
+    ...shadows.md,
   },
   employeeHeader: {
     flexDirection: 'row',
@@ -669,10 +857,12 @@ const rawStyles = StyleSheet.create({
   },
   employeeInfo: {
     flex: 1,
+    paddingTop: 2,
   },
   employeeName: {
     ...typography.h4,
     color: colors.text,
+    fontFamily: 'Cairo_700Bold',
   },
   employeeNameSmall: {
     fontSize: 14,
@@ -690,6 +880,62 @@ const rawStyles = StyleSheet.create({
   employeeUnitSmall: {
     fontSize: 11,
   },
+  presenceRow: {
+    flexDirection: 'row',
+    marginTop: spacing.xs,
+  },
+  presenceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+  },
+  presenceBadgeOnline: {
+    backgroundColor: colors.successLight,
+  },
+  presenceBadgeOffline: {
+    backgroundColor: colors.background,
+  },
+  presenceDotHalo: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presenceDotHaloOnline: {
+    backgroundColor: '#cfe9dd',
+  },
+  presenceDotHaloOffline: {
+    backgroundColor: '#e2e8ee',
+  },
+  presenceDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  presenceDotOnline: {
+    backgroundColor: colors.success,
+    shadowColor: colors.success,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  presenceDotOffline: {
+    backgroundColor: colors.textLight,
+  },
+  presenceText: {
+    ...typography.captionBold,
+  },
+  presenceTextOnline: {
+    color: colors.success,
+  },
+  presenceTextOffline: {
+    color: colors.textSecondary,
+  },
   editButton: {
     width: 38,
     height: 38,
@@ -700,29 +946,94 @@ const rawStyles = StyleSheet.create({
     borderColor: colors.borderDark,
     backgroundColor: colors.surface,
   },
-  employeeDetails: {
+  orgBlock: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
     marginBottom: spacing.sm,
     gap: spacing.xs,
   },
-  detailRow: {
+  orgRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  orgIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: borderRadius.md,
+    backgroundColor: '#eef4fa',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orgTextWrap: {
+    flex: 1,
+  },
+  orgLabel: {
+    ...typography.caption,
+    color: colors.textLight,
+  },
+  orgValue: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontFamily: 'Cairo_700Bold',
+    marginTop: 1,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    flexBasis: '47%',
+    flexGrow: 1,
+    minWidth: 120,
   },
-  employeeDetail: {
+  metaText: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    flex: 1,
+    flexShrink: 1,
   },
-  employeeDetailSmall: {
-    fontSize: 11,
+  usernameText: {
+    ...typography.caption,
+    color: colors.textLight,
+    marginBottom: spacing.sm,
   },
-  detailLabel: {
-    fontFamily: 'Cairo_700Bold',
-    color: colors.text,
+  employeeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  accountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+  },
+  accountBadgeActive: {
+    backgroundColor: colors.successLight,
+    borderColor: '#bfe0d3',
+  },
+  accountBadgeInactive: {
+    backgroundColor: colors.dangerLight,
+    borderColor: '#f0c4c4',
+  },
+  accountBadgeText: {
+    ...typography.captionBold,
+  },
+  accountBadgeTextActive: {
+    color: colors.success,
+  },
+  accountBadgeTextInactive: {
+    color: colors.danger,
   },
   employeeActions: {
     flexDirection: 'row',

@@ -11,6 +11,10 @@ import {
 
 const uuid = z.string().uuid('Please select a valid organizational unit.');
 
+// Directory status filter. `online`/`offline` describe the live presence of an
+// active employee; `active`/`inactive` describe the account itself.
+export const EMPLOYEE_STATUSES = ['active', 'inactive', 'online', 'offline'];
+
 export const listEmployeesQuerySchema = z.object({
   q: z
     .string()
@@ -24,6 +28,11 @@ export const listEmployeesQuerySchema = z.object({
     })
     .optional(),
   orgUnitId: uuid.optional(),
+  status: z
+    .enum(EMPLOYEE_STATUSES, {
+      errorMap: () => ({ message: 'Please select a valid status.' }),
+    })
+    .optional(),
 });
 
 /**
@@ -41,6 +50,10 @@ export const updateEmployeeSchema = z
     roleCode,
     orgUnitId: uuid,
     password: optionalPassword,
+    // Optional so older clients keep working; omitted means "leave unchanged".
+    isActive: z
+      .boolean({ invalid_type_error: 'Account status must be true or false.' })
+      .optional(),
   })
   .transform((data) => ({
     ...data,

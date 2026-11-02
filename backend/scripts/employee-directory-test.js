@@ -155,6 +155,17 @@ async function main() {
     assert.equal(parsed.success, true);
     assert.equal(parsed.data.password, undefined);
   });
+  check('isActive accepts a boolean', () => {
+    const parsed = updateEmployeeSchema.safeParse(updatePayload({ isActive: false }));
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data.isActive, false);
+  });
+  check('isActive rejects a non-boolean', () =>
+    assert.equal(
+      firstUpdateMessage({ isActive: 'false' }),
+      'Account status must be true or false.'
+    )
+  );
 
   // --- real directory listing ---------------------------------------------
   const directory = await employees.listEmployees({});
@@ -168,6 +179,31 @@ async function main() {
 
   const searched = await employees.listEmployees({ q: 'a' });
   check('search is applied server-side', () => assert.ok(searched.length <= directory.length));
+
+  // --- status filter (active / inactive / online / offline) -----------------
+  const activeRows = await employees.listEmployees({ status: 'active' });
+  check('active status filter returns only active employees', () =>
+    assert.ok(activeRows.length > 0 && activeRows.every((row) => row.isActive))
+  );
+
+  const inactiveRows = await employees.listEmployees({ status: 'inactive' });
+  check('inactive status filter returns only inactive employees', () =>
+    assert.ok(inactiveRows.every((row) => !row.isActive))
+  );
+
+  const onlineRows = await employees.listEmployees({ status: 'online' });
+  check('online status filter returns active online employees', () =>
+    assert.ok(
+      onlineRows.every((row) => row.isActive && row.presence === 'online')
+    )
+  );
+
+  const offlineRows = await employees.listEmployees({ status: 'offline' });
+  check('offline status filter excludes online employees', () =>
+    assert.ok(
+      offlineRows.every((row) => row.isActive && row.presence !== 'online')
+    )
+  );
 
   // --- org-unit filter includes descendants --------------------------------
   const [[parentUnit]] = await pool.query(
@@ -504,6 +540,68 @@ async function main() {
   check('availability still reports other employees as taken', () =>
     assert.equal(otherEmailAvailability.available, false)
   );
+
+  // --- account status toggle ----------------------------------------------
+  const statusPayload = {
+    fullNameAr: 'موظف دليل محدث',
+    fullNameEn: `Updated Directory ${suffix}`,
+    jobTitleAr: 'أخصائي محدث',
+    email: updatedEmail,
+    extension: updatedExtension,
+    orgUnitId: otherOrg.id,
+    roleCode: 'admin',
+  };
+
+  const deactivated = await employees.updateEmployee(
+    first.employeeId,
+    updateEmployeeSchema.parse({ ...statusPayload, isActive: false }),
+    actor
+  );
+  check('deactivating marks the employee inactive and offline', () => {
+    assert.equal(deactivated.isActive, false);
+    assert.equal(deactivated.presence, 'offline');
+  });
+
+  const [[userActive]] = await pool.execute(
+    'SELECT is_active FROM users WHERE employee_id = ?',
+    [first.employeeId]
+  );
+  check('deactivation disables the login account', () =>
+    assert.equal(Number(userActive.is_active), 0)
+  );
+
+  const inactiveSearch = await employees.listEmployees({
+    q: updatedEmail,
+    status: 'inactive',
+  });
+  check('inactive filter finds the deactivated employee', () =>
+    assert.equal(inactiveSearch[0]?.id, first.employeeId)
+  );
+
+  const activeSearch = await employees.listEmployees({
+    q: updatedEmail,
+    status: 'active',
+  });
+  check('active filter excludes the deactivated employee', () =>
+    assert.equal(activeSearch.length, 0)
+  );
+
+  const freedExtension = await users.checkAvailability({
+    field: 'extension',
+    value: updatedExtension,
+  });
+  check('deactivation frees the extension number', () =>
+    assert.equal(freedExtension.available, true)
+  );
+
+  const reactivated = await employees.updateEmployee(
+    first.employeeId,
+    updateEmployeeSchema.parse({ ...statusPayload, isActive: true }),
+    actor
+  );
+  check('reactivation restores the employee and its account', () => {
+    assert.equal(reactivated.isActive, true);
+  });
 
   // --- not found -----------------------------------------------------------
   await assert.rejects(

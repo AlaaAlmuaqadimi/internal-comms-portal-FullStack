@@ -232,13 +232,14 @@ export const api = {
   // Employees
   employees: {
     // Server-side search across name (AR/EN), username, email and extension.
-    // Role and org-unit filters are applied in SQL; the org-unit filter also
-    // includes every descendant unit.
-    list: async ({ q, roleCode, orgUnitId } = {}) => {
+    // Role, org-unit and status filters are applied in SQL; the org-unit filter
+    // also includes every descendant unit.
+    list: async ({ q, roleCode, orgUnitId, status } = {}) => {
       const params = [];
       if (q) params.push(`q=${encodeURIComponent(q)}`);
       if (roleCode) params.push(`roleCode=${encodeURIComponent(roleCode)}`);
       if (orgUnitId) params.push(`orgUnitId=${encodeURIComponent(orgUnitId)}`);
+      if (status) params.push(`status=${encodeURIComponent(status)}`);
       const query = params.length ? `?${params.join('&')}` : '';
       const { data } = await request(`/api/employees${query}`);
       return data.employees;

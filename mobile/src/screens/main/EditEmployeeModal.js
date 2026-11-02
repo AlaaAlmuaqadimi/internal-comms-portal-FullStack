@@ -9,6 +9,7 @@ import {
   Pressable,
   ActivityIndicator,
   Modal,
+  Switch,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -70,6 +71,7 @@ const EditEmployeeModal = ({
     extension: '',
     roleCode: '',
     orgUnitId: '',
+    isActive: true,
   });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -114,6 +116,7 @@ const EditEmployeeModal = ({
       extension: employee.extension || '',
       roleCode: employee.roleCode || 'employee',
       orgUnitId: employee.orgUnitId || '',
+      isActive: employee.isActive !== false,
     });
     setErrors({});
     setCheckingFields({});
@@ -328,6 +331,7 @@ const EditEmployeeModal = ({
         extension: formData.extension.trim(),
         roleCode: formData.roleCode,
         orgUnitId: formData.orgUnitId,
+        isActive: formData.isActive,
       };
       if (formData.password) payload.password = formData.password;
 
@@ -596,6 +600,64 @@ const EditEmployeeModal = ({
                   ) : null}
                 </View>
               </View>
+
+              <View style={[styles.section, styles.sectionLast]}>
+                <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
+                  {t('editEmployee.accountStatus')}
+                </Text>
+
+                <View style={styles.statusCard}>
+                  <View
+                    style={[
+                      styles.statusIcon,
+                      formData.isActive ? styles.statusIconActive : styles.statusIconInactive,
+                    ]}
+                  >
+                    <Ionicons
+                      name={formData.isActive ? 'shield-checkmark' : 'shield-outline'}
+                      size={20}
+                      color={formData.isActive ? colors.success : colors.danger}
+                    />
+                  </View>
+
+                  <View style={styles.statusText}>
+                    <Text style={[styles.statusTitle, { textAlign: align }]}>
+                      {formData.isActive
+                        ? t('editEmployee.activeStatus')
+                        : t('editEmployee.inactiveStatus')}
+                    </Text>
+                    <Text style={[styles.statusHint, { textAlign: align }]}>
+                      {t('editEmployee.accountStatusHint')}
+                    </Text>
+                  </View>
+
+                  <Switch
+                    value={formData.isActive}
+                    onValueChange={(value) => {
+                      setFormData((prev) => ({ ...prev, isActive: value }));
+                      clearError('general');
+                    }}
+                    trackColor={{ false: colors.borderDark, true: colors.success }}
+                    thumbColor={colors.surface}
+                    ios_backgroundColor={colors.borderDark}
+                    accessibilityLabel={t('editEmployee.accountStatus')}
+                    accessibilityRole="switch"
+                  />
+                </View>
+
+                {!formData.isActive ? (
+                  <View style={styles.deactivateNotice}>
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={16}
+                      color={colors.dangerStrong}
+                    />
+                    <Text style={styles.deactivateNoticeText}>
+                      {t('editEmployee.deactivateWarning')}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
           </ScrollView>
 
@@ -701,6 +763,9 @@ const rawStyles = StyleSheet.create({
   section: {
     marginBottom: spacing.lg,
   },
+  sectionLast: {
+    marginBottom: 0,
+  },
   sectionTitle: {
     ...typography.h4,
     color: colors.text,
@@ -753,6 +818,60 @@ const rawStyles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  statusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    ...shadows.sm,
+  },
+  statusIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusIconActive: {
+    backgroundColor: colors.successLight,
+  },
+  statusIconInactive: {
+    backgroundColor: colors.dangerLight,
+  },
+  statusText: {
+    flex: 1,
+  },
+  statusTitle: {
+    ...typography.bodyBold,
+    color: colors.text,
+  },
+  statusHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  deactivateNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#f0c4c4',
+    backgroundColor: colors.dangerLight,
+  },
+  deactivateNoticeText: {
+    ...typography.caption,
+    color: colors.dangerStrong,
+    flex: 1,
+    lineHeight: 16,
   },
   footer: {
     flexDirection: 'row',
