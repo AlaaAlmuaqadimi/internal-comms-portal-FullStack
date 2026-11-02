@@ -1,0 +1,2726 @@
+﻿
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\app.js =====
+
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import morgan from 'morgan';
+import { env } from './config/env.js';
+import routes from './routes/index.js';
+import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
+
+export function createApp() {
+  const app = express();
+
+  app.disable('x-powered-by');
+  if (env.isProduction) {
+    app.set('trust proxy', 1);
+  }
+
+  app.use(helmet());
+  app.use(
+    cors({
+      origin: env.corsOrigins.length > 0 ? env.corsOrigins : true,
+      credentials: true,
+    })
+  );
+  app.use(express.json({ limit: '100kb' }));
+  if (env.nodeEnv !== 'test') {
+    app.use(morgan(env.logFormat));
+  }
+
+  app.get('/health', (_req, res) => {
+    res.json({ success: true, status: 'ok' });
+  });
+
+  app.use('/api', routes);
+
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+
+  return app;
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\server.js =====
+
+import { createApp } from './app.js';
+import { env, assertAuthKeysConfigured } from './config/env.js';
+import { closePool } from './db/pool.js';
+
+assertAuthKeysConfigured();
+
+const app = createApp();
+const server = app.listen(env.port, () => {
+  console.log(`[server] listening on http://localhost:${env.port} (${env.nodeEnv})`);
+});
+
+function shutdown(signal) {
+  console.log(`[server] ${signal} received, shutting down`);
+  server.close(async () => {
+    await closePool().catch(() => {});
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\config\env.js =====
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+import { z } from 'zod';
+
+const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const repoRoot = path.resolve(backendRoot, '..');
+
+dotenv.config({ path: path.join(repoRoot, '.env') });
+dotenv.config({ path: path.join(backendRoot, '.env'), override: true });
+
+function readKey(inlineValue, fileValue, label) {
+  if (inlineValue && inlineValue.trim() !== '') {
+    return inlineValue.replace(/\\n/g, '\n');
+  }
+  if (fileValue && fileValue.trim() !== '') {
+    const resolved = path.isAbsolute(fileValue)
+      ? fileValue
+      : path.resolve(backendRoot, fileValue);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Config: ${label} file not found at ${resolved}`);
+    }
+    return fs.readFileSync(resolved, 'utf8');
+  }
+  return null;
+}
+
+const schema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  PORT: z.coerce.number().int().positive().default(4000),
+  CORS_ORIGINS: z.string().default(''),
+  LOG_FORMAT: z.string().default('dev'),
+
+  DB_HOST: z.string().default('127.0.0.1'),
+  DB_PORT: z.coerce.number().int().positive().default(3306),
+  DB_NAME: z.string().default('internal_comms'),
+  DB_USER: z.string().default('app_rw'),
+  DB_PASSWORD: z.string().default(''),
+  DB_CONNECTION_LIMIT: z.coerce.number().int().positive().default(10),
+
+  JWT_PRIVATE_KEY: z.string().optional().default(''),
+  JWT_PUBLIC_KEY: z.string().optional().default(''),
+  JWT_PRIVATE_KEY_PATH: z.string().optional().default(''),
+  JWT_PUBLIC_KEY_PATH: z.string().optional().default(''),
+  JWT_ISSUER: z.string().default('internal-comms-portal'),
+  JWT_AUDIENCE: z.string().default('internal-comms-portal-app'),
+  ACCESS_TOKEN_TTL: z.string().default('15m'),
+
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+
+  MAX_FAILED_LOGINS: z.coerce.number().int().positive().default(5),
+  ACCOUNT_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
+
+  ARGON2_MEMORY_KIB: z.coerce.number().int().positive().default(19456),
+  ARGON2_TIME_COST: z.coerce.number().int().positive().default(2),
+  ARGON2_PARALLELISM: z.coerce.number().int().positive().default(1),
+
+  LOGIN_RATE_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
+  LOGIN_RATE_MAX: z.coerce.number().int().positive().default(10),
+});
+
+const parsed = schema.safeParse(process.env);
+if (!parsed.success) {
+  const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`);
+  throw new Error(`Invalid environment configuration:\n${issues.join('\n')}`);
+}
+
+const raw = parsed.data;
+
+const jwtPrivateKey = readKey(raw.JWT_PRIVATE_KEY, raw.JWT_PRIVATE_KEY_PATH, 'JWT_PRIVATE_KEY');
+const jwtPublicKey = readKey(raw.JWT_PUBLIC_KEY, raw.JWT_PUBLIC_KEY_PATH, 'JWT_PUBLIC_KEY');
+
+export const env = {
+  nodeEnv: raw.NODE_ENV,
+  isProduction: raw.NODE_ENV === 'production',
+  port: raw.PORT,
+  corsOrigins: raw.CORS_ORIGINS.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+  logFormat: raw.LOG_FORMAT,
+
+  db: {
+    host: raw.DB_HOST,
+    port: raw.DB_PORT,
+    database: raw.DB_NAME,
+    user: raw.DB_USER,
+    password: raw.DB_PASSWORD,
+    connectionLimit: raw.DB_CONNECTION_LIMIT,
+  },
+
+  jwt: {
+    privateKey: jwtPrivateKey,
+    publicKey: jwtPublicKey,
+    issuer: raw.JWT_ISSUER,
+    audience: raw.JWT_AUDIENCE,
+    accessTokenTtl: raw.ACCESS_TOKEN_TTL,
+  },
+
+  refreshTokenTtlDays: raw.REFRESH_TOKEN_TTL_DAYS,
+
+  lockout: {
+    maxFailedLogins: raw.MAX_FAILED_LOGINS,
+    lockMinutes: raw.ACCOUNT_LOCK_MINUTES,
+  },
+
+  argon2: {
+    memoryCost: raw.ARGON2_MEMORY_KIB,
+    timeCost: raw.ARGON2_TIME_COST,
+    parallelism: raw.ARGON2_PARALLELISM,
+  },
+
+  loginRateLimit: {
+    windowMs: raw.LOGIN_RATE_WINDOW_MINUTES * 60 * 1000,
+    max: raw.LOGIN_RATE_MAX,
+  },
+};
+
+export function assertAuthKeysConfigured() {
+  if (!env.jwt.privateKey || !env.jwt.publicKey) {
+    throw new Error(
+      'Signing keys are not configured. Run `npm run keys` to generate an ' +
+        'RS256 keypair, or set JWT_PRIVATE_KEY / JWT_PUBLIC_KEY (PEM).'
+    );
+  }
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\db\pool.js =====
+
+import mysql from 'mysql2/promise';
+import { env } from '../config/env.js';
+
+export const pool = mysql.createPool({
+  host: env.db.host,
+  port: env.db.port,
+  user: env.db.user,
+  password: env.db.password,
+  database: env.db.database,
+  connectionLimit: env.db.connectionLimit,
+  waitForConnections: true,
+  queueLimit: 0,
+  charset: 'utf8mb4',
+  timezone: 'Z', // interpret/emit DATETIME values as UTC
+  dateStrings: false,
+  namedPlaceholders: false,
+  multipleStatements: false,
+  supportBigNumbers: true,
+  bigNumberStrings: false,
+  decimalNumbers: false,
+});
+
+export function query(sql, params) {
+  return pool.execute(sql, params);
+}
+
+export async function withTransaction(fn) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await fn(conn);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function closePool() {
+  await pool.end();
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\db\scope.js =====
+
+import { pool } from './pool.js';
+
+/**
+ * Returns true when `targetOrgUnitId` is inside the subtree rooted at
+ * `scopeOrgUnitId` (inclusive). Used by requirePermission to enforce the
+ * org-scoped rows in user_roles via a recursive CTE.
+ */
+export async function isOrgUnitWithinScope(scopeOrgUnitId, targetOrgUnitId) {
+  if (!scopeOrgUnitId || !targetOrgUnitId) return false;
+  if (scopeOrgUnitId === targetOrgUnitId) return true;
+
+  const [rows] = await pool.execute(
+    `WITH RECURSIVE subtree AS (
+       SELECT id FROM org_units WHERE id = ?
+       UNION ALL
+       SELECT o.id
+       FROM org_units o
+       JOIN subtree s ON o.parent_id = s.id
+       WHERE o.deleted_at IS NULL
+     )
+     SELECT 1 AS found FROM subtree WHERE id = ? LIMIT 1`,
+    [scopeOrgUnitId, targetOrgUnitId]
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Builds a human-readable "Root / Directorate / Section" path for an org unit.
+ */
+export async function getOrgUnitPath(orgUnitId) {
+  if (!orgUnitId) return null;
+  const [rows] = await pool.execute(
+    `WITH RECURSIVE ancestors AS (
+       SELECT id, parent_id, name_ar, 0 AS depth
+       FROM org_units WHERE id = ?
+       UNION ALL
+       SELECT o.id, o.parent_id, o.name_ar, a.depth + 1
+       FROM org_units o
+       JOIN ancestors a ON o.id = a.parent_id
+     )
+     SELECT name_ar FROM ancestors ORDER BY depth DESC`,
+    [orgUnitId]
+  );
+  return rows.map((r) => r.name_ar).join(' / ');
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\lib\errors.js =====
+
+export class AppError extends Error {
+  constructor(status, code, message, details) {
+    super(message);
+    this.name = 'AppError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+export const ErrorCodes = {
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  ACCOUNT_INACTIVE: 'ACCOUNT_INACTIVE',
+  ACCOUNT_LOCKED: 'ACCOUNT_LOCKED',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  TOKEN_EXPIRED: 'TOKEN_EXPIRED',
+  REFRESH_INVALID: 'REFRESH_INVALID',
+  REFRESH_REUSED: 'REFRESH_REUSED',
+  FORBIDDEN: 'FORBIDDEN',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  NOT_FOUND: 'NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  ORG_UNIT_NOT_FOUND: 'ORG_UNIT_NOT_FOUND',
+  ORG_UNIT_CODE_TAKEN: 'ORG_UNIT_CODE_TAKEN',
+  ORG_UNIT_ROOT_EXISTS: 'ORG_UNIT_ROOT_EXISTS',
+  ORG_UNIT_ROOT_IMMUTABLE: 'ORG_UNIT_ROOT_IMMUTABLE',
+  ORG_UNIT_CYCLE: 'ORG_UNIT_CYCLE',
+  ORG_UNIT_PARENT_INVALID: 'ORG_UNIT_PARENT_INVALID',
+  ORG_UNIT_HAS_CHILDREN: 'ORG_UNIT_HAS_CHILDREN',
+  ORG_UNIT_HAS_EMPLOYEES: 'ORG_UNIT_HAS_EMPLOYEES',
+};
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\lib\jwt.js =====
+
+import crypto from 'node:crypto';
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
+
+export function signAccessToken(claims) {
+  return jwt.sign(claims, env.jwt.privateKey, {
+    algorithm: 'RS256',
+    expiresIn: env.jwt.accessTokenTtl,
+    issuer: env.jwt.issuer,
+    audience: env.jwt.audience,
+  });
+}
+
+export function verifyAccessToken(token) {
+  return jwt.verify(token, env.jwt.publicKey, {
+    algorithms: ['RS256'],
+    issuer: env.jwt.issuer,
+    audience: env.jwt.audience,
+  });
+}
+
+export function accessTokenTtlSeconds() {
+  const decoded = jwt.decode(
+    jwt.sign({}, env.jwt.privateKey, {
+      algorithm: 'RS256',
+      expiresIn: env.jwt.accessTokenTtl,
+      issuer: env.jwt.issuer,
+      audience: env.jwt.audience,
+    })
+  );
+  return decoded.exp - decoded.iat;
+}
+
+// ---- Opaque refresh tokens ------------------------------------------------
+
+export function generateRefreshToken() {
+  const raw = crypto.randomBytes(32).toString('base64url');
+  return { raw, hash: sha256(raw) };
+}
+
+export function sha256(input) {
+  return crypto.createHash('sha256').update(input).digest();
+}
+
+export function newRefreshFamilyId() {
+  return crypto.randomUUID();
+}
+
+export function newRefreshTokenId() {
+  return crypto.randomUUID();
+}
+
+export function refreshTokenExpiry() {
+  return new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\lib\orgTree.js =====
+
+/**
+ * O(n) flat-to-nested builder for the org_units adjacency list.
+ *
+ * The database returns a flat, already-mapped list. This module never queries
+ * the database, which keeps it usable from the API, workers and tests.
+ */
+
+function compareUnits(a, b) {
+  if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+  const byName = String(a.nameAr || '').localeCompare(String(b.nameAr || ''), 'ar');
+  if (byName !== 0) return byName;
+  return String(a.code || '').localeCompare(String(b.code || ''));
+}
+
+/**
+ * Turns flat units into a forest. Nodes whose parent is outside the supplied
+ * set (for example a scoped query) become roots of their own tree, so callers
+ * never lose rows silently.
+ *
+ * @param {Array<object>} units units with `id`, `parentId`, `sortOrder`, `nameAr`, `code`
+ * @returns {Array<object>} roots, each with `children` and `depth`
+ */
+export function buildOrgTree(units) {
+  const byId = new Map();
+  for (const unit of units) {
+    byId.set(unit.id, { ...unit, children: [] });
+  }
+
+  const roots = [];
+  for (const node of byId.values()) {
+    const parent = node.parentId ? byId.get(node.parentId) : null;
+    if (parent && parent !== node) {
+      parent.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  const visit = (nodes, depth) => {
+    nodes.sort(compareUnits);
+    for (const node of nodes) {
+      node.depth = depth;
+      visit(node.children, depth + 1);
+    }
+  };
+  visit(roots, 0);
+
+  return roots;
+}
+
+/**
+ * Drops inactive nodes *and their descendants*. This is deliberately a prune,
+ * not a flat filter: an active child under an inactive administration must not
+ * float to the top of the tree.
+ */
+export function pruneInactive(nodes) {
+  const result = [];
+  for (const node of nodes) {
+    if (!node.isActive) continue;
+    result.push({ ...node, children: pruneInactive(node.children) });
+  }
+  return result;
+}
+
+/**
+ * Depth-first flatten of a built tree (useful for exporting a stable order).
+ */
+export function flattenOrgTree(nodes) {
+  const out = [];
+  const visit = (list) => {
+    for (const node of list) {
+      const { children, ...unit } = node;
+      out.push(unit);
+      visit(children);
+    }
+  };
+  visit(nodes);
+  return out;
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\lib\password.js =====
+
+import crypto from 'node:crypto';
+import argon2 from 'argon2';
+import { env } from '../config/env.js';
+
+const argonOptions = {
+  type: argon2.argon2id,
+  memoryCost: env.argon2.memoryCost,
+  timeCost: env.argon2.timeCost,
+  parallelism: env.argon2.parallelism,
+};
+
+export function hashPassword(password) {
+  return argon2.hash(password, argonOptions);
+}
+
+export function verifyArgon2(hash, password) {
+  return argon2.verify(hash, password);
+}
+
+/**
+ * Legacy passwords were stored as crypto.scryptSync(password, salt, 64) with a
+ * separate 16-byte hex `passwordSalt` (now `scrypt$<saltHex>$<hashHex>`). We
+ * cannot rehash them offline, so we verify on login and upgrade to Argon2id.
+ *
+ * The deleted legacy source didn't reveal whether the salt was fed as raw
+ * bytes or as the hex string, so both interpretations are tried.
+ */
+export async function verifyLegacyScrypt(stored, password) {
+  if (typeof stored !== 'string' || !stored.startsWith('scrypt$')) return false;
+  const [, saltHex, hashHex] = stored.split('$');
+  if (!saltHex || !hashHex) return false;
+
+  let expected;
+  try {
+    expected = Buffer.from(hashHex, 'hex');
+  } catch {
+    return false;
+  }
+  if (expected.length === 0) return false;
+
+  const salts = [Buffer.from(saltHex, 'hex'), Buffer.from(saltHex, 'utf8')];
+  for (const salt of salts) {
+    const derived = await new Promise((resolve, reject) => {
+      crypto.scrypt(password, salt, expected.length, (err, key) =>
+        err ? reject(err) : resolve(key)
+      );
+    });
+    if (derived.length === expected.length && crypto.timingSafeEqual(derived, expected)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Verifies a password against the stored user record and, when the record is a
+ * legacy scrypt hash, returns a fresh Argon2id hash so the caller can persist
+ * it (transparent upgrade).
+ *
+ * @returns {Promise<{ ok: boolean, upgradedHash: string | null }>}
+ */
+export async function verifyPasswordForUser(userRow, password) {
+  const hash = userRow.password_hash || '';
+  const algo = userRow.password_algo || '';
+
+  const isArgon = algo === 'argon2id' || hash.startsWith('$argon2');
+  if (isArgon) {
+    return { ok: await verifyArgon2(hash, password), upgradedHash: null };
+  }
+
+  if (algo === 'scrypt-legacy' || hash.startsWith('scrypt$')) {
+    const ok = await verifyLegacyScrypt(hash, password);
+    return { ok, upgradedHash: ok ? await hashPassword(password) : null };
+  }
+
+  return { ok: false, upgradedHash: null };
+}
+
+// Constant-work Argon2 verification for unknown usernames, to blunt timing
+// based account enumeration.
+let dummyHashPromise = null;
+export async function dummyVerify(password) {
+  if (!dummyHashPromise) {
+    dummyHashPromise = argon2.hash('timing-equalizer', argonOptions);
+  }
+  try {
+    const dummy = await dummyHashPromise;
+    await argon2.verify(dummy, password);
+  } catch {
+    // ignore
+  }
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\lib\roles.js =====
+
+/**
+ * Role helpers shared by middleware and controllers.
+ *
+ * The platform has a single administrative role: `admin` (Super Admin). All
+ * other roles are operational/read-only and never receive management
+ * permissions.
+ */
+export const ADMIN_ROLE_CODE = 'admin';
+
+export function isAdmin(user) {
+  return Array.isArray(user?.roles) && user.roles.includes(ADMIN_ROLE_CODE);
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\middleware\authenticate.js =====
+
+import { verifyAccessToken } from '../lib/jwt.js';
+import { AppError, ErrorCodes } from '../lib/errors.js';
+
+/**
+ * Verifies the RS256 bearer access token and attaches the principal to
+ * req.user. The token carries the roles and the effective permission map so
+ * authorization is stateless (see requirePermission).
+ */
+export function authenticate(req, _res, next) {
+  const header = req.headers.authorization || '';
+  const [scheme, token] = header.split(' ');
+
+  if (scheme !== 'Bearer' || !token) {
+    return next(new AppError(401, ErrorCodes.UNAUTHORIZED, 'Missing bearer token'));
+  }
+
+  try {
+    const claims = verifyAccessToken(token);
+    req.user = {
+      id: claims.sub,
+      employeeId: claims.emp,
+      username: claims.username,
+      roles: claims.roles || [],
+      permissions: claims.perms || {},
+    };
+    return next();
+  } catch (err) {
+    const expired = err && err.name === 'TokenExpiredError';
+    return next(
+      new AppError(
+        401,
+        expired ? ErrorCodes.TOKEN_EXPIRED : ErrorCodes.UNAUTHORIZED,
+        expired ? 'Access token expired' : 'Invalid access token'
+      )
+    );
+  }
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\middleware\errorHandler.js =====
+
+import { AppError } from '../lib/errors.js';
+import { env } from '../config/env.js';
+
+export function notFoundHandler(_req, res) {
+  res.status(404).json({ success: false, error: 'غير موجود', code: 'NOT_FOUND' });
+}
+
+// eslint-disable-next-line no-unused-vars
+export function errorHandler(err, _req, res, _next) {
+  if (err instanceof AppError) {
+    return res.status(err.status).json({
+      success: false,
+      error: err.message,
+      code: err.code,
+      ...(err.details ? { details: err.details } : {}),
+    });
+  }
+
+  // Body parser / malformed JSON
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ success: false, error: 'بيانات JSON غير صالحة', code: 'BAD_REQUEST' });
+  }
+
+  if (env.nodeEnv !== 'test') {
+    console.error('[error]', err);
+  }
+  return res.status(500).json({ success: false, error: 'حدث خطأ في الخادم', code: 'INTERNAL' });
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\middleware\rateLimit.js =====
+
+import rateLimit from 'express-rate-limit';
+import { env } from '../config/env.js';
+
+export const loginRateLimiter = rateLimit({
+  windowMs: env.loginRateLimit.windowMs,
+  max: env.loginRateLimit.max,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many login attempts. Please try again later.',
+      code: 'RATE_LIMITED',
+    });
+  },
+});
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\middleware\requireAdmin.js =====
+
+import { AppError, ErrorCodes } from '../lib/errors.js';
+import { isAdmin } from '../lib/roles.js';
+
+/**
+ * Guards management routes. Only the Super Admin role (`admin`) may create,
+ * edit or delete platform data.
+ *
+ * Authentication must run first so `req.user` is populated from the access
+ * token. The check is intentionally role-based: the admin role is the single
+ * administrative role in the simplified RBAC model.
+ */
+export function requireAdmin(req, _res, next) {
+  if (!req.user) {
+    return next(new AppError(401, ErrorCodes.UNAUTHORIZED, 'Authentication required'));
+  }
+  if (!isAdmin(req.user)) {
+    return next(new AppError(403, ErrorCodes.FORBIDDEN, 'Administrator access required'));
+  }
+  return next();
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\middleware\requirePermission.js =====
+
+import { AppError, ErrorCodes } from '../lib/errors.js';
+import { isOrgUnitWithinScope } from '../db/scope.js';
+
+function resolveTargetOrgUnitId(req, options) {
+  if (typeof options.resolveScope === 'function') return options.resolveScope(req);
+  return (
+    req.scopeOrgUnitId ??
+    req.params?.orgUnitId ??
+    req.params?.unitId ??
+    req.body?.orgUnitId ??
+    req.body?.unitId ??
+    req.query?.orgUnitId ??
+    req.query?.unitId ??
+    null
+  );
+}
+
+function grantFor(req, permission) {
+  const perms = req.user && req.user.permissions;
+  if (!perms) return null;
+  return perms[permission] || null;
+}
+
+async function hasPermission(req, permission, options) {
+  const grant = grantFor(req, permission);
+  if (!grant) return false;
+  if (grant.global) return true;
+
+  const scopes = Array.isArray(grant.scopes) ? grant.scopes : [];
+  if (scopes.length === 0) return false;
+
+  const targetOrgUnitId = await resolveTargetOrgUnitId(req, options);
+  if (!targetOrgUnitId) return false;
+
+  for (const scopeOrgUnitId of scopes) {
+    if (scopeOrgUnitId === targetOrgUnitId) return true;
+    if (await isOrgUnitWithinScope(scopeOrgUnitId, targetOrgUnitId)) return true;
+  }
+  return false;
+}
+
+/**
+ * Guards a route behind a permission code (e.g. 'employees.manage').
+ *
+ * The access token carries the effective permission map:
+ *   perms: { 'org.manage': { global: false, scopes: ['<uuid>', ...] },
+ *            'employees.read': { global: true, scopes: [] } }
+ *
+ * A global grant always passes. A scoped grant passes only when a target org
+ * unit is available (via options.resolveScope(...) or req.scopeOrgUnitId /
+ * params / body / query) and it falls inside one of the granted subtrees.
+ *
+ * @param {string} permission
+ * @param {{ resolveScope?: (req: import('express').Request) => (string|Promise<string>) }} [options]
+ */
+export function requirePermission(permission, options = {}) {
+  return async function requirePermissionMiddleware(req, _res, next) {
+    try {
+      if (!req.user) {
+        throw new AppError(401, ErrorCodes.UNAUTHORIZED, 'Authentication required');
+      }
+      const allowed = await hasPermission(req, permission, options);
+      if (!allowed) {
+        throw new AppError(403, ErrorCodes.FORBIDDEN, `Missing permission: ${permission}`);
+      }
+      return next();
+    } catch (err) {
+      return next(err);
+    }
+  };
+}
+
+/**
+ * Passes when the principal holds at least one of the given permissions
+ * (same scoping rules as requirePermission).
+ */
+export function requireAnyPermission(permissions, options = {}) {
+  const list = Array.isArray(permissions) ? permissions : [permissions];
+  return async function requireAnyPermissionMiddleware(req, _res, next) {
+    try {
+      if (!req.user) {
+        throw new AppError(401, ErrorCodes.UNAUTHORIZED, 'Authentication required');
+      }
+      for (const permission of list) {
+        if (await hasPermission(req, permission, options)) return next();
+      }
+      throw new AppError(403, ErrorCodes.FORBIDDEN, `Missing permission: one of ${list.join(', ')}`);
+    } catch (err) {
+      return next(err);
+    }
+  };
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\middleware\validate.js =====
+
+import { AppError, ErrorCodes } from '../lib/errors.js';
+
+export function validate(schema) {
+  return (req, _res, next) => {
+    const result = schema.safeParse(req.body);
+    if (!result.success) {
+      const details = result.error.issues.map((i) => ({
+        field: i.path.join('.') || '(root)',
+        message: i.message,
+      }));
+      return next(
+        new AppError(422, ErrorCodes.VALIDATION_ERROR, 'بيانات الطلب غير صالحة', details)
+      );
+    }
+    req.body = result.data;
+    next();
+  };
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\auth\auth.controller.js =====
+
+import * as authService from './auth.service.js';
+
+function requestContext(req) {
+  return { ip: req.ip, userAgent: req.headers['user-agent'] };
+}
+
+export async function login(req, res, next) {
+  try {
+    const result = await authService.login({
+      username: req.body.username,
+      password: req.body.password,
+      ...requestContext(req),
+    });
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function register(req, res, next) {
+  try {
+    const result = await authService.register({
+      ...req.body,
+      ...requestContext(req),
+    });
+    res.status(201).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function refresh(req, res, next) {
+  try {
+    const result = await authService.rotateRefreshToken({
+      refreshToken: req.body.refreshToken,
+      ...requestContext(req),
+    });
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function logout(req, res, next) {
+  try {
+    await authService.logout({
+      refreshToken: req.body?.refreshToken,
+      ...requestContext(req),
+    });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function me(req, res, next) {
+  try {
+    const result = await authService.getMe(req.user.id);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\auth\auth.routes.js =====
+
+import { Router } from 'express';
+import { login, refresh, logout, me, register } from './auth.controller.js';
+import { loginSchema, refreshSchema, logoutSchema, registerSchema } from './auth.schemas.js';
+import { validate } from '../../middleware/validate.js';
+import { authenticate } from '../../middleware/authenticate.js';
+import { loginRateLimiter } from '../../middleware/rateLimit.js';
+
+const router = Router();
+
+router.post('/login', loginRateLimiter, validate(loginSchema), login);
+router.post('/register', loginRateLimiter, validate(registerSchema), register);
+router.post('/refresh', loginRateLimiter, validate(refreshSchema), refresh);
+router.post('/logout', validate(logoutSchema), logout);
+router.get('/me', authenticate, me);
+
+export default router;
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\auth\auth.schemas.js =====
+
+import { z } from 'zod';
+
+export const loginSchema = z.object({
+  username: z.string().trim().min(1, 'اسم المستخدم مطلوب').max(64, 'اسم المستخدم طويل جداً'),
+  password: z.string().min(1, 'كلمة المرور مطلوبة').max(200, 'كلمة المرور طويلة جداً'),
+});
+
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(20, 'رمز التحديث مطلوب').max(512, 'رمز التحديث غير صالح'),
+});
+
+export const logoutSchema = z.object({
+  refreshToken: z.string().min(20, 'رمز التحديث غير صالح').max(512).optional(),
+});
+
+export const registerSchema = z.object({
+  name: z.string().trim().min(1, 'الاسم الكامل مطلوب').max(255, 'الاسم الكامل طويل جداً'),
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل')
+    .max(30, 'اسم المستخدم يجب ألا يتجاوز 30 حرفاً')
+    .regex(/^[a-z0-9._]+$/, 'اسم المستخدم يجب أن يحتوي على أحرف إنجليزية صغيرة وأرقام ونقطة أو شرطة سفلية فقط'),
+  password: z.string().min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل').max(72, 'كلمة المرور يجب ألا تتجاوز 72 حرفاً'),
+  confirmPassword: z.string().min(1, 'تأكيد كلمة المرور مطلوب'),
+  unit: z.string().trim().min(1, 'الوحدة التنظيمية مطلوبة').max(255, 'اسم الوحدة طويل جداً'),
+  contacts: z.array(z.string()).optional().default([]),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'كلمتا المرور غير متطابقتين',
+  path: ['confirmPassword'],
+});
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\auth\auth.service.js =====
+
+import { pool, withTransaction } from '../../db/pool.js';
+import { getOrgUnitPath } from '../../db/scope.js';
+import { env } from '../../config/env.js';
+import { AppError, ErrorCodes } from '../../lib/errors.js';
+import { dummyVerify, hashPassword, verifyPasswordForUser } from '../../lib/password.js';
+import crypto from 'node:crypto';
+import {
+  accessTokenTtlSeconds,
+  generateRefreshToken,
+  newRefreshFamilyId,
+  newRefreshTokenId,
+  refreshTokenExpiry,
+  sha256,
+  signAccessToken,
+} from '../../lib/jwt.js';
+
+const USER_SELECT = `
+  SELECT u.id, u.employee_id, u.username, u.password_hash, u.password_algo,
+         u.is_active, u.failed_login_count, u.locked_until,
+         e.full_name_ar, e.full_name_en, e.code AS employee_code,
+         e.presence, e.avatar_url, e.org_unit_id,
+         ou.name_ar AS org_unit_name, ou.code AS org_unit_code
+  FROM users u
+  JOIN employees e ON e.id = u.employee_id
+  JOIN org_units ou ON ou.id = e.org_unit_id
+  WHERE u.deleted_at IS NULL AND e.deleted_at IS NULL`;
+
+function isActive(value) {
+  return value === 1 || value === true || value === '1';
+}
+
+function publicUser(user, path) {
+  return {
+    id: user.id,
+    employeeId: user.employee_id,
+    username: user.username,
+    name: user.full_name_ar,
+    nameEn: user.full_name_en,
+    employeeCode: user.employee_code,
+    status: user.presence,
+    avatarUrl: user.avatar_url,
+    unitId: user.org_unit_id,
+    unitName: user.org_unit_name,
+    path,
+  };
+}
+
+async function findUserByUsername(username) {
+  const [rows] = await pool.execute(`${USER_SELECT} AND u.username = ? LIMIT 1`, [username]);
+  return rows[0] || null;
+}
+
+async function findUserById(userId) {
+  const [rows] = await pool.execute(`${USER_SELECT} AND u.id = ? LIMIT 1`, [userId]);
+  return rows[0] || null;
+}
+
+async function loadRolesAndPermissions(userId) {
+  const [roleRows] = await pool.execute(
+    `SELECT DISTINCT r.code
+     FROM user_roles ur
+     JOIN roles r ON r.id = ur.role_id
+     WHERE ur.user_id = ?`,
+    [userId]
+  );
+  const roles = roleRows.map((r) => r.code);
+
+  const [permRows] = await pool.execute(
+    `SELECT p.code AS code, ur.scope_org_unit_id AS scope
+     FROM user_roles ur
+     JOIN role_permissions rp ON rp.role_id = ur.role_id
+     JOIN permissions p ON p.id = rp.permission_id
+     WHERE ur.user_id = ?`,
+    [userId]
+  );
+
+  const permissionMap = {};
+  for (const row of permRows) {
+    if (!permissionMap[row.code]) {
+      permissionMap[row.code] = { global: false, scopes: [] };
+    }
+    const entry = permissionMap[row.code];
+    if (row.scope == null) {
+      entry.global = true;
+    } else if (!entry.scopes.includes(row.scope)) {
+      entry.scopes.push(row.scope);
+    }
+  }
+
+  return { roles, permissionMap };
+}
+
+async function issueAccessToken(user) {
+  const { roles, permissionMap } = await loadRolesAndPermissions(user.id);
+  const accessToken = signAccessToken({
+    sub: user.id,
+    emp: user.employee_id,
+    username: user.username,
+    roles,
+    perms: permissionMap,
+  });
+  return { accessToken, expiresIn: accessTokenTtlSeconds(), roles, permissionMap };
+}
+
+async function issueRefreshToken({ userId, ip, userAgent }) {
+  const { raw, hash } = generateRefreshToken();
+  await pool.execute(
+    `INSERT INTO refresh_tokens (user_id, family_id, token_hash, user_agent, ip, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [userId, newRefreshFamilyId(), hash, userAgent || null, ip || null, refreshTokenExpiry()]
+  );
+  return raw;
+}
+
+async function revokeFamily(familyId) {
+  await pool.execute(
+    `UPDATE refresh_tokens
+     SET revoked_at = UTC_TIMESTAMP(3)
+     WHERE family_id = ? AND revoked_at IS NULL`,
+    [familyId]
+  );
+}
+
+async function registerFailedLogin(userId) {
+  await pool.execute(
+    `UPDATE users
+     SET failed_login_count = failed_login_count + 1,
+         locked_until = CASE
+           WHEN failed_login_count + 1 >= ? THEN DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? MINUTE)
+           ELSE locked_until
+         END
+     WHERE id = ?`,
+    [env.lockout.maxFailedLogins, env.lockout.lockMinutes, userId]
+  );
+}
+
+async function completeSuccessfulLogin(userId, upgradedHash) {
+  if (upgradedHash) {
+    await pool.execute(
+      `UPDATE users
+       SET failed_login_count = 0, locked_until = NULL, last_login_at = UTC_TIMESTAMP(3),
+           password_hash = ?, password_algo = 'argon2id', password_changed_at = UTC_TIMESTAMP(3)
+       WHERE id = ?`,
+      [upgradedHash, userId]
+    );
+    return;
+  }
+  await pool.execute(
+    `UPDATE users
+     SET failed_login_count = 0, locked_until = NULL, last_login_at = UTC_TIMESTAMP(3)
+     WHERE id = ?`,
+    [userId]
+  );
+}
+
+async function recordLoginAttempt({ username, ip, userAgent, success }) {
+  await pool.execute(
+    `INSERT INTO login_attempts (username, ip, success, user_agent) VALUES (?, ?, ?, ?)`,
+    [username || null, ip || null, success ? 1 : 0, userAgent || null]
+  );
+}
+
+async function writeAudit({ actorUserId = null, action, entityType = null, entityId = null, ip, userAgent, metadata = null }) {
+  await pool.execute(
+    `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, ip, user_agent, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      actorUserId,
+      action,
+      entityType,
+      entityId,
+      ip || null,
+      userAgent || null,
+      metadata ? JSON.stringify(metadata) : null,
+    ]
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export async function login({ username, password, ip, userAgent }) {
+  const user = await findUserByUsername(username);
+
+  if (!user) {
+    await dummyVerify(password);
+    await recordLoginAttempt({ username, ip, userAgent, success: false });
+    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'اسم المستخدم أو كلمة المرور غير صحيحة');
+  }
+
+  if (!isActive(user.is_active)) {
+    await recordLoginAttempt({ username, ip, userAgent, success: false });
+    await writeAudit({ actorUserId: user.id, action: 'auth.login.inactive', ip, userAgent });
+    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'اسم المستخدم أو كلمة المرور غير صحيحة');
+  }
+
+  if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+    await recordLoginAttempt({ username, ip, userAgent, success: false });
+    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'اسم المستخدم أو كلمة المرور غير صحيحة');
+  }
+
+  const { ok, upgradedHash } = await verifyPasswordForUser(user, password);
+
+  if (!ok) {
+    await registerFailedLogin(user.id);
+    await recordLoginAttempt({ username, ip, userAgent, success: false });
+    throw new AppError(401, ErrorCodes.INVALID_CREDENTIALS, 'اسم المستخدم أو كلمة المرور غير صحيحة');
+  }
+
+  await completeSuccessfulLogin(user.id, upgradedHash);
+  await recordLoginAttempt({ username, ip, userAgent, success: true });
+
+  const { accessToken, expiresIn, roles } = await issueAccessToken(user);
+  const refreshToken = await issueRefreshToken({ userId: user.id, ip, userAgent });
+  const path = await getOrgUnitPath(user.org_unit_id);
+
+  await writeAudit({ actorUserId: user.id, action: 'auth.login', ip, userAgent });
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn,
+    user: { ...publicUser(user, path), roles },
+  };
+}
+
+export async function register({ name, username, password, unit, contacts = [], ip, userAgent }) {
+  if (!normalizedUsername) throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'اسم المستخدم مطلوب');
+  if (!existing.length === false) { /* noop */ }
+
+  const [existing] = await pool.execute(
+    `SELECT id FROM users WHERE username = ? AND deleted_at IS NULL LIMIT 1`,
+    [normalizedUsername]
+  );
+  if (existing.length > 0) {
+    throw new AppError(409, ErrorCodes.CONFLICT, 'اسم المستخدم مستخدَم بالفعل', { code: ErrorCodes.CONFLICT });
+  }
+
+  // Find a default org unit to attach the new employee to. The mobile form
+  // captures a free-text "unit" name; we try to match an existing org_unit,
+  // else fall back to the root unit.
+  const [matchedUnits] = await pool.execute(
+    `SELECT id FROM org_units WHERE deleted_at IS NULL AND (name_ar = ? OR name_en = ?) LIMIT 1`,
+    [unit, unit]
+  );
+  let orgUnitId = matchedUnits[0]?.id || null;
+  if (!orgUnitId) {
+    const [roots] = await pool.execute(`SELECT id FROM org_units WHERE deleted_at IS NULL AND kind = 'root' LIMIT 1`);
+    orgUnitId = roots[0]?.id;
+  }
+  if (!orgUnitId) {
+    throw new AppError(500, ErrorCodes.VALIDATION_ERROR, 'No org unit available for registration');
+  }
+
+  const employeeId = crypto.randomUUID();
+  const userId = crypto.randomUUID();
+  const employeeCode = `U${Date.now().toString().slice(-6)}`;
+  const passwordHash = await hashPassword(password);
+
+  await withTransaction(async (conn) => {
+    await conn.execute(
+      `INSERT INTO employees (id, org_unit_id, code, full_name_ar, presence, is_active)
+       VALUES (?, ?, ?, ?, 'offline', 1)`,
+      [employeeId, orgUnitId, employeeCode, name.trim()]
+    );
+
+    await conn.execute(
+      `INSERT INTO users
+         (id, employee_id, username, password_hash, password_algo, password_changed_at, is_active)
+       VALUES (?, ?, ?, ?, 'argon2id', UTC_TIMESTAMP(3), 1)`,
+      [userId, employeeId, normalizedUsername, passwordHash]
+    );
+
+    // Assign the default 'employee' role if it exists (non-blocking if missing).
+    const [roles] = await conn.execute(`SELECT id FROM roles WHERE code = 'employee' LIMIT 1`);
+    if (roles.length > 0) {
+      await conn.execute(
+        `INSERT INTO user_roles (id, user_id, role_id, scope_org_unit_id)
+         VALUES (?, ?, ?, NULL)`,
+        [crypto.randomUUID(), userId, roles[0].id]
+      );
+    }
+
+    await conn.execute(
+      `INSERT INTO user_settings (user_id, language) VALUES (?, 'ar')
+       ON DUPLICATE KEY UPDATE language = language`,
+      [userId]
+    );
+
+    if (Array.isArray(contacts) && contacts.length > 0) {
+      for (const contactId of contacts) {
+        if (!contactId) continue;
+        await conn.execute(
+          `INSERT IGNORE INTO employee_contacts (owner_employee_id, contact_employee_id)
+           VALUES (?, ?)`,
+          [employeeId, contactId]
+        );
+      }
+    }
+
+    await conn.execute(
+      `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, ip, user_agent)
+       VALUES (?, 'auth.register', 'user', ?, ?, ?)`,
+      [userId, userId, ip || null, userAgent || null]
+    );
+  });
+
+  const user = await findUserById(userId);
+  const { accessToken, expiresIn, roles } = await issueAccessToken(user);
+  const refreshToken = await issueRefreshToken({ userId: user.id, ip, userAgent });
+  const path = await getOrgUnitPath(user.org_unit_id);
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn,
+    user: { ...publicUser(user, path), roles },
+  };
+}
+
+export async function rotateRefreshToken({ refreshToken, ip, userAgent }) {
+  const tokenHash = sha256(refreshToken);
+
+  const [rows] = await pool.execute(
+    `SELECT id, user_id, family_id, expires_at, revoked_at
+     FROM refresh_tokens WHERE token_hash = ? LIMIT 1`,
+    [tokenHash]
+  );
+  if (rows.length === 0) {
+    throw new AppError(401, ErrorCodes.REFRESH_INVALID, 'Invalid refresh token');
+  }
+  const existing = rows[0];
+
+  if (existing.revoked_at) {
+    await revokeFamily(existing.family_id);
+    await writeAudit({
+      actorUserId: existing.user_id,
+      action: 'auth.refresh.reuse_detected',
+      ip,
+      userAgent,
+      metadata: { familyId: existing.family_id },
+    });
+    throw new AppError(401, ErrorCodes.REFRESH_REUSED, 'Refresh token reuse detected');
+  }
+
+  if (new Date(existing.expires_at).getTime() <= Date.now()) {
+    throw new AppError(401, ErrorCodes.REFRESH_INVALID, 'Refresh token expired');
+  }
+
+  const user = await findUserById(existing.user_id);
+  if (!user || !isActive(user.is_active)) {
+    await revokeFamily(existing.family_id);
+    throw new AppError(401, ErrorCodes.REFRESH_INVALID, 'Account is not active');
+  }
+
+  const { raw: newRaw, hash: newHash } = generateRefreshToken();
+  const newId = newRefreshTokenId();
+
+  // Insert-then-revoke inside one transaction. If a concurrent request already
+  // rotated this token, the conditional UPDATE matches zero rows and we treat
+  // it as reuse: the whole family is revoked.
+  const rotated = await withTransaction(async (conn) => {
+    await conn.execute(
+      `INSERT INTO refresh_tokens (id, user_id, family_id, token_hash, user_agent, ip, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [newId, existing.user_id, existing.family_id, newHash, userAgent || null, ip || null, refreshTokenExpiry()]
+    );
+
+    const [updateRes] = await conn.execute(
+      `UPDATE refresh_tokens
+       SET revoked_at = UTC_TIMESTAMP(3), last_used_at = UTC_TIMESTAMP(3), replaced_by_token_id = ?
+       WHERE id = ? AND revoked_at IS NULL`,
+      [newId, existing.id]
+    );
+    if (updateRes.affectedRows !== 1) {
+      const race = new Error('refresh rotation race');
+      race.code = 'REFRESH_RACE';
+      throw race;
+    }
+    return true;
+  }).catch((err) => {
+    if (err && err.code === 'REFRESH_RACE') return false;
+    throw err;
+  });
+
+  if (!rotated) {
+    await revokeFamily(existing.family_id);
+    await writeAudit({
+      actorUserId: existing.user_id,
+      action: 'auth.refresh.reuse_detected',
+      ip,
+      userAgent,
+      metadata: { familyId: existing.family_id },
+    });
+    throw new AppError(401, ErrorCodes.REFRESH_REUSED, 'Refresh token reuse detected');
+  }
+
+  const { accessToken, expiresIn, roles } = await issueAccessToken(user);
+  const path = await getOrgUnitPath(user.org_unit_id);
+  await writeAudit({ actorUserId: user.id, action: 'auth.refresh', ip, userAgent });
+
+  return {
+    accessToken,
+    refreshToken: newRaw,
+    expiresIn,
+    user: { ...publicUser(user, path), roles },
+  };
+}
+
+export async function logout({ refreshToken, ip, userAgent }) {
+  if (refreshToken) {
+    const [rows] = await pool.execute(
+      `SELECT family_id, user_id FROM refresh_tokens WHERE token_hash = ? LIMIT 1`,
+      [sha256(refreshToken)]
+    );
+    if (rows.length > 0) {
+      await revokeFamily(rows[0].family_id);
+      await writeAudit({ actorUserId: rows[0].user_id, action: 'auth.logout', ip, userAgent });
+      return;
+    }
+  }
+  await writeAudit({ actorUserId: null, action: 'auth.logout', ip, userAgent });
+}
+
+export async function getMe(userId) {
+  const user = await findUserById(userId);
+  if (!user || !isActive(user.is_active)) {
+    throw new AppError(401, ErrorCodes.UNAUTHORIZED, 'Account is not available');
+  }
+  const { roles, permissionMap } = await loadRolesAndPermissions(userId);
+  const path = await getOrgUnitPath(user.org_unit_id);
+  return { user: { ...publicUser(user, path), roles, permissions: permissionMap } };
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\org\org.controller.js =====
+
+import { AppError, ErrorCodes } from '../../lib/errors.js';
+import { isAdmin } from '../../lib/roles.js';
+import * as orgService from './org.service.js';
+import {
+  createOrgUnitSchema,
+  listOrgUnitsQuerySchema,
+  moveOrgUnitSchema,
+  subtreeQuerySchema,
+  treeQuerySchema,
+  updateOrgUnitSchema,
+} from './org.schemas.js';
+
+function parse(schema, payload) {
+  const result = schema.safeParse(payload);
+  if (!result.success) {
+    const details = result.error.issues.map((issue) => ({
+      field: issue.path.join('.') || '(root)',
+      message: issue.message,
+    }));
+    throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'Invalid request', details);
+  }
+  return result.data;
+}
+
+/**
+ * Resolves the service-layer actor. The Super Admin always acts globally with
+ * unrestricted access; other principals fall back to their token grants for
+ * read-only scoped queries.
+ */
+function actorFor(req, permission) {
+  if (isAdmin(req.user)) {
+    return { id: req.user?.id, isGlobal: true, scopes: [] };
+  }
+  const grant = req.user?.permissions?.[permission];
+  return {
+    id: req.user?.id,
+    isGlobal: !!(grant && grant.global),
+    scopes: grant && Array.isArray(grant.scopes) ? grant.scopes : [],
+  };
+}
+
+function requestContext(req) {
+  return { ip: req.ip, userAgent: req.headers['user-agent'] };
+}
+
+function notFound() {
+  return new AppError(404, ErrorCodes.ORG_UNIT_NOT_FOUND, 'Org unit not found');
+}
+
+export async function listOrgUnits(req, res, next) {
+  try {
+    const query = parse(listOrgUnitsQuerySchema, req.query);
+    const orgUnits = await orgService.listOrgUnits(query, actorFor(req, 'org.read'));
+    res.json({ success: true, orgUnits });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getOrgTree(req, res, next) {
+  try {
+    const query = parse(treeQuerySchema, req.query);
+    const tree = await orgService.getOrgTree(query, actorFor(req, 'org.read'));
+    res.json({ success: true, tree });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getOrgUnit(req, res, next) {
+  try {
+    const result = await orgService.getOrgUnit(req.params.id, actorFor(req, 'org.read'));
+    if (!result) throw notFound();
+    res.json({
+      success: true,
+      orgUnit: result.unit,
+      ancestors: result.ancestors,
+      children: result.children,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getOrgSubtree(req, res, next) {
+  try {
+    const query = parse(subtreeQuerySchema, req.query);
+    const subtree = await orgService.getSubtree(req.params.id, actorFor(req, 'org.read'), query);
+    if (!subtree) throw notFound();
+    res.json({ success: true, subtree });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getOrgAncestors(req, res, next) {
+  try {
+    const ancestors = await orgService.getAncestors(req.params.id);
+    res.json({ success: true, ancestors });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getOrgChildren(req, res, next) {
+  try {
+    const children = await orgService.getChildren(req.params.id, actorFor(req, 'org.read'));
+    res.json({ success: true, children });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createOrgUnit(req, res, next) {
+  try {
+    const input = parse(createOrgUnitSchema, req.body);
+    const orgUnit = await orgService.createOrgUnit(
+      input,
+      actorFor(req, 'org.manage'),
+      requestContext(req)
+    );
+    res.status(201).json({ success: true, orgUnit });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateOrgUnit(req, res, next) {
+  try {
+    const input = parse(updateOrgUnitSchema, req.body);
+    const orgUnit = await orgService.updateOrgUnit(
+      req.params.id,
+      input,
+      actorFor(req, 'org.manage'),
+      requestContext(req)
+    );
+    res.json({ success: true, orgUnit });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function moveOrgUnit(req, res, next) {
+  try {
+    const { parentId } = parse(moveOrgUnitSchema, req.body);
+    const orgUnit = await orgService.moveOrgUnit(
+      req.params.id,
+      parentId,
+      actorFor(req, 'org.manage'),
+      requestContext(req)
+    );
+    res.json({ success: true, orgUnit });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteOrgUnit(req, res, next) {
+  try {
+    const deleted = await orgService.deleteOrgUnit(
+      req.params.id,
+      actorFor(req, 'org.manage'),
+      requestContext(req)
+    );
+    res.json({ success: true, deleted });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function restoreOrgUnit(req, res, next) {
+  try {
+    const orgUnit = await orgService.restoreOrgUnit(
+      req.params.id,
+      actorFor(req, 'org.manage'),
+      requestContext(req)
+    );
+    res.json({ success: true, orgUnit });
+  } catch (err) {
+    next(err);
+  }
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\org\org.routes.js =====
+
+import { Router } from 'express';
+import { authenticate } from '../../middleware/authenticate.js';
+import { requireAdmin } from '../../middleware/requireAdmin.js';
+import { requirePermission } from '../../middleware/requirePermission.js';
+import { validate } from '../../middleware/validate.js';
+import {
+  createOrgUnit,
+  deleteOrgUnit,
+  getOrgAncestors,
+  getOrgChildren,
+  getOrgSubtree,
+  getOrgTree,
+  getOrgUnit,
+  listOrgUnits,
+  moveOrgUnit,
+  restoreOrgUnit,
+  updateOrgUnit,
+} from './org.controller.js';
+import { createOrgUnitSchema, moveOrgUnitSchema, updateOrgUnitSchema } from './org.schemas.js';
+
+const router = Router();
+
+// Reads remain available to authenticated principals holding org.read. The org
+// service still supports scoped reads for non-admin roles. All writes are
+// restricted to the Super Admin role.
+const anyScope = (permission) => (req) => req.user?.permissions?.[permission]?.scopes?.[0] || null;
+const targetUnit = (req) => req.params.id;
+
+router.get(
+  '/',
+  authenticate,
+  requirePermission('org.read', { resolveScope: anyScope('org.read') }),
+  listOrgUnits
+);
+
+router.get(
+  '/tree',
+  authenticate,
+  requirePermission('org.read', { resolveScope: anyScope('org.read') }),
+  getOrgTree
+);
+
+router.get(
+  '/:id',
+  authenticate,
+  requirePermission('org.read', { resolveScope: targetUnit }),
+  getOrgUnit
+);
+
+router.get(
+  '/:id/subtree',
+  authenticate,
+  requirePermission('org.read', { resolveScope: targetUnit }),
+  getOrgSubtree
+);
+
+router.get(
+  '/:id/ancestors',
+  authenticate,
+  requirePermission('org.read', { resolveScope: targetUnit }),
+  getOrgAncestors
+);
+
+router.get(
+  '/:id/children',
+  authenticate,
+  requirePermission('org.read', { resolveScope: targetUnit }),
+  getOrgChildren
+);
+
+// Management writes are Super Admin only.
+router.post(
+  '/',
+  authenticate,
+  requireAdmin,
+  validate(createOrgUnitSchema),
+  createOrgUnit
+);
+
+router.patch(
+  '/:id',
+  authenticate,
+  requireAdmin,
+  validate(updateOrgUnitSchema),
+  updateOrgUnit
+);
+
+router.patch(
+  '/:id/move',
+  authenticate,
+  requireAdmin,
+  validate(moveOrgUnitSchema),
+  moveOrgUnit
+);
+
+router.delete(
+  '/:id',
+  authenticate,
+  requireAdmin,
+  deleteOrgUnit
+);
+
+// Restore is a management write and is restricted to the Super Admin.
+router.post(
+  '/:id/restore',
+  authenticate,
+  requireAdmin,
+  restoreOrgUnit
+);
+
+export default router;
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\org\org.schemas.js =====
+
+import { z } from 'zod';
+import { ORG_KINDS } from './org.service.js';
+
+const uuid = z.string().uuid('Must be a UUID');
+
+const code = z
+  .string()
+  .trim()
+  .min(1, 'Code is required')
+  .max(64, 'Code is too long')
+  .regex(/^[A-Za-z0-9._-]+$/, 'Code may contain letters, digits, dot, dash and underscore only');
+
+const optionalName = z
+  .string()
+  .trim()
+  .max(255)
+  .optional()
+  .nullable()
+  .transform((value) => (value == null || value === '' ? null : value));
+
+const metadata = z.record(z.unknown()).optional().nullable();
+
+const editableFields = {
+  code: code.optional(),
+  parentId: uuid.optional().nullable(),
+  nameAr: z.string().trim().min(1, 'Arabic name is required').max(255),
+  nameEn: optionalName,
+  kind: z.enum(ORG_KINDS),
+  sortOrder: z.coerce.number().int().min(0).max(1_000_000).optional(),
+  isActive: z.boolean().optional(),
+  metadata,
+};
+
+export const createOrgUnitSchema = z
+  .object(editableFields)
+  .transform((data) => ({
+    ...data,
+    parentId: data.parentId ?? null,
+    sortOrder: data.sortOrder ?? 0,
+    isActive: data.isActive ?? true,
+    metadata: data.metadata ?? null,
+  }));
+
+export const updateOrgUnitSchema = z
+  .object(editableFields)
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be supplied',
+  });
+
+export const moveOrgUnitSchema = z.object({
+  parentId: uuid.nullable(),
+});
+
+function booleanQuery(defaultValue = false) {
+  return z
+    .enum(['true', 'false', '1', '0'])
+    .optional()
+    .default(defaultValue ? 'true' : 'false')
+    .transform((value) => value === 'true' || value === '1');
+}
+
+const q = z.string().trim().max(255).optional();
+
+export const listOrgUnitsQuerySchema = z.object({
+  parentId: uuid.optional(),
+  q,
+  includeInactive: booleanQuery(false),
+});
+
+export const treeQuerySchema = z.object({
+  rootId: uuid.optional(),
+  includeInactive: booleanQuery(false),
+});
+
+export const subtreeQuerySchema = z.object({
+  includeInactive: booleanQuery(false),
+});
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\org\org.service.js =====
+
+import crypto from 'node:crypto';
+import { pool, withTransaction } from '../../db/pool.js';
+import { isOrgUnitWithinScope } from '../../db/scope.js';
+import { AppError, ErrorCodes } from '../../lib/errors.js';
+import { buildOrgTree, pruneInactive } from '../../lib/orgTree.js';
+
+export const ORG_KINDS = ['root', 'deputy', 'office', 'directorate', 'section', 'group'];
+
+/**
+ * Business mapping used by the API:
+ *   root        Head of the Authority (رئيس المصلحة)  -> parent_id NULL
+ *   deputy      Deputy Head (نائب رئيس المصلحة)       -> root
+ *   directorate General Administration (إدارة)        -> root/deputy/group
+ *   office      Branch / Regional Office / staff office -> root/deputy/group/directorate/office
+ *   section     Department (قسم)                      -> directorate/office (or legacy parent)
+ *   group       Legacy grouping node                  -> root/deputy/office/directorate
+ *
+ * The matrix keeps the tree flexible but rejects structurally meaningless
+ * writes such as a department directly under another department.
+ */
+const ALLOWED_PARENT_KINDS = {
+  root: [],
+  deputy: ['root'],
+  group: ['root', 'deputy', 'office', 'directorate'],
+  directorate: ['root', 'deputy', 'group'],
+  office: ['root', 'deputy', 'group', 'directorate', 'office'],
+  section: ['root', 'deputy', 'group', 'directorate', 'office'],
+};
+
+const RAW_UNIT_SELECT = `
+  SELECT id, parent_id, code, name_ar, name_en, kind, sort_order, is_active,
+         metadata, created_at, updated_at, deleted_at
+  FROM org_units`;
+
+const UNIT_SELECT = `
+  SELECT u.id, u.parent_id, u.code, u.name_ar, u.name_en, u.kind,
+         u.sort_order, u.is_active, u.metadata, u.created_at, u.updated_at,
+         COALESCE(ec.employee_count, 0) AS employee_count
+  FROM org_units u
+  LEFT JOIN (
+    SELECT org_unit_id, COUNT(*) AS employee_count
+    FROM employees
+    WHERE deleted_at IS NULL
+    GROUP BY org_unit_id
+  ) ec ON ec.org_unit_id = u.id`;
+
+function parseMetadata(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function metadataForDb(value) {
+  if (value == null) return null;
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+function toUnit(row) {
+  return {
+    id: row.id,
+    parentId: row.parent_id ?? null,
+    code: row.code,
+    nameAr: row.name_ar,
+    nameEn: row.name_en ?? null,
+    kind: row.kind,
+    sortOrder: Number(row.sort_order),
+    isActive: row.is_active === 1 || row.is_active === true || row.is_active === '1',
+    metadata: parseMetadata(row.metadata),
+    employeeCount: Number(row.employee_count || 0),
+    createdAt: row.created_at ?? null,
+    updatedAt: row.updated_at ?? null,
+  };
+}
+
+function scopeList(actor) {
+  if (actor && actor.isGlobal) return null;
+  return Array.isArray(actor?.scopes) ? [...new Set(actor.scopes)] : [];
+}
+
+async function assertWithinActorScope(actor, orgUnitId) {
+  if (actor && actor.isGlobal) return;
+  const scopes = scopeList(actor) || [];
+  if (!orgUnitId || scopes.length === 0) {
+    throw new AppError(403, ErrorCodes.FORBIDDEN, 'Org unit is outside your scope');
+  }
+  for (const scopeId of scopes) {
+    if (await isOrgUnitWithinScope(scopeId, orgUnitId)) return;
+  }
+  throw new AppError(403, ErrorCodes.FORBIDDEN, 'Org unit is outside your scope');
+}
+
+function writeAudit(conn, { actorUserId, action, entityId, metadata, ip, userAgent }) {
+  return conn.execute(
+    `INSERT INTO audit_log
+       (actor_user_id, action, entity_type, entity_id, ip, user_agent, metadata)
+     VALUES (?, ?, 'org_unit', ?, ?, ?, ?)`,
+    [
+      actorUserId || null,
+      action,
+      entityId,
+      ip || null,
+      userAgent || null,
+      metadata ? JSON.stringify(metadata) : null,
+    ]
+  );
+}
+
+/**
+ * Serializes structural writes by locking the single root row. This closes the
+ * race where two concurrent moves each pass the cycle check and then create a
+ * cycle. The unique active-root index handles first-root creation separately.
+ */
+async function lockTree(conn) {
+  await conn.execute(
+    'SELECT id FROM org_units WHERE parent_id IS NULL ORDER BY created_at LIMIT 1 FOR UPDATE'
+  );
+}
+
+async function getRawUnit(conn, id, { forUpdate = false, includeDeleted = false } = {}) {
+  const [rows] = await conn.execute(
+    `${RAW_UNIT_SELECT}
+     WHERE id = ?${includeDeleted ? '' : ' AND deleted_at IS NULL'}
+     LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function getUnitWithCount(conn, id) {
+  const [rows] = await conn.execute(
+    `${UNIT_SELECT}
+     WHERE u.id = ? AND u.deleted_at IS NULL
+     LIMIT 1`,
+    [id]
+  );
+  return rows[0] ? toUnit(rows[0]) : null;
+}
+
+async function assertCodeAvailable(conn, code, excludeId = null) {
+  const [rows] = excludeId
+    ? await conn.execute('SELECT id FROM org_units WHERE code = ? AND id <> ? LIMIT 1', [
+        code,
+        excludeId,
+      ])
+    : await conn.execute('SELECT id FROM org_units WHERE code = ? LIMIT 1', [code]);
+  if (rows.length > 0) {
+    throw new AppError(409, ErrorCodes.ORG_UNIT_CODE_TAKEN, 'Org unit code is already in use', [
+      { field: 'code', message: 'Already taken' },
+    ]);
+  }
+}
+
+async function generateUniqueCode(conn) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = `OU-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    const [rows] = await conn.execute('SELECT id FROM org_units WHERE code = ? LIMIT 1', [code]);
+    if (rows.length === 0) return code;
+  }
+  throw new AppError(500, 'INTERNAL', 'Could not generate a unique org unit code');
+}
+
+async function checkCycle(conn, unitId, parentId) {
+  if (!unitId || !parentId) return;
+  const [rows] = await conn.execute(
+    `WITH RECURSIVE descendants AS (
+       SELECT id FROM org_units WHERE id = ?
+       UNION ALL
+       SELECT o.id
+       FROM org_units o
+       JOIN descendants d ON o.parent_id = d.id
+     )
+     SELECT 1 AS found FROM descendants WHERE id = ? LIMIT 1`,
+    [unitId, parentId]
+  );
+  if (rows.length > 0) {
+    throw new AppError(
+      422,
+      ErrorCodes.ORG_UNIT_CYCLE,
+      'An org unit cannot be moved below itself or one of its descendants'
+    );
+  }
+}
+
+async function validateChildrenForKind(conn, unitId, kind) {
+  const [children] = await conn.execute(
+    `SELECT DISTINCT kind FROM org_units
+     WHERE parent_id = ? AND deleted_at IS NULL`,
+    [unitId]
+  );
+  for (const child of children) {
+    const allowed = ALLOWED_PARENT_KINDS[child.kind] || [];
+    if (!allowed.includes(kind)) {
+      throw new AppError(
+        422,
+        ErrorCodes.ORG_UNIT_PARENT_INVALID,
+        `Cannot change this unit to ${kind} while it has a ${child.kind} child`,
+        [{ field: 'kind', message: `Move or re-kind the ${child.kind} child first` }]
+      );
+    }
+  }
+}
+
+async function validateStructure(conn, { unitId = null, kind, parentId, parent }) {
+  if (!ORG_KINDS.includes(kind)) {
+    throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'Unknown org unit kind', [
+      { field: 'kind', message: `Must be one of ${ORG_KINDS.join(', ')}` },
+    ]);
+  }
+
+  if (kind === 'root') {
+    if (parentId) {
+      throw new AppError(422, ErrorCodes.ORG_UNIT_PARENT_INVALID, 'The root unit cannot have a parent');
+    }
+    const [roots] = await conn.execute(
+      `SELECT id FROM org_units
+       WHERE parent_id IS NULL AND deleted_at IS NULL AND id <> ?
+       LIMIT 1`,
+      [unitId || '']
+    );
+    if (roots.length > 0) {
+      throw new AppError(
+        409,
+        ErrorCodes.ORG_UNIT_ROOT_EXISTS,
+        'An active Head of the Authority already exists'
+      );
+    }
+    return;
+  }
+
+  if (!parentId) {
+    throw new AppError(422, ErrorCodes.ORG_UNIT_PARENT_INVALID, 'A parent org unit is required');
+  }
+  if (!parent) {
+    throw new AppError(422, ErrorCodes.ORG_UNIT_PARENT_INVALID, 'Parent org unit does not exist', [
+      { field: 'parentId', message: 'No such org unit' },
+    ]);
+  }
+  if (!(parent.is_active === 1 || parent.is_active === true || parent.is_active === '1')) {
+    throw new AppError(422, ErrorCodes.ORG_UNIT_PARENT_INVALID, 'Parent org unit is inactive', [
+      { field: 'parentId', message: 'Parent must be active' },
+    ]);
+  }
+
+  const allowed = ALLOWED_PARENT_KINDS[kind] || [];
+  if (!allowed.includes(parent.kind)) {
+    throw new AppError(
+      422,
+      ErrorCodes.ORG_UNIT_PARENT_INVALID,
+      `A ${kind} unit cannot be placed under a ${parent.kind} unit`,
+      [{ field: 'parentId', message: `Allowed parent kinds: ${allowed.join(', ')}` }]
+    );
+  }
+
+  await checkCycle(conn, unitId, parentId);
+}
+
+async function runTreeWrite(fn) {
+  try {
+    return await withTransaction(fn);
+  } catch (err) {
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      const message = String(err.message || '');
+      if (message.includes('uq_org_units_active_root')) {
+        throw new AppError(
+          409,
+          ErrorCodes.ORG_UNIT_ROOT_EXISTS,
+          'An active Head of the Authority already exists'
+        );
+      }
+      if (message.includes('uq_org_units_code')) {
+        throw new AppError(409, ErrorCodes.ORG_UNIT_CODE_TAKEN, 'Org unit code is already in use');
+      }
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reads
+// ---------------------------------------------------------------------------
+
+/**
+ * Flat, scope-aware list. A scoped principal receives only units inside the
+ * subtrees granted by its org.read permission. Nodes whose parent is outside
+ * the scope become roots when the caller builds a tree.
+ */
+export async function listOrgUnits(filters = {}, actor = null) {
+  const scopes = scopeList(actor);
+  if (scopes && scopes.length === 0) return [];
+
+  const params = [];
+  let sql = '';
+
+  if (scopes) {
+    sql += `WITH RECURSIVE scoped AS (
+      SELECT id FROM org_units
+      WHERE id IN (${scopes.map(() => '?').join(', ')}) AND deleted_at IS NULL
+      UNION
+      SELECT o.id
+      FROM org_units o
+      JOIN scoped s ON o.parent_id = s.id
+      WHERE o.deleted_at IS NULL
+    ) `;
+    params.push(...scopes);
+  }
+
+  sql += UNIT_SELECT;
+  if (scopes) sql += ' JOIN scoped sc ON sc.id = u.id';
+  sql += ' WHERE u.deleted_at IS NULL';
+
+  if (!filters.includeInactive) sql += ' AND u.is_active = 1';
+  if (filters.parentId) {
+    sql += ' AND u.parent_id = ?';
+    params.push(filters.parentId);
+  }
+  if (filters.q) {
+    const like = `%${filters.q}%`;
+    sql += ' AND (u.name_ar LIKE ? OR u.name_en LIKE ? OR u.code LIKE ?)';
+    params.push(like, like, like);
+  }
+
+  sql += ' ORDER BY u.sort_order, u.name_ar, u.code';
+
+  const [rows] = await pool.execute(sql, params);
+  return rows.map(toUnit);
+}
+
+export async function getOrgTree({ includeInactive = false, rootId = null } = {}, actor = null) {
+  if (rootId) {
+    const subtree = await getSubtree(rootId, actor, { includeInactive });
+    return subtree ? [subtree] : [];
+  }
+
+  // Load inactive rows too, then prune whole branches. Filtering them in SQL
+  // would promote active children of an inactive parent to artificial roots.
+  const rows = await listOrgUnits({ includeInactive: true }, actor);
+  let tree = buildOrgTree(rows);
+  if (!includeInactive) tree = pruneInactive(tree);
+  return tree;
+}
+
+export async function getSubtree(id, actor = null, { includeInactive = false } = {}) {
+  await assertWithinActorScope(actor, id);
+
+  const [rows] = await pool.execute(
+    `WITH RECURSIVE subtree AS (
+       SELECT id FROM org_units WHERE id = ? AND deleted_at IS NULL
+       UNION ALL
+       SELECT o.id
+       FROM org_units o
+       JOIN subtree s ON o.parent_id = s.id
+       WHERE o.deleted_at IS NULL
+     )
+     ${UNIT_SELECT}
+     JOIN subtree st ON st.id = u.id
+     WHERE u.deleted_at IS NULL
+     ORDER BY u.sort_order, u.name_ar, u.code`,
+    [id]
+  );
+
+  if (rows.length === 0) return null;
+  let tree = buildOrgTree(rows.map(toUnit));
+  if (!includeInactive) tree = pruneInactive(tree);
+  return tree[0] || null;
+}
+
+export async function getAncestors(id) {
+  const [rows] = await pool.execute(
+    `WITH RECURSIVE ancestors AS (
+       SELECT id, parent_id, code, name_ar, name_en, kind, sort_order, is_active,
+              metadata, created_at, updated_at, 0 AS depth
+       FROM org_units
+       WHERE id = ? AND deleted_at IS NULL
+       UNION ALL
+       SELECT p.id, p.parent_id, p.code, p.name_ar, p.name_en, p.kind, p.sort_order,
+              p.is_active, p.metadata, p.created_at, p.updated_at, a.depth + 1
+       FROM org_units p
+       JOIN ancestors a ON p.id = a.parent_id
+       WHERE p.deleted_at IS NULL
+     )
+     SELECT * FROM ancestors ORDER BY depth DESC`,
+    [id]
+  );
+
+  return rows
+    .filter((row) => row.id !== id)
+    .map((row, index) => ({ ...toUnit(row), depth: index }));
+}
+
+export async function getOrgUnit(id, actor = null) {
+  await assertWithinActorScope(actor, id);
+
+  const unit = await getUnitWithCount(pool, id);
+  if (!unit) return null;
+
+  const [ancestors, children] = await Promise.all([
+    getAncestors(id),
+    listOrgUnits({ parentId: id, includeInactive: true }, actor),
+  ]);
+
+  return { unit, ancestors, children };
+}
+
+export async function getChildren(id, actor = null) {
+  await assertWithinActorScope(actor, id);
+  return listOrgUnits({ parentId: id, includeInactive: true }, actor);
+}
+
+// ---------------------------------------------------------------------------
+// Writes
+// ---------------------------------------------------------------------------
+
+export async function createOrgUnit(input, actor, ctx = {}) {
+  return runTreeWrite(async (conn) => {
+    await lockTree(conn);
+
+    const kind = input.kind;
+    const parentId = input.parentId ?? null;
+    const parent = parentId ? await getRawUnit(conn, parentId) : null;
+
+    await validateStructure(conn, { kind, parentId, parent });
+
+    if (parentId) {
+      await assertWithinActorScope(actor, parentId);
+    } else if (!actor || !actor.isGlobal) {
+      throw new AppError(403, ErrorCodes.FORBIDDEN, 'Only a global administrator can create the root');
+    }
+
+    const code = input.code || (await generateUniqueCode(conn));
+    await assertCodeAvailable(conn, code);
+
+    const id = crypto.randomUUID();
+    await conn.execute(
+      `INSERT INTO org_units
+         (id, parent_id, code, name_ar, name_en, kind, sort_order, is_active, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        parentId,
+        code,
+        input.nameAr,
+        input.nameEn ?? null,
+        kind,
+        input.sortOrder ?? 0,
+        input.isActive === false ? 0 : 1,
+        metadataForDb(input.metadata),
+      ]
+    );
+
+    await writeAudit(conn, {
+      actorUserId: actor?.id,
+      action: 'org_unit.create',
+      entityId: id,
+      metadata: { code, kind, parentId },
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    return getUnitWithCount(conn, id);
+  });
+}
+
+export async function updateOrgUnit(id, input, actor, ctx = {}) {
+  return runTreeWrite(async (conn) => {
+    await lockTree(conn);
+
+    const existing = await getRawUnit(conn, id, { forUpdate: true });
+    if (!existing) {
+      throw new AppError(404, ErrorCodes.ORG_UNIT_NOT_FOUND, 'Org unit not found');
+    }
+
+    await assertWithinActorScope(actor, id);
+
+    const has = (key) => Object.prototype.hasOwnProperty.call(input, key);
+    const kind = has('kind') ? input.kind : existing.kind;
+    const parentId = has('parentId') ? (input.parentId ?? null) : existing.parent_id;
+    const parentChanged = parentId !== existing.parent_id;
+    const kindChanged = kind !== existing.kind;
+
+    if (existing.kind === 'root' && (kindChanged || parentChanged || input.isActive === false)) {
+      throw new AppError(
+        409,
+        ErrorCodes.ORG_UNIT_ROOT_IMMUTABLE,
+        'The root org unit cannot be moved, re-kinded or deactivated'
+      );
+    }
+
+    const parent = parentId ? await getRawUnit(conn, parentId) : null;
+    if (parentChanged || kindChanged) {
+      await validateStructure(conn, { unitId: id, kind, parentId, parent });
+    }
+    if (kindChanged) {
+      await validateChildrenForKind(conn, id, kind);
+    }
+
+    if (parentChanged) {
+      if (parentId) {
+        await assertWithinActorScope(actor, parentId);
+      } else if (!actor || !actor.isGlobal) {
+        throw new AppError(403, ErrorCodes.FORBIDDEN, 'Only a global administrator can promote a root');
+      }
+    }
+
+    const code = has('code') ? input.code : existing.code;
+    if (code !== existing.code) await assertCodeAvailable(conn, code, id);
+
+    const nameAr = has('nameAr') ? input.nameAr : existing.name_ar;
+    const nameEn = has('nameEn') ? input.nameEn ?? null : existing.name_en;
+    const sortOrder = has('sortOrder') ? input.sortOrder : Number(existing.sort_order);
+    const isActive = has('isActive')
+      ? input.isActive
+        ? 1
+        : 0
+      : existing.is_active;
+    const metadata = has('metadata')
+      ? metadataForDb(input.metadata)
+      : metadataForDb(existing.metadata);
+
+    await conn.execute(
+      `UPDATE org_units
+       SET parent_id = ?, code = ?, name_ar = ?, name_en = ?, kind = ?,
+           sort_order = ?, is_active = ?, metadata = ?
+       WHERE id = ?`,
+      [parentId, code, nameAr, nameEn, kind, sortOrder, isActive, metadata, id]
+    );
+
+    await writeAudit(conn, {
+      actorUserId: actor?.id,
+      action: parentChanged ? 'org_unit.move' : 'org_unit.update',
+      entityId: id,
+      metadata: {
+        changed: Object.keys(input),
+        ...(parentChanged ? { parentFrom: existing.parent_id, parentTo: parentId } : {}),
+      },
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    return getUnitWithCount(conn, id);
+  });
+}
+
+export async function moveOrgUnit(id, parentId, actor, ctx = {}) {
+  return updateOrgUnit(id, { parentId }, actor, ctx);
+}
+
+export async function deleteOrgUnit(id, actor, ctx = {}) {
+  return runTreeWrite(async (conn) => {
+    await lockTree(conn);
+
+    const existing = await getRawUnit(conn, id, { forUpdate: true });
+    if (!existing) {
+      throw new AppError(404, ErrorCodes.ORG_UNIT_NOT_FOUND, 'Org unit not found');
+    }
+    await assertWithinActorScope(actor, id);
+
+    if (existing.kind === 'root') {
+      throw new AppError(
+        409,
+        ErrorCodes.ORG_UNIT_ROOT_IMMUTABLE,
+        'The Head of the Authority cannot be deleted'
+      );
+    }
+
+    const [[childRow]] = await conn.execute(
+      'SELECT COUNT(*) AS count FROM org_units WHERE parent_id = ? AND deleted_at IS NULL',
+      [id]
+    );
+    if (Number(childRow.count) > 0) {
+      throw new AppError(
+        409,
+        ErrorCodes.ORG_UNIT_HAS_CHILDREN,
+        'Move or delete child org units first',
+        [{ field: 'id', message: `${childRow.count} child unit(s) remain` }]
+      );
+    }
+
+    const [[employeeRow]] = await conn.execute(
+      'SELECT COUNT(*) AS count FROM employees WHERE org_unit_id = ? AND deleted_at IS NULL',
+      [id]
+    );
+    if (Number(employeeRow.count) > 0) {
+      throw new AppError(
+        409,
+        ErrorCodes.ORG_UNIT_HAS_EMPLOYEES,
+        'Reassign employees before deleting this org unit',
+        [{ field: 'id', message: `${employeeRow.count} employee(s) remain` }]
+      );
+    }
+
+    await conn.execute(
+      'UPDATE org_units SET deleted_at = UTC_TIMESTAMP(3), is_active = 0 WHERE id = ?',
+      [id]
+    );
+
+    await writeAudit(conn, {
+      actorUserId: actor?.id,
+      action: 'org_unit.delete',
+      entityId: id,
+      metadata: { code: existing.code, parentId: existing.parent_id },
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    return { id };
+  });
+}
+
+export async function restoreOrgUnit(id, actor, ctx = {}) {
+  return runTreeWrite(async (conn) => {
+    await lockTree(conn);
+
+    const existing = await getRawUnit(conn, id, { forUpdate: true, includeDeleted: true });
+    if (!existing) {
+      throw new AppError(404, ErrorCodes.ORG_UNIT_NOT_FOUND, 'Org unit not found');
+    }
+    if (!existing.deleted_at) {
+      return getUnitWithCount(conn, id);
+    }
+
+    if (!actor || !actor.isGlobal) {
+      if (!existing.parent_id) {
+        throw new AppError(403, ErrorCodes.FORBIDDEN, 'Only a global administrator can restore the root');
+      }
+      await assertWithinActorScope(actor, existing.parent_id);
+    }
+
+    if (existing.kind === 'root') {
+      const [roots] = await conn.execute(
+        `SELECT id FROM org_units
+         WHERE parent_id IS NULL AND deleted_at IS NULL AND id <> ?
+         LIMIT 1`,
+        [id]
+      );
+      if (roots.length > 0) {
+        throw new AppError(
+          409,
+          ErrorCodes.ORG_UNIT_ROOT_EXISTS,
+          'An active Head of the Authority already exists'
+        );
+      }
+    } else {
+      const parent = await getRawUnit(conn, existing.parent_id);
+      if (!parent) {
+        throw new AppError(
+          409,
+          ErrorCodes.ORG_UNIT_PARENT_INVALID,
+          'Restore the parent org unit first'
+        );
+      }
+      if (!(parent.is_active === 1 || parent.is_active === true || parent.is_active === '1')) {
+        throw new AppError(
+          409,
+          ErrorCodes.ORG_UNIT_PARENT_INVALID,
+          'Activate the parent org unit before restoring this unit'
+        );
+      }
+    }
+
+    await conn.execute(
+      'UPDATE org_units SET deleted_at = NULL, is_active = 1 WHERE id = ?',
+      [id]
+    );
+
+    await writeAudit(conn, {
+      actorUserId: actor?.id,
+      action: 'org_unit.restore',
+      entityId: id,
+      metadata: { code: existing.code, parentId: existing.parent_id },
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    return getUnitWithCount(conn, id);
+  });
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\users\user.controller.js =====
+
+import { createUserSchema } from './user.schemas.js';
+import * as userService from './user.service.js';
+import { AppError } from '../../lib/errors.js';
+import { isAdmin } from '../../lib/roles.js';
+
+function actorContext(req) {
+  if (isAdmin(req.user)) {
+    return { id: req.user.id, isGlobal: true, scopes: [] };
+  }
+  const grant = (req.user.permissions || {})['users.manage'];
+  return {
+    id: req.user.id,
+    isGlobal: !!(grant && grant.global),
+    scopes: grant && Array.isArray(grant.scopes) ? grant.scopes : [],
+  };
+}
+
+export async function createUser(req, res, next) {
+  try {
+    const parsed = createUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const details = parsed.error.issues.map((i) => ({
+        field: i.path.join('.') || '(root)',
+        message: i.message,
+      }));
+      throw new AppError(422, 'VALIDATION_ERROR', 'Invalid request body', details);
+    }
+
+    const created = await userService.createUser(parsed.data, actorContext(req), {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    res.status(201).json({ success: true, user: created });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listRoles(_req, res, next) {
+  try {
+    res.json({ success: true, roles: await userService.listRoles() });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listOrgUnits(_req, res, next) {
+  try {
+    res.json({ success: true, orgUnits: await userService.listOrgUnits() });
+  } catch (err) {
+    next(err);
+  }
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\users\user.routes.js =====
+
+import { Router } from 'express';
+import { createUser, listRoles, listOrgUnits } from './user.controller.js';
+import { authenticate } from '../../middleware/authenticate.js';
+import { requireAdmin } from '../../middleware/requireAdmin.js';
+
+const router = Router();
+
+// User administration is restricted to the Super Admin role.
+router.post('/', authenticate, requireAdmin, createUser);
+router.get('/roles', authenticate, requireAdmin, listRoles);
+router.get('/org-units', authenticate, requireAdmin, listOrgUnits);
+
+export default router;
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\users\user.schemas.js =====
+
+import { z } from 'zod';
+
+const username = z
+  .string()
+  .trim()
+  .min(3, 'Username must be at least 3 characters')
+  .max(64)
+  .regex(/^[a-zA-Z0-9._-]+$/, 'Username may contain letters, digits, dot, dash and underscore only');
+
+const password = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(200);
+
+export const createUserSchema = z
+  .object({
+    username,
+    password,
+    fullNameAr: z.string().trim().min(1, 'Arabic full name is required').max(255),
+    fullNameEn: z.string().trim().max(255).optional().or(z.literal('')),
+    orgUnitId: z.string().uuid('orgUnitId must be a UUID'),
+    code: z.string().trim().min(1).max(64).optional(),
+    jobTitleAr: z.string().trim().max(255).optional().or(z.literal('')),
+    email: z.string().trim().email('Invalid email').max(255).optional().or(z.literal('')),
+    extension: z.string().trim().max(32).optional().or(z.literal('')),
+    // The route is admin-only, so an admin may grant either admin or employee.
+    roleCode: z.string().trim().min(1, 'A role is required'),
+    scopeOrgUnitId: z.string().uuid().optional().nullable(),
+    language: z.enum(['ar', 'en']).optional().default('ar'),
+  })
+  .transform((data) => ({
+    ...data,
+    fullNameEn: data.fullNameEn || null,
+    jobTitleAr: data.jobTitleAr || null,
+    email: data.email || null,
+    extension: data.extension || null,
+    scopeOrgUnitId: data.scopeOrgUnitId || null,
+  }));
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\modules\users\user.service.js =====
+
+import crypto from 'node:crypto';
+import { withTransaction, pool } from '../../db/pool.js';
+import { AppError, ErrorCodes } from '../../lib/errors.js';
+import { hashPassword } from '../../lib/password.js';
+import { isOrgUnitWithinScope } from '../../db/scope.js';
+
+async function writeAudit(conn, { actorUserId, action, entityType, entityId, ip, userAgent }) {
+  await conn.execute(
+    `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, ip, user_agent)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [actorUserId, action, entityType, entityId, ip || null, userAgent || null]
+  );
+}
+
+/**
+ * Creates an employee directory entry plus its 1:1 login account, assigns a
+ * role (optionally scoped to an org unit) and default settings, in one
+ * transaction.
+ *
+ * Authorization is enforced by the route (requireAdmin). Here we additionally
+ * refuse to grant a scoped role outside the actor's own grant, so a scoped
+ * principal cannot escalate into another subtree if one is ever introduced.
+ */
+export async function createUser(input, actor, ctx = {}) {
+  return withTransaction(async (conn) => {
+    const [orgRows] = await conn.execute(
+      'SELECT id FROM org_units WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [input.orgUnitId]
+    );
+    if (orgRows.length === 0) {
+      throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'Unknown org unit', [
+        { field: 'orgUnitId', message: 'No such org unit' },
+      ]);
+    }
+
+    const [roleRows] = await conn.execute(
+      'SELECT id, code FROM roles WHERE code = ? LIMIT 1',
+      [input.roleCode]
+    );
+    if (roleRows.length === 0) {
+      throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'Unknown role', [
+        { field: 'roleCode', message: `No role with code "${input.roleCode}"` },
+      ]);
+    }
+    const role = roleRows[0];
+
+    // A non-global actor may only assign roles within its own scope.
+    if (input.scopeOrgUnitId) {
+      const [scopeRows] = await conn.execute(
+        'SELECT id FROM org_units WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+        [input.scopeOrgUnitId]
+      );
+      if (scopeRows.length === 0) {
+        throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'Unknown scope org unit', [
+          { field: 'scopeOrgUnitId', message: 'No such org unit' },
+        ]);
+      }
+      if (!actor.isGlobal) {
+        let allowed = false;
+        for (const scopeId of actor.scopes) {
+          if (await isOrgUnitWithinScope(scopeId, input.scopeOrgUnitId)) {
+            allowed = true;
+            break;
+          }
+        }
+        if (!allowed) {
+          throw new AppError(
+            403,
+            ErrorCodes.FORBIDDEN,
+            'Cannot assign a role outside your scope'
+          );
+        }
+      }
+    }
+
+    const [dup] = await conn.execute(
+      'SELECT id FROM users WHERE username = ? LIMIT 1',
+      [input.username]
+    );
+    if (dup.length > 0) {
+      throw new AppError(409, 'USERNAME_TAKEN', 'Username is already in use', [
+        { field: 'username', message: 'Already taken' },
+      ]);
+    }
+
+    const employeeCode = input.code || input.username;
+    const [dupEmp] = await conn.execute(
+      'SELECT id FROM employees WHERE code = ? LIMIT 1',
+      [employeeCode]
+    );
+    if (dupEmp.length > 0) {
+      throw new AppError(409, 'EMPLOYEE_CODE_TAKEN', 'Employee code is already in use', [
+        { field: 'code', message: 'Already taken' },
+      ]);
+    }
+
+    // IDs are generated here rather than relying on the column's DEFAULT
+    // (UUID()): MySQL fills that server-side, so mysql2's insertId reports 0
+    // for a CHAR(36) primary key and we could not reference the new rows.
+    const employeeId = crypto.randomUUID();
+    await conn.execute(
+      `INSERT INTO employees
+         (id, org_unit_id, code, full_name_ar, full_name_en, job_title_ar, email, extension, presence, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'offline', 1)`,
+      [
+        employeeId,
+        input.orgUnitId,
+        employeeCode,
+        input.fullNameAr,
+        input.fullNameEn,
+        input.jobTitleAr,
+        input.email,
+        input.extension,
+      ]
+    );
+
+    const userId = crypto.randomUUID();
+    const passwordHash = await hashPassword(input.password);
+    await conn.execute(
+      `INSERT INTO users
+         (id, employee_id, username, password_hash, password_algo, password_changed_at, is_active)
+       VALUES (?, ?, ?, ?, 'argon2id', UTC_TIMESTAMP(3), 1)`,
+      [userId, employeeId, input.username, passwordHash]
+    );
+
+    await conn.execute(
+      `INSERT INTO user_roles (id, user_id, role_id, scope_org_unit_id, granted_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [crypto.randomUUID(), userId, role.id, input.scopeOrgUnitId, actor.id]
+    );
+
+    await conn.execute(
+      `INSERT INTO user_settings (user_id, language) VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE language = VALUES(language)`,
+      [userId, input.language || 'ar']
+    );
+
+    await writeAudit(conn, {
+      actorUserId: actor.id,
+      action: 'user.create',
+      entityType: 'user',
+      entityId: userId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    return {
+      id: userId,
+      employeeId,
+      username: input.username,
+      roleCode: role.code,
+      scopeOrgUnitId: input.scopeOrgUnitId,
+    };
+  });
+}
+
+export async function listRoles() {
+  const [rows] = await pool.query(
+    `SELECT code, name_ar, name_en, is_system FROM roles ORDER BY is_system DESC, code`
+  );
+  return rows;
+}
+
+export async function listOrgUnits() {
+  const [rows] = await pool.query(
+    `SELECT id, parent_id, code, name_ar, kind FROM org_units
+     WHERE deleted_at IS NULL ORDER BY sort_order, name_ar`
+  );
+  return rows;
+}
+
+===== C:\Users\halae\Documents\GitHub\مشروع التخرج\مشروع التخرج\internal-comms-portal-FullStack\backend\src\routes\index.js =====
+
+import { Router } from 'express';
+import authRoutes from '../modules/auth/auth.routes.js';
+import userRoutes from '../modules/users/user.routes.js';
+import orgRoutes from '../modules/org/org.routes.js';
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/users', userRoutes);
+router.use('/org-units', orgRoutes);
+
+export default router;
