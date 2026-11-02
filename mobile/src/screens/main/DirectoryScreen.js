@@ -24,16 +24,13 @@ import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import SearchBar from '../../components/SearchBar';
 import Loading from '../../components/Loading';
 import EmptyState from '../../components/EmptyState';
-import UserAvatar from '../../components/UserAvatar';
 import CustomButton from '../../components/CustomButton';
 import SelectField from '../../components/SelectField';
-import Modal from '../../components/Modal';
 import EditEmployeeModal from './EditEmployeeModal';
 import { api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
-import usePresence from '../../hooks/usePresence';
 import { flipStyles } from '../../i18n/rtlStyles';
 import { hasRole } from '../../utils/permissions';
 
@@ -45,6 +42,7 @@ const DirectoryScreen = ({ navigation }) => {
 
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
+  const isWideScreen = width >= 700;
   const isLandscape = width > height;
   const isAdmin = hasRole(user, 'admin');
 
@@ -62,8 +60,6 @@ const DirectoryScreen = ({ navigation }) => {
 
   const [orgTree, setOrgTree] = useState([]);
 
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [toast, setToast] = useState('');
@@ -157,14 +153,14 @@ const DirectoryScreen = ({ navigation }) => {
     setRefreshing(false);
   }, [loadEmployees]);
 
+  // One button clears every filter and immediately reloads the full dataset,
+  // instead of waiting for the search debounce to settle.
   const resetFilters = useCallback(() => {
     setSearchQuery('');
     setRoleFilter('');
     setDepartmentId('');
     setUnitId('');
     setStatusFilter('');
-    // Run the unfiltered query immediately instead of waiting for the search
-    // debounce, so the reset feels instantaneous.
     loadEmployees({
       q: '',
       roleCode: '',
@@ -181,33 +177,32 @@ const DirectoryScreen = ({ navigation }) => {
     setUnitId('');
   }, []);
 
-  // Live online/offline indicators. The server presence seeds the map; while no
-  // status filter is active the hook keeps a simulated heartbeat running.
-  const { isOnline } = usePresence(employees, { simulate: !statusFilter });
+  const handleCallPress = useCallback(
+    (employee) => {
+      if (!employee) return;
+      navigation.navigate('CallActive', {
+        contact: {
+          ...employee,
+          name: employee.fullNameAr,
+          unitName: employee.orgUnitNameAr,
+          avatar: employee.avatarUrl,
+          extension: employee.extension,
+          phoneNumber: employee.extension,
+          isKitchen: false,
+        },
+      });
+    },
+    [navigation]
+  );
 
-  const handleContactPress = (employee) => {
-    setSelectedEmployee(employee);
-    setModalVisible(true);
-  };
-
-  const handleCall = () => {
-    setModalVisible(false);
-    if (!selectedEmployee) return;
-    navigation.navigate('CallActive', {
-      contact: {
-        ...selectedEmployee,
-        name: selectedEmployee.fullNameAr,
-        unitName: selectedEmployee.orgUnitNameAr,
-        isKitchen: false,
-      },
-    });
-  };
-
-  const openEdit = (employee) => {
-    if (!isAdmin) return;
-    setEditingEmployee(employee);
-    setEditVisible(true);
-  };
+  const openEdit = useCallback(
+    (employee) => {
+      if (!isAdmin) return;
+      setEditingEmployee(employee);
+      setEditVisible(true);
+    },
+    [isAdmin]
+  );
 
   const handleEditSaved = useCallback(async () => {
     setEditVisible(false);
@@ -300,15 +295,12 @@ const DirectoryScreen = ({ navigation }) => {
   );
 
   // أحجام متجاوبة
-  const avatarSize = isSmallScreen ? 'small' : isLargeScreen ? 'large' : 'medium';
   const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.lg : spacing.md;
   const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
 
   const notAvailable = t('directory.notAvailable');
 
   const renderEmployee = ({ item }) => {
-    const online = isOnline(item);
-    const accountActive = item.isActive !== false;
     // Employees attached to a section show both the parent administration and
     // the section; employees attached directly to an administration show only
     // that administration.
@@ -318,183 +310,56 @@ const DirectoryScreen = ({ navigation }) => {
       item.parentUnitNameAr ||
       item.orgUnitNameAr ||
       notAvailable;
-    const showUnit = isSection && !!item.orgUnitNameAr;
+    const unitName =
+      isSection && item.orgUnitNameAr && item.orgUnitNameAr !== departmentName
+        ? item.orgUnitNameAr
+        : '';
 
     return (
       <View style={[styles.employeeCard, { padding: cardPadding }]}>
-        <View style={styles.employeeHeader}>
-          <UserAvatar
-            person={{ name: item.fullNameAr, avatar: item.avatarUrl }}
-            size={avatarSize}
-          />
+        <View style={styles.employeeInfo}>
+          <Text
+            style={[styles.employeeName, isSmallScreen && styles.employeeNameSmall]}
+            numberOfLines={2}
+          >
+            {item.fullNameAr}
+          </Text>
 
-          <View style={styles.employeeInfo}>
-            <Text
-              style={[styles.employeeName, isSmallScreen && styles.employeeNameSmall]}
-              numberOfLines={2}
-            >
-              {item.fullNameAr}
-            </Text>
+          <Text style={styles.employeeOrg} numberOfLines={2}>
+            {unitName ? `${departmentName} \u00b7 ${unitName}` : departmentName}
+          </Text>
+        </View>
 
-            {item.fullNameEn ? (
-              <Text style={styles.employeeEnglishName} numberOfLines={1}>
-                {item.fullNameEn}
-              </Text>
-            ) : null}
-
-            <Text
-              style={[styles.employeeUnit, isSmallScreen && styles.employeeUnitSmall]}
-              numberOfLines={1}
-            >
-              {item.jobTitleAr || notAvailable}
-            </Text>
-
-            <View style={styles.presenceRow}>
-              <View
-                style={[
-                  styles.presenceBadge,
-                  online ? styles.presenceBadgeOnline : styles.presenceBadgeOffline,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.presenceDotHalo,
-                    online ? styles.presenceDotHaloOnline : styles.presenceDotHaloOffline,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.presenceDot,
-                      online ? styles.presenceDotOnline : styles.presenceDotOffline,
-                    ]}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.presenceText,
-                    online ? styles.presenceTextOnline : styles.presenceTextOffline,
-                  ]}
-                >
-                  {online ? t('directory.statusOnline') : t('directory.statusOffline')}
-                </Text>
-              </View>
-            </View>
-          </View>
+        <View style={styles.cardActions}>
+          <Pressable
+            onPress={() => handleCallPress(item)}
+            style={({ pressed }) => [
+              styles.iconButton,
+              styles.callButton,
+              pressed && styles.iconButtonPressed,
+            ]}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t('directory.callButton')}
+          >
+            <Ionicons name="call" size={18} color={colors.textWhite} />
+          </Pressable>
 
           {isAdmin ? (
             <Pressable
               onPress={() => openEdit(item)}
-              style={styles.editButton}
-              hitSlop={8}
+              style={({ pressed }) => [
+                styles.iconButton,
+                styles.editButton,
+                pressed && styles.iconButtonPressed,
+              ]}
+              hitSlop={6}
               accessibilityRole="button"
               accessibilityLabel={t('directory.editEmployee')}
             >
-              <Ionicons name="create-outline" size={20} color={colors.primaryLight} />
+              <Ionicons name="create-outline" size={18} color={colors.primaryLight} />
             </Pressable>
           ) : null}
-        </View>
-
-        <View style={styles.orgBlock}>
-          <View style={styles.orgRow}>
-            <View style={styles.orgIcon}>
-              <Ionicons name="business" size={15} color={colors.primaryLight} />
-            </View>
-            <View style={styles.orgTextWrap}>
-              <Text style={styles.orgLabel}>{t('directory.managementLabel')}</Text>
-              <Text style={styles.orgValue} numberOfLines={2}>
-                {departmentName}
-              </Text>
-            </View>
-          </View>
-
-          {showUnit ? (
-            <View style={styles.orgRow}>
-              <View style={styles.orgIcon}>
-                <Ionicons name="git-branch" size={15} color={colors.primaryLight} />
-              </View>
-              <View style={styles.orgTextWrap}>
-                <Text style={styles.orgLabel}>{t('directory.unitLabel')}</Text>
-                <Text style={styles.orgValue} numberOfLines={2}>
-                  {item.orgUnitNameAr}
-                </Text>
-              </View>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Ionicons name="call-outline" size={14} color={colors.textLight} />
-            <Text style={styles.metaText} numberOfLines={1}>
-              {item.extension || notAvailable}
-            </Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Ionicons name="mail-outline" size={14} color={colors.textLight} />
-            <Text style={styles.metaText} numberOfLines={1}>
-              {item.email || notAvailable}
-            </Text>
-          </View>
-        </View>
-
-        {item.username ? (
-          <Text style={styles.usernameText} numberOfLines={1}>
-            @{item.username}
-          </Text>
-        ) : null}
-
-        <View style={styles.employeeActions}>
-          <View style={styles.employeeBadges}>
-            <View
-              style={[
-                styles.roleBadge,
-                item.roleCode === 'admin' && styles.roleBadgeAdmin,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.roleBadgeText,
-                  item.roleCode === 'admin' && styles.roleBadgeTextAdmin,
-                ]}
-              >
-                {item.roleCode === 'admin'
-                  ? t('directory.admin')
-                  : t('directory.employee')}
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.accountBadge,
-                accountActive ? styles.accountBadgeActive : styles.accountBadgeInactive,
-              ]}
-            >
-              <Ionicons
-                name={accountActive ? 'checkmark-circle' : 'pause-circle'}
-                size={12}
-                color={accountActive ? colors.success : colors.danger}
-              />
-              <Text
-                style={[
-                  styles.accountBadgeText,
-                  accountActive
-                    ? styles.accountBadgeTextActive
-                    : styles.accountBadgeTextInactive,
-                ]}
-              >
-                {accountActive
-                  ? t('directory.activeAccount')
-                  : t('directory.inactiveAccount')}
-              </Text>
-            </View>
-          </View>
-
-          <CustomButton
-            title={t('directory.callButton')}
-            onPress={() => handleContactPress(item)}
-            icon="call"
-            size="small"
-          />
         </View>
       </View>
     );
@@ -534,83 +399,77 @@ const DirectoryScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* البحث والتصفية */}
+      {/* البحث والتصفية — بلا عناوين، صف واحد مرن */}
       <View style={[styles.filtersContainer, { padding: headerPadding }]}>
-        <View style={styles.searchRow}>
+        <View style={styles.filterGrid}>
           <SearchBar
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder={t('directory.searchPlaceholder')}
             onClear={() => setSearchQuery('')}
-            style={styles.searchBar}
+            style={[styles.searchBar, isWideScreen && styles.searchBarWide]}
           />
+
           <Pressable
             onPress={resetFilters}
-            style={styles.resetIconButton}
+            style={({ pressed }) => [
+              styles.resetIconButton,
+              pressed && styles.resetIconButtonPressed,
+            ]}
             hitSlop={6}
             accessibilityRole="button"
             accessibilityLabel={t('directory.resetFilters')}
           >
-            <Ionicons name="refresh" size={20} color={colors.primaryLight} />
+            <Ionicons name="refresh" size={20} color={colors.textWhite} />
           </Pressable>
-        </View>
 
-        <View style={styles.filterRow}>
           <SelectField
-            label={t('directory.departmentFilter')}
             value={departmentId}
             options={departmentOptions}
             onSelect={handleDepartmentChange}
             placeholder={t('directory.allDepartments')}
-            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
+            compact
+            style={[styles.filterField, isWideScreen && styles.filterFieldWide]}
             maxListHeight={240}
             emptyText={t('org.noOptions')}
           />
           <SelectField
-            label={t('directory.unitFilter')}
             value={unitId}
             options={unitOptions}
             onSelect={setUnitId}
             placeholder={t('directory.allUnits')}
-            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
+            compact
+            style={[styles.filterField, isWideScreen && styles.filterFieldWide]}
             maxListHeight={220}
             emptyText={t('org.noOptions')}
           />
           <SelectField
-            label={t('directory.statusFilter')}
             value={statusFilter}
             options={statusOptions}
             onSelect={setStatusFilter}
             placeholder={t('directory.allStatuses')}
-            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
+            compact
+            style={[styles.filterField, isWideScreen && styles.filterFieldWide]}
             maxListHeight={220}
           />
           <SelectField
-            label={t('directory.roleFilter')}
             value={roleFilter}
             options={roleFilterOptions}
             onSelect={setRoleFilter}
             placeholder={t('directory.allRoles')}
-            style={[styles.filterField, isSmallScreen && styles.filterFieldSmall]}
+            compact
+            style={[styles.filterField, isWideScreen && styles.filterFieldWide]}
             maxListHeight={180}
           />
         </View>
 
         <View style={styles.filterFooter}>
-          <Pressable onPress={resetFilters} style={styles.resetButton}>
-            <Ionicons name="refresh-outline" size={14} color={colors.primaryLight} />
-            <Text style={[styles.resetButtonText, isSmallScreen && styles.resetButtonTextSmall]}>
-              {t('directory.resetFilters')}
-            </Text>
-          </Pressable>
-          <View style={styles.resultsWrap}>
-            {fetching ? (
-              <ActivityIndicator size="small" color={colors.primaryLight} />
-            ) : null}
-            <Text style={[styles.resultsCount, isSmallScreen && styles.resultsCountSmall]}>
-              {t('directory.resultsCount', { count: employees.length })}
-            </Text>
-          </View>
+          {fetching ? (
+            <ActivityIndicator size="small" color={colors.primaryLight} />
+          ) : null}
+          <Text style={[styles.resultsCount, isSmallScreen && styles.resultsCountSmall]}>
+            {t('directory.resultsCount', { count: employees.length })}
+          </Text>
         </View>
       </View>
 
@@ -649,38 +508,6 @@ const DirectoryScreen = ({ navigation }) => {
           }
         />
       )}
-
-      {/* نافذة خيارات التواصل */}
-      <Modal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        title={t('directory.contactOptions')}
-        size="small"
-      >
-        {selectedEmployee && (
-          <View style={styles.modalContent}>
-            <Text style={styles.modalName}>{selectedEmployee.fullNameAr}</Text>
-            <Text style={styles.modalDescription}>
-              {t('directory.contactDescription')}
-            </Text>
-            <View style={styles.modalActions}>
-              <CustomButton
-                title={t('directory.startCall')}
-                onPress={handleCall}
-                icon="call"
-                style={styles.modalButton}
-              />
-              <CustomButton
-                title={t('directory.sendMessage')}
-                onPress={() => setModalVisible(false)}
-                variant="outline"
-                icon="mail"
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        )}
-      </Modal>
 
       <EditEmployeeModal
         visible={editVisible}
@@ -767,13 +594,21 @@ const rawStyles = StyleSheet.create({
     borderBottomColor: colors.border,
     zIndex: 10,
   },
-  searchRow: {
+  // Compact, label-free filter row. Items wrap into a tidy grid on phones and
+  // sit on a single line on tablets; flexDirection is mirrored for RTL.
+  filterGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
     gap: spacing.sm,
   },
   searchBar: {
-    flex: 1,
+    flexGrow: 2,
+    flexBasis: 200,
+    minHeight: 44,
+  },
+  searchBarWide: {
+    flexBasis: 220,
   },
   resetIconButton: {
     width: 44,
@@ -781,52 +616,28 @@ const rawStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.primaryLight,
+    ...shadows.sm,
   },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+  resetIconButtonPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
   },
   filterField: {
-    flex: 1,
-    minWidth: 140,
+    flexGrow: 1,
+    flexBasis: 140,
     marginBottom: 0,
+    minWidth: 130,
   },
-  filterFieldSmall: {
-    minWidth: '100%',
+  filterFieldWide: {
+    flexBasis: 150,
   },
   filterFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
     marginTop: spacing.sm,
-  },
-  resetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-  },
-  resetButtonText: {
-    ...typography.buttonSmall,
-    color: colors.primaryLight,
-  },
-  resetButtonTextSmall: {
-    fontSize: 11,
-  },
-  resultsWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
   },
   resultsCount: {
     ...typography.bodyBold,
@@ -842,22 +653,18 @@ const rawStyles = StyleSheet.create({
     paddingHorizontal: '15%',
   },
   employeeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.md,
-    ...shadows.md,
-  },
-  employeeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
+    ...shadows.sm,
   },
   employeeInfo: {
     flex: 1,
-    paddingTop: 2,
   },
   employeeName: {
     ...typography.h4,
@@ -867,205 +674,33 @@ const rawStyles = StyleSheet.create({
   employeeNameSmall: {
     fontSize: 14,
   },
-  employeeEnglishName: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 1,
-  },
-  employeeUnit: {
+  employeeOrg: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  employeeUnitSmall: {
-    fontSize: 11,
-  },
-  presenceRow: {
-    flexDirection: 'row',
-    marginTop: spacing.xs,
-  },
-  presenceBadge: {
+  cardActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.full,
+    gap: spacing.sm,
   },
-  presenceBadgeOnline: {
-    backgroundColor: colors.successLight,
-  },
-  presenceBadgeOffline: {
-    backgroundColor: colors.background,
-  },
-  presenceDotHalo: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+  iconButton: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: borderRadius.md,
   },
-  presenceDotHaloOnline: {
-    backgroundColor: '#cfe9dd',
-  },
-  presenceDotHaloOffline: {
-    backgroundColor: '#e2e8ee',
-  },
-  presenceDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  presenceDotOnline: {
-    backgroundColor: colors.success,
-    shadowColor: colors.success,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  presenceDotOffline: {
-    backgroundColor: colors.textLight,
-  },
-  presenceText: {
-    ...typography.captionBold,
-  },
-  presenceTextOnline: {
-    color: colors.success,
-  },
-  presenceTextOffline: {
-    color: colors.textSecondary,
+  callButton: {
+    backgroundColor: colors.primaryLight,
   },
   editButton: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
     backgroundColor: colors.surface,
-  },
-  orgBlock: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-    marginBottom: spacing.sm,
-    gap: spacing.xs,
-  },
-  orgRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  orgIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: borderRadius.md,
-    backgroundColor: '#eef4fa',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  orgTextWrap: {
-    flex: 1,
-  },
-  orgLabel: {
-    ...typography.caption,
-    color: colors.textLight,
-  },
-  orgValue: {
-    ...typography.bodySmall,
-    color: colors.text,
-    fontFamily: 'Cairo_700Bold',
-    marginTop: 1,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    flexBasis: '47%',
-    flexGrow: 1,
-    minWidth: 120,
-  },
-  metaText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    flexShrink: 1,
-  },
-  usernameText: {
-    ...typography.caption,
-    color: colors.textLight,
-    marginBottom: spacing.sm,
-  },
-  employeeActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  accountBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-  },
-  accountBadgeActive: {
-    backgroundColor: colors.successLight,
-    borderColor: '#bfe0d3',
-  },
-  accountBadgeInactive: {
-    backgroundColor: colors.dangerLight,
-    borderColor: '#f0c4c4',
-  },
-  accountBadgeText: {
-    ...typography.captionBold,
-  },
-  accountBadgeTextActive: {
-    color: colors.success,
-  },
-  accountBadgeTextInactive: {
-    color: colors.danger,
-  },
-  employeeActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  employeeBadges: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    flex: 1,
-  },
-  roleBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.borderDark,
   },
-  roleBadgeAdmin: {
-    backgroundColor: colors.warningLight,
-    borderColor: colors.accent,
-  },
-  roleBadgeText: {
-    ...typography.captionBold,
-    color: colors.textSecondary,
-  },
-  roleBadgeTextAdmin: {
-    color: colors.warning,
+  iconButtonPressed: {
+    opacity: 0.8,
   },
   errorState: {
     flex: 1,
@@ -1078,29 +713,6 @@ const rawStyles = StyleSheet.create({
     ...typography.body,
     color: colors.danger,
     textAlign: 'center',
-  },
-  modalContent: {
-    alignItems: 'center',
-  },
-  modalName: {
-    ...typography.h4,
-    color: colors.primaryLight,
-    marginBottom: spacing.sm,
-  },
-  modalDescription: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-    lineHeight: 22,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    width: '100%',
-  },
-  modalButton: {
-    flex: 1,
   },
   toast: {
     position: 'absolute',
