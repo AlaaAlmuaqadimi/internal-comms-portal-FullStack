@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import CustomButton from './CustomButton';
@@ -17,7 +17,11 @@ const ErrorState = ({
   style,
 }) => {
   const { t, isRTL } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
   return (
     <View style={[styles.container, style]}>
       <View style={styles.iconContainer}>
@@ -37,12 +41,12 @@ const ErrorState = ({
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#e5b3a6',
+    borderColor: colors.dangerBorder,
     padding: spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',

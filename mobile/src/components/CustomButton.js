@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 
@@ -17,6 +17,9 @@ const CustomButton = ({
   style,
   textStyle,
 }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const getButtonStyle = () => {
     const baseStyle = [styles.button, styles[size]];
     
@@ -97,7 +100,7 @@ const CustomButton = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   button: {
     flexDirection: 'row',
     alignItems: 'center',

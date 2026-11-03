@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import Modal from './Modal';
@@ -22,7 +22,11 @@ const ConfirmDialog = ({
   loading = false,
 }) => {
   const { t, isRTL } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
   return (
     <Modal
       visible={visible}
@@ -64,7 +68,7 @@ const ConfirmDialog = ({
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   content: {
     alignItems: 'center',
   },
@@ -72,7 +76,7 @@ const rawStyles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#eaf1f7',
+    backgroundColor: colors.iconSurface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,

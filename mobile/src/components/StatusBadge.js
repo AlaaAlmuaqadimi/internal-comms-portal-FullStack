@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
@@ -14,7 +14,11 @@ const StatusBadge = ({
   style,
 }) => {
   const { t, isRTL } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
   const getStatusStyle = () => {
     switch (status) {
       case 'online':
@@ -66,7 +70,7 @@ const StatusBadge = ({
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

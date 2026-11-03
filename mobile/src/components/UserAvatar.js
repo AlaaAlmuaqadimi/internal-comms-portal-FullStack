@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { borderRadius } from '../constants/spacing';
 
@@ -10,6 +10,9 @@ const UserAvatar = ({
   size = 'medium', // small, medium, large, xlarge
   style,
 }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const getSizeStyle = () => {
     switch (size) {
       case 'small':
@@ -48,18 +51,21 @@ const UserAvatar = ({
   }
 
   // إذا كان لديه صورة
-  if (person.avatar) {
+  const avatarUri = person.avatarUrl || person.avatar;
+  if (avatarUri) {
     return (
       <Image
-        source={{ uri: person.avatar }}
+        source={{ uri: avatarUri }}
         style={[styles.image, sizeStyle, style]}
-        accessibilityLabel={person.avatarAlt || person.name}
+        resizeMode="cover"
+        accessibilityLabel={person.avatarAlt || person.name || person.fullNameAr}
       />
     );
   }
 
   // إذا لم يكن لديه صورة - عرض الحرف الأول
-  const initial = person.name ? person.name.charAt(0) : '؟';
+  const displayName = person.name || person.fullNameAr || '';
+  const initial = displayName ? displayName.charAt(0) : '؟';
 
   return (
     <View style={[styles.container, sizeStyle, styles.default, style]}>
@@ -68,20 +74,20 @@ const UserAvatar = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   default: {
-    backgroundColor: '#eaf1f7',
+    backgroundColor: colors.avatarSurface,
   },
   kitchen: {
-    backgroundColor: '#f4ede0',
+    backgroundColor: colors.avatarKitchenSurface,
   },
   image: {
-    backgroundColor: '#e5ecf1',
+    backgroundColor: colors.avatarImageSurface,
   },
   initial: {
     ...typography.h3,

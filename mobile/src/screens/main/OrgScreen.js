@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors } from '../../constants/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
 import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import Loading from '../../components/Loading';
@@ -69,7 +69,11 @@ const OrgScreen = () => {
   const { width, height } = useWindowDimensions();
   const { t, isRTL, language, align } = useLanguage();
   const { user } = useAuth();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
 
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
@@ -586,7 +590,7 @@ const OrgScreen = () => {
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

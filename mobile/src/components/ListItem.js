@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
@@ -12,20 +12,26 @@ const ListItem = ({
   subtitle,
   description,
   icon,
-  iconColor = colors.primaryLight,
-  iconBackgroundColor = '#eaf1f7',
+  iconColor,
+  iconBackgroundColor,
   rightComponent,
   onPress,
   showArrow = false,
   style,
 }) => {
   const { isRTL } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
+  const resolvedIconColor = iconColor || colors.primaryLight;
+  const resolvedIconBackground = iconBackgroundColor || colors.iconSurface;
   const content = (
     <View style={styles.content}>
       {icon && (
-        <View style={[styles.iconContainer, { backgroundColor: iconBackgroundColor }]}>
-          <Ionicons name={icon} size={24} color={iconColor} />
+        <View style={[styles.iconContainer, { backgroundColor: resolvedIconBackground }]}>
+          <Ionicons name={icon} size={24} color={resolvedIconColor} />
         </View>
       )}
       <View style={styles.textContainer}>
@@ -62,7 +68,7 @@ const ListItem = ({
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,

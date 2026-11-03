@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius, shadows } from '../constants/spacing';
 import CustomInput from './CustomInput';
@@ -37,7 +37,11 @@ const OrgUnitPicker = ({
 }) => {
   const { height } = useWindowDimensions();
   const { t, isRTL, align } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
 
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
@@ -287,7 +291,7 @@ const OrgUnitPicker = ({
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: colors.overlay,

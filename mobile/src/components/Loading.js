@@ -1,20 +1,24 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { spacing } from '../constants/spacing';
 
 const Loading = ({ 
   size = 'large', 
-  color = colors.primaryLight, 
+  color, 
   text, 
   fullScreen = false,
   style 
 }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const spinnerColor = color || colors.primaryLight;
+
   if (fullScreen) {
     return (
       <View style={[styles.fullScreen, style]}>
-        <ActivityIndicator size={size} color={color} />
+        <ActivityIndicator size={size} color={spinnerColor} />
         {text && <Text style={styles.text}>{text}</Text>}
       </View>
     );
@@ -22,13 +26,13 @@ const Loading = ({
 
   return (
     <View style={[styles.container, style]}>
-      <ActivityIndicator size={size} color={color} />
+      <ActivityIndicator size={size} color={spinnerColor} />
       {text && <Text style={styles.text}>{text}</Text>}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     padding: spacing.lg,
     alignItems: 'center',

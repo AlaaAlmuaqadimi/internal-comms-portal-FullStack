@@ -2,12 +2,17 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
-import { ThemeProvider } from './src/context/ThemeContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { LanguageProvider } from './src/context/LanguageContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useFonts, Cairo_400Regular, Cairo_700Bold, Cairo_800ExtraBold } from '@expo-google-fonts/cairo';
 import { View, ActivityIndicator, Text, TextInput } from 'react-native';
 import { colors } from './src/constants/colors';
+
+const ThemedStatusBar = () => {
+  const { colors } = useTheme();
+  return <StatusBar style="light" backgroundColor={colors.surfaceDark} />;
+};
 
 const applyDefaultFont = () => {
   const baseStyle = { fontFamily: 'Cairo_400Regular' };
@@ -37,7 +42,7 @@ export default function App() {
       <ThemeProvider>
         <LanguageProvider>
           <AuthProvider>
-            <StatusBar style="light" backgroundColor="#14283f" />
+            <ThemedStatusBar />
             <AppNavigator />
           </AuthProvider>
         </LanguageProvider>

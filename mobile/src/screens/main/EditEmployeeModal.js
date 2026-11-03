@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../constants/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
 import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
@@ -49,7 +49,11 @@ const EditEmployeeModal = ({
 }) => {
   const { width, height } = useWindowDimensions();
   const { t, isRTL, language, align } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
 
   const isSmallScreen = width < 375;
   const isLandscape = width > height;
@@ -699,7 +703,7 @@ const EditEmployeeModal = ({
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

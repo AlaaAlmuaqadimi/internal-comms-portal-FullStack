@@ -82,7 +82,7 @@ const request = async (endpoint, options = {}) => {
     );
   }
 
-  const { auth = true, headers, ...rest } = options;
+  const { auth = true, headers, timeout, ...rest } = options;
   const finalHeaders = {
     'Content-Type': 'application/json',
     ...(auth && accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
@@ -90,7 +90,7 @@ const request = async (endpoint, options = {}) => {
   };
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeoutMs = 10000;
+  const timeoutMs = timeout ?? 10000;
   const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
   let response;
@@ -241,7 +241,13 @@ export const api = {
       if (orgUnitId) params.push(`orgUnitId=${encodeURIComponent(orgUnitId)}`);
       if (status) params.push(`status=${encodeURIComponent(status)}`);
       const query = params.length ? `?${params.join('&')}` : '';
-      const { data } = await request(`/api/employees${query}`);
+      const { data } = await request(`/api/employees${query}`, { timeout: 30000 });
+      return data.employees;
+    },
+
+    // Alias kept for the Settings screen, which loads the whole directory.
+    getAll: async () => {
+      const { data } = await request('/api/employees', { timeout: 30000 });
       return data.employees;
     },
 
@@ -354,12 +360,12 @@ export const api = {
   kitchens: {
     getAll: async () => {
       const { data } = await request('/api/kitchens');
-      return data;
+      return data.kitchens || [];
     },
 
     getByUnit: async (unitId) => {
       const { data } = await request(`/api/kitchens?unitId=${encodeURIComponent(unitId)}`);
-      return data;
+      return data.kitchens || [];
     },
   },
 
@@ -368,25 +374,26 @@ export const api = {
     updateProfile: async (userData) => {
       const { data } = await request('/api/auth/update', {
         method: 'PUT',
+        timeout: 60000,
         body: JSON.stringify(userData),
       });
-      return { success: data.success };
+      return { success: data.success, user: data.user };
     },
 
     updateContacts: async (contacts) => {
-      await request('/api/auth/update', {
+      const { data } = await request('/api/auth/update', {
         method: 'PUT',
         body: JSON.stringify({ contacts }),
       });
-      return { success: true };
+      return { success: data.success, user: data.user };
     },
 
     updateKitchen: async (kitchenId) => {
-      await request('/api/auth/update', {
+      const { data } = await request('/api/auth/update', {
         method: 'PUT',
         body: JSON.stringify({ kitchenChoice: kitchenId }),
       });
-      return { success: true };
+      return { success: data.success, user: data.user };
     },
   },
 };

@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { colors } from '../../constants/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
 import { spacing, borderRadius } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
@@ -25,7 +25,11 @@ import { flipStyles } from '../../i18n/rtlStyles';
 const LoginScreen = ({ navigation }) => {
   const { login } = useAuth();
   const { t, language, toggleLanguage, isRTL } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -172,7 +176,7 @@ const LoginScreen = ({ navigation }) => {
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

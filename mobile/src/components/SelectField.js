@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius, shadows } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
@@ -45,7 +45,11 @@ const SelectField = ({
   const [open, setOpen] = useState(false);
   const { height } = useWindowDimensions();
   const { t, isRTL, align } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
 
   const selected = options.find((option) => option.value === value);
   const isDisabled = disabled || options.length === 0;
@@ -211,7 +215,7 @@ const SelectField = ({
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     marginBottom: spacing.md,
   },

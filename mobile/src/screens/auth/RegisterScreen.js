@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
-import { colors } from '../../constants/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
 import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
@@ -28,7 +28,11 @@ const RegisterScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
   const { register } = useAuth();
   const { t, isRTL } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
   
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
@@ -293,7 +297,7 @@ const RegisterScreen = ({ navigation }) => {
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

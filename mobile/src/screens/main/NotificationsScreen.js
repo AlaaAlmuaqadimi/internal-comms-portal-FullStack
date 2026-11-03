@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../constants/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
 import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import Loading from '../../components/Loading';
@@ -28,7 +28,11 @@ import { flipStyles } from '../../i18n/rtlStyles';
 const NotificationsScreen = () => {
   const { width, height } = useWindowDimensions();
   const { t, align, isRTL } = useLanguage();
-  const styles = useMemo(() => flipStyles(rawStyles, isRTL), [isRTL]);
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () => flipStyles(createStyles(colors), isRTL),
+    [colors, isRTL]
+  );
   
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
@@ -396,7 +400,7 @@ const NotificationsScreen = () => {
   );
 };
 
-const rawStyles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

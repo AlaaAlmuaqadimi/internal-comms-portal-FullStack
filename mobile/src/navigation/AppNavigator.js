@@ -1,11 +1,15 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  NavigationContainer,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { spacing } from '../constants/spacing';
 
 // Auth Screens
@@ -45,6 +49,7 @@ const AuthStack = () => {
 // التبويبات الرئيسية
 const MainTabs = () => {
   const { t, isRTL } = useLanguage();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const tabs = [
     { name: 'Calls', component: CallsScreen, label: t('tabs.calls'), icon: 'call' },
@@ -128,13 +133,31 @@ const MainStack = () => {
 // الملاحي الرئيسي
 const AppNavigator = () => {
   const { isAuthenticated, loading } = useAuth();
+  const { colors, isDarkMode } = useTheme();
 
   if (loading) {
     return null;
   }
 
+  const baseTheme = isDarkMode ? DarkTheme : DefaultTheme;
+  const navigationTheme = {
+    ...baseTheme,
+    colors: {
+      ...baseTheme.colors,
+      primary: colors.primaryLight,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+      notification: colors.accent,
+    },
+  };
+
   return (
-    <NavigationContainer key={isAuthenticated ? 'authenticated' : 'unauthenticated'}>
+    <NavigationContainer
+      theme={navigationTheme}
+      key={isAuthenticated ? 'authenticated' : 'unauthenticated'}
+    >
       {isAuthenticated ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );

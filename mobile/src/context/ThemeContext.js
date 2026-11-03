@@ -1,8 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors } from '../constants/colors';
+import { colors as lightColors, darkColors } from '../constants/colors';
 
 const ThemeContext = createContext();
+
+const THEME_KEY = 'themeMode';
+const LEGACY_DARK_KEY = 'darkMode';
 
 export const useTheme = () => {
   const context = useContext(ThemeContext);
@@ -13,7 +23,9 @@ export const useTheme = () => {
 };
 
 export const ThemeProvider = ({ children }) => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Light mode is the default. The saved preference is loaded afterwards so
+  // a fresh install always starts in light mode.
+  const [themeMode, setThemeModeState] = useState('light');
   const [isRTL, setIsRTL] = useState(true);
 
   useEffect(() => {
@@ -22,12 +34,27 @@ export const ThemeProvider = ({ children }) => {
 
   const loadSettings = async () => {
     try {
-      const darkMode = await AsyncStorage.getItem('darkMode');
-      const rtl = await AsyncStorage.getItem('rtl');
-      
-      if (darkMode !== null) {
-        setIsDarkMode(JSON.parse(darkMode));
+      const storedTheme = await AsyncStorage.getItem(THEME_KEY);
+      if (storedTheme === 'light' || storedTheme === 'dark') {
+        setThemeModeState(storedTheme);
+      } else {
+        // Migrate the old boolean key used by the first theme draft.
+        const legacyDark = await AsyncStorage.getItem(LEGACY_DARK_KEY);
+        if (legacyDark !== null) {
+          let isDark = false;
+          try {
+            isDark = JSON.parse(legacyDark) === true;
+          } catch {
+            isDark = legacyDark === 'true';
+          }
+          const migrated = isDark ? 'dark' : 'light';
+          setThemeModeState(migrated);
+          await AsyncStorage.setItem(THEME_KEY, migrated);
+          await AsyncStorage.removeItem(LEGACY_DARK_KEY);
+        }
       }
+
+      const rtl = await AsyncStorage.getItem('rtl');
       if (rtl !== null) {
         setIsRTL(JSON.parse(rtl));
       }
@@ -36,15 +63,23 @@ export const ThemeProvider = ({ children }) => {
     }
   };
 
-  const toggleDarkMode = async () => {
+  const setThemeMode = useCallback(async (mode) => {
+    const next = mode === 'dark' ? 'dark' : 'light';
+    setThemeModeState(next);
     try {
-      const newValue = !isDarkMode;
-      setIsDarkMode(newValue);
-      await AsyncStorage.setItem('darkMode', JSON.stringify(newValue));
+      await AsyncStorage.setItem(THEME_KEY, next);
     } catch (error) {
-      console.error('Error saving dark mode:', error);
+      console.error('Error saving theme mode:', error);
     }
-  };
+    return next;
+  }, []);
+
+  const isDarkMode = themeMode === 'dark';
+
+  const toggleTheme = useCallback(
+    () => setThemeMode(isDarkMode ? 'light' : 'dark'),
+    [isDarkMode, setThemeMode]
+  );
 
   const toggleRTL = async () => {
     try {
@@ -56,33 +91,22 @@ export const ThemeProvider = ({ children }) => {
     }
   };
 
-  const theme = {
-    colors: isDarkMode ? darkColors : colors,
-    isDarkMode,
-    isRTL,
-    toggleDarkMode,
-    toggleRTL,
-  };
+  const value = useMemo(
+    () => ({
+      colors: isDarkMode ? darkColors : lightColors,
+      themeMode,
+      isDarkMode,
+      isRTL,
+      setThemeMode,
+      toggleTheme,
+      // Backwards-compatible aliases for screens written against the old API.
+      toggleDarkMode: toggleTheme,
+      toggleRTL,
+    }),
+    [isDarkMode, themeMode, isRTL, setThemeMode, toggleTheme]
+  );
 
   return (
-    <ThemeContext.Provider value={theme}>
-      {children}
-    </ThemeContext.Provider>
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
   );
-};
-
-// ألوان الوضع الداكن
-const darkColors = {
-  ...colors,
-  background: '#0f172a',
-  surface: '#1e293b',
-  surfaceDark: '#0f172a',
-  text: '#f1f5f9',
-  textSecondary: '#94a3b8',
-  textLight: '#64748b',
-  border: '#334155',
-  borderDark: '#475569',
-  primary: '#f1f5f9',
-  primaryLight: '#3b82f6',
-  overlay: 'rgba(0, 0, 0, 0.7)',
 };

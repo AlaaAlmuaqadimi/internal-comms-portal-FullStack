@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
-import { colors } from '../constants/colors';
+import { useTheme } from '../context/ThemeContext';
 import { spacing, borderRadius, shadows } from '../constants/spacing';
 
 const Card = ({
@@ -10,6 +10,9 @@ const Card = ({
   style,
   contentStyle,
 }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const getCardStyle = () => {
     const baseStyle = [styles.card];
     
@@ -53,7 +56,7 @@ const Card = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   card: {
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
