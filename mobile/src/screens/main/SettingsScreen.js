@@ -121,27 +121,37 @@ const InfoRow = ({ label, value, onPress, styles, small }) => {
   );
 };
 
-const PhotoField = ({ value, onChange, onPick, disabled, styles, t, align }) => {
+const PhotoField = ({ value, onChange, onPick, disabled, styles, t }) => {
+  const { colors } = useTheme();
   const isData = typeof value === 'string' && value.startsWith('data:');
 
   return (
     <View style={styles.photoField}>
-      <View style={styles.photoRow}>
-        <UserAvatar person={{ avatar: value || null }} size="large" />
-        <View style={styles.photoInfo}>
-          <Text style={[styles.photoLabel, { textAlign: align }]}>
-            {t('settings.photoLabel')}
-          </Text>
-          <Text
-            style={[styles.photoHint, { textAlign: align }]}
-            numberOfLines={1}
-          >
-            {isData
-              ? t('settings.photoFromGallery')
-              : value || t('settings.notSelected')}
-          </Text>
+      <Pressable
+        onPress={disabled ? undefined : onPick}
+        disabled={disabled}
+        style={styles.photoAvatarButton}
+        accessibilityRole="button"
+        accessibilityLabel={t('settings.choosePhoto')}
+      >
+        <View style={styles.photoAvatarRing}>
+          <UserAvatar
+            person={{ avatar: value || null }}
+            size="xlarge"
+            style={styles.photoAvatarImage}
+          />
         </View>
-      </View>
+        {!disabled && (
+          <View style={styles.photoCameraBadge}>
+            <Ionicons name="camera" size={16} color={colors.textWhite} />
+          </View>
+        )}
+      </Pressable>
+
+      <Text style={styles.photoLabel}>{t('settings.photoLabel')}</Text>
+      <Text style={styles.photoHint} numberOfLines={2}>
+        {isData ? t('settings.photoFromGallery') : t('settings.photoHint')}
+      </Text>
 
       {!disabled && (
         <View style={styles.photoActions}>
@@ -165,16 +175,6 @@ const PhotoField = ({ value, onChange, onPick, disabled, styles, t, align }) => 
           )}
         </View>
       )}
-
-      <CustomInput
-        label={t('settings.photoUrl')}
-        value={isData ? '' : value}
-        onChangeText={onChange}
-        placeholder={t('settings.photoUrlPlaceholder')}
-        icon="link-outline"
-        disabled={disabled}
-        hint={isData ? t('settings.photoFromGallery') : undefined}
-      />
     </View>
   );
 };
@@ -245,6 +245,7 @@ const SettingsScreen = ({ navigation }) => {
     fullNameAr: '',
     username: '',
     management: '',
+    office: '',
     orgUnitId: '',
     orgPath: '',
     avatarUrl: '',
@@ -359,7 +360,7 @@ const SettingsScreen = ({ navigation }) => {
     const entries = new Map();
     const arrow = isRTL ? '\u2190' : '\u2192';
 
-    const visit = (nodes, depth, parentPath, parentId = null) => {
+    const visit = (nodes, depth, parentPath, parentId = null, ancestors = []) => {
       const ids = [];
       for (const unit of nodes || []) {
         const name = localizeText(
@@ -367,6 +368,20 @@ const SettingsScreen = ({ navigation }) => {
         );
         const path = parentPath ? `${parentPath} ${arrow} ${name}` : name;
         const childIds = (unit.children || []).map((child) => child.id);
+        const kind = unit.kind || '';
+        const chain = [...ancestors, { name, kind }];
+
+        // Management is the nearest directorate (إدارة) ancestor, falling back
+        // to an office/deputy/root ancestor. Office is the selected unit itself
+        // — e.g. "قسم البرمجة" under "إدارة المعلوماتية" yields management =
+        // "إدارة المعلوماتية" and office = "قسم البرمجة".
+        const directorate = [...chain]
+          .reverse()
+          .find((ancestor) => ancestor.kind === 'directorate');
+        const fallback = [...chain]
+          .reverse()
+          .find((ancestor) => ['office', 'deputy', 'root'].includes(ancestor.kind));
+        const management = (directorate || fallback || chain[chain.length - 1]).name;
 
         entries.set(unit.id, {
           id: unit.id,
@@ -374,6 +389,9 @@ const SettingsScreen = ({ navigation }) => {
           path,
           depth,
           parentId,
+          kind,
+          management,
+          office: name,
           childIds,
           hasChildren: childIds.length > 0,
           searchText: [unit.nameAr, unit.nameEn, unit.code, name]
@@ -383,7 +401,7 @@ const SettingsScreen = ({ navigation }) => {
         });
 
         ids.push(unit.id);
-        visit(unit.children, depth + 1, path, unit.id);
+        visit(unit.children, depth + 1, path, unit.id, chain);
       }
       return ids;
     };
@@ -544,7 +562,8 @@ const SettingsScreen = ({ navigation }) => {
     setProfileForm({
       fullNameAr: user?.name || user?.fullNameAr || '',
       username: user?.username || '',
-      management: user?.management || '',
+      management: orgEntry?.management || user?.management || '',
+      office: orgEntry?.office || user?.office || user?.unitName || '',
       orgUnitId: user?.unitId || '',
       orgPath: orgEntry?.path || user?.path || user?.unitName || user?.management || '',
       avatarUrl: user?.avatarUrl || user?.avatar || '',
@@ -560,19 +579,15 @@ const SettingsScreen = ({ navigation }) => {
 
     const name = profileForm.fullNameAr.trim();
     const username = profileForm.username.trim().toLowerCase();
-    const management = profileForm.management.trim();
     const avatarUrl = profileForm.avatarUrl || '';
     const currentAvatar = user?.avatarUrl || user?.avatar || '';
 
     // Send only what actually changed. This keeps the payload small when the
-    // avatar is a large data URL and avoids persisting a derived management
-    // label into employees.metadata unnecessarily.
+    // avatar is a large data URL. Management and office are derived from the
+    // selected org unit on the server, so they are never sent as free text.
     const updates = {};
     if (name !== (user?.name || '')) updates.fullNameAr = name;
     if (username !== (user?.username || '')) updates.username = username;
-    if (management !== (user?.management || '')) {
-      updates.management = management || null;
-    }
     if (avatarUrl !== currentAvatar) updates.avatarUrl = avatarUrl || null;
 
     let orgSkipped = false;
@@ -863,8 +878,20 @@ const SettingsScreen = ({ navigation }) => {
 
   const handleSelectTheme = async (mode) => {
     if (themeMode === mode) return;
+    const previous = themeMode;
+
     await setThemeMode(mode);
-    showStatus('success', t('settings.themeSaved'));
+    const result = await updateUser(
+      { theme: mode },
+      { localOnly: !isBackendConfigured() }
+    );
+
+    if (!result.success) {
+      await setThemeMode(previous);
+      showStatus('error', result.error || t('settings.saveError'));
+    } else {
+      showStatus('success', t('settings.themeSaved'));
+    }
   };
 
   const openOrgPicker = (target) => {
@@ -914,6 +941,10 @@ const SettingsScreen = ({ navigation }) => {
           ...prev,
           orgUnitId: unitId,
           orgPath: entry.path,
+          // Management and office are derived from the selected position and
+          // shown read-only; the server recomputes them from the hierarchy.
+          management: entry.management || prev.management,
+          office: entry.office || prev.office,
         }));
       }
     }
@@ -999,51 +1030,98 @@ const SettingsScreen = ({ navigation }) => {
           </Text>
 
           <View style={styles.profileCard}>
+            <View style={styles.profileBanner}>
+              <View style={styles.profileBannerOrb} />
+              <View style={styles.profileBannerOrbSmall} />
+            </View>
+
             <Pressable
               onPress={openProfileEditor}
-              style={styles.avatarWrapper}
+              style={styles.profileAvatarWrap}
               accessibilityRole="button"
               accessibilityLabel={t('settings.editProfile')}
             >
-              <UserAvatar
-                person={{ ...user, avatar: profileAvatar }}
-                size={avatarSize}
-              />
+              <View style={styles.profileAvatarRing}>
+                <UserAvatar
+                  person={{ ...user, avatar: profileAvatar }}
+                  size={avatarSize}
+                  style={styles.profileAvatarImage}
+                />
+              </View>
               <View style={styles.avatarEditBadge}>
-                <Ionicons name="camera" size={12} color={colors.textWhite} />
+                <Ionicons name="camera" size={13} color={colors.textWhite} />
               </View>
             </Pressable>
 
-            <View style={styles.profileInfo}>
-              <InfoRow
-                label={t('settings.nameLabel')}
-                value={profileName}
-                onPress={openProfileEditor}
-                styles={styles}
-                small={isSmallScreen}
-              />
-              <InfoRow
-                label={t('settings.usernameLabel')}
-                value={user?.username}
-                onPress={openProfileEditor}
-                styles={styles}
-                small={isSmallScreen}
-              />
-              <InfoRow
-                label={t('settings.managementLabel')}
-                value={profileManagement}
-                onPress={openProfileEditor}
-                styles={styles}
-                small={isSmallScreen}
-              />
-              <InfoRow
-                label={t('settings.orgPathLabel')}
-                value={profileOrgPath}
-                onPress={openProfileEditor}
-                styles={styles}
-                small={isSmallScreen}
-              />
+            <Text style={styles.profileName} numberOfLines={2}>
+              {profileName}
+            </Text>
+
+            {!!user?.username && (
+              <View style={styles.profileUsernamePill}>
+                <Ionicons name="at" size={13} color={colors.primaryLight} />
+                <Text style={styles.profileUsername}>{user.username}</Text>
+              </View>
+            )}
+
+            <View style={styles.profileMeta}>
+              <View style={styles.profileMetaRow}>
+                <View style={styles.profileMetaIcon}>
+                  <Ionicons
+                    name="business-outline"
+                    size={16}
+                    color={colors.primaryLight}
+                  />
+                </View>
+                <View style={styles.profileMetaBody}>
+                  <Text style={styles.profileMetaLabel}>
+                    {t('settings.managementLabel')}
+                  </Text>
+                  <Text style={styles.profileMetaValue} numberOfLines={2}>
+                    {profileManagement || '—'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.profileMetaRow}>
+                <View style={styles.profileMetaIcon}>
+                  <Ionicons
+                    name="grid-outline"
+                    size={16}
+                    color={colors.primaryLight}
+                  />
+                </View>
+                <View style={styles.profileMetaBody}>
+                  <Text style={styles.profileMetaLabel}>
+                    {t('settings.officeLabel')}
+                  </Text>
+                  <Text style={styles.profileMetaValue} numberOfLines={2}>
+                    {profileOffice || '—'}
+                  </Text>
+                </View>
+              </View>
+
+              {!!profileOrgPath && (
+                <View style={styles.profilePathRow}>
+                  <Ionicons
+                    name="location-outline"
+                    size={14}
+                    color={colors.textLight}
+                  />
+                  <Text style={styles.profilePath} numberOfLines={2}>
+                    {profileOrgPath}
+                  </Text>
+                </View>
+              )}
             </View>
+
+            <CustomButton
+              title={t('settings.editProfile')}
+              onPress={openProfileEditor}
+              icon="create-outline"
+              size="small"
+              style={styles.profileEditButton}
+            />
           </View>
         </View>
 
@@ -1387,67 +1465,79 @@ const SettingsScreen = ({ navigation }) => {
             disabled={false}
             styles={styles}
             t={t}
-            align={align}
           />
 
-          <CustomInput
-            label={t('settings.nameLabel')}
-            value={profileForm.fullNameAr}
-            onChangeText={(value) =>
-              setProfileForm((prev) => ({ ...prev, fullNameAr: value }))
-            }
-            placeholder={t('settings.namePlaceholder')}
-            required
-            error={profileErrors.fullNameAr}
-            icon="person-outline"
-          />
+          <View style={styles.formFields}>
+            <CustomInput
+              label={t('settings.nameLabel')}
+              value={profileForm.fullNameAr}
+              onChangeText={(value) =>
+                setProfileForm((prev) => ({ ...prev, fullNameAr: value }))
+              }
+              placeholder={t('settings.namePlaceholder')}
+              required
+              error={profileErrors.fullNameAr}
+              icon="person-outline"
+            />
 
-          <CustomInput
-            label={t('settings.usernameLabel')}
-            value={profileForm.username}
-            onChangeText={(value) =>
-              setProfileForm((prev) => ({ ...prev, username: value }))
-            }
-            placeholder={t('settings.usernamePlaceholder')}
-            required
-            error={profileErrors.username}
-            hint={t('addUser.usernameHint')}
-            icon="at-outline"
-          />
+            <CustomInput
+              label={t('settings.usernameLabel')}
+              value={profileForm.username}
+              onChangeText={(value) =>
+                setProfileForm((prev) => ({ ...prev, username: value }))
+              }
+              placeholder={t('settings.usernamePlaceholder')}
+              required
+              error={profileErrors.username}
+              hint={t('addUser.usernameHint')}
+              icon="at-outline"
+            />
 
-          <CustomInput
-            label={t('settings.managementLabel')}
-            value={profileForm.management}
-            onChangeText={(value) =>
-              setProfileForm((prev) => ({ ...prev, management: value }))
-            }
-            placeholder={t('settings.managementPlaceholder')}
-            icon="business-outline"
-          />
+            <OrgTrigger
+              label={t('settings.orgPathLabel')}
+              value={profileForm.orgPath}
+              placeholder={t('settings.orgPlaceholder')}
+              onPress={() => openOrgPicker('profile')}
+              styles={styles}
+              align={align}
+            />
 
-          <OrgTrigger
-            label={t('settings.orgPathLabel')}
-            value={profileForm.orgPath}
-            placeholder={t('settings.orgPlaceholder')}
-            onPress={() => openOrgPicker('profile')}
-            styles={styles}
-            align={align}
-          />
+            <Text style={styles.orgHelper}>
+              {t('settings.orgAutoFillHint')}
+            </Text>
+
+            <CustomInput
+              label={t('settings.managementLabel')}
+              value={profileForm.management}
+              placeholder={t('settings.autoFilledHint')}
+              icon="business-outline"
+              disabled
+              hint={t('settings.autoFilledHint')}
+            />
+
+            <CustomInput
+              label={t('settings.officeLabel')}
+              value={profileForm.office}
+              placeholder={t('settings.autoFilledHint')}
+              icon="grid-outline"
+              disabled
+              hint={t('settings.autoFilledHint')}
+            />
+          </View>
 
           <View style={styles.modalActions}>
             <CustomButton
-              title={t('common.save')}
+              title={t('settings.saveChanges')}
               onPress={handleSaveProfile}
               loading={profileSaving}
               disabled={profileSaving}
-              size="small"
+              icon="checkmark-circle-outline"
               style={styles.modalButton}
             />
             <CustomButton
               title={t('common.cancel')}
               onPress={() => setProfileModalVisible(false)}
               variant="outline"
-              size="small"
               style={styles.modalButton}
             />
           </View>
@@ -2038,40 +2128,77 @@ const createStyles = (colors) => StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
   },
   modalButton: {
     flex: 1,
   },
+  formFields: {
+    gap: spacing.xs,
+  },
   photoField: {
-    marginBottom: spacing.sm,
-  },
-  photoRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.md,
+    marginBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  photoAvatarButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: spacing.sm,
   },
-  photoInfo: {
-    flex: 1,
-    minWidth: 0,
+  photoAvatarRing: {
+    padding: 4,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: colors.primaryLight,
+    backgroundColor: colors.surface,
+    ...shadows.sm,
+  },
+  photoAvatarImage: {
+    borderRadius: 999,
+  },
+  photoCameraBadge: {
+    position: 'absolute',
+    bottom: 2,
+    end: 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryLight,
+    borderWidth: 2,
+    borderColor: colors.surface,
   },
   photoLabel: {
     ...typography.bodyBold,
     color: colors.text,
+    textAlign: 'center',
   },
   photoHint: {
     ...typography.caption,
     color: colors.textSecondary,
+    textAlign: 'center',
     marginTop: 2,
+    paddingHorizontal: spacing.md,
   },
   photoActions: {
     flexDirection: 'row',
+    justifyContent: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    marginTop: spacing.sm,
   },
   photoButton: {
-    flex: 1,
+    minWidth: 120,
+  },
+  orgHelper: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.xs,
   },
   orgField: {
     marginBottom: spacing.md,

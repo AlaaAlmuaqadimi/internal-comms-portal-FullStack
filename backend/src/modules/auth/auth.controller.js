@@ -53,6 +53,19 @@ export async function logout(req, res, next) {
   }
 }
 
+export async function updateProfile(req, res, next) {
+  try {
+    const result = await authService.updateMyProfile({
+      userId: req.user.id,
+      ...req.body,
+      ...requestContext(req),
+    });
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function me(req, res, next) {
   try {
     const result = await authService.getMe(req.user.id);

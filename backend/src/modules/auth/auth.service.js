@@ -1,5 +1,5 @@
 import { pool, withTransaction } from '../../db/pool.js';
-import { getOrgUnitPath } from '../../db/scope.js';
+import { getOrgUnitHierarchy } from '../../db/scope.js';
 import { env } from '../../config/env.js';
 import { AppError, ErrorCodes } from '../../lib/errors.js';
 import { dummyVerify, hashPassword, verifyPasswordForUser } from '../../lib/password.js';
@@ -19,17 +19,23 @@ const USER_SELECT = `
          u.is_active, u.failed_login_count, u.locked_until,
          e.full_name_ar, e.full_name_en, e.code AS employee_code,
          e.presence, e.avatar_url, e.org_unit_id,
-         ou.name_ar AS org_unit_name, ou.code AS org_unit_code
+         ou.name_ar AS org_unit_name, ou.code AS org_unit_code,
+         us.language AS settings_language, us.theme AS settings_theme,
+         us.kitchen_choice_id AS settings_kitchen_id,
+         k.code AS kitchen_code, k.name_ar AS kitchen_name, k.name_en AS kitchen_name_en,
+         k.scope_ar AS kitchen_scope, k.scope_en AS kitchen_scope_en
   FROM users u
   JOIN employees e ON e.id = u.employee_id
   JOIN org_units ou ON ou.id = e.org_unit_id
+  LEFT JOIN user_settings us ON us.user_id = u.id
+  LEFT JOIN kitchens k ON k.id = us.kitchen_choice_id
   WHERE u.deleted_at IS NULL AND e.deleted_at IS NULL`;
 
 function isActive(value) {
   return value === 1 || value === true || value === '1';
 }
 
-function publicUser(user, path) {
+function publicUser(user, hierarchy) {
   return {
     id: user.id,
     employeeId: user.employee_id,
@@ -41,7 +47,21 @@ function publicUser(user, path) {
     avatarUrl: user.avatar_url,
     unitId: user.org_unit_id,
     unitName: user.org_unit_name,
-    path,
+    unitKind: hierarchy?.kind || null,
+    path: hierarchy?.path || null,
+    pathEn: hierarchy?.pathEn || null,
+    management: hierarchy?.management || user.org_unit_name || null,
+    managementEn: hierarchy?.managementEn || null,
+    office: hierarchy?.office || user.org_unit_name || null,
+    officeEn: hierarchy?.officeEn || null,
+    language: user.settings_language || 'ar',
+    theme: user.settings_theme || 'light',
+    kitchenChoice: user.settings_kitchen_id || null,
+    kitchenCode: user.kitchen_code || null,
+    kitchenName: user.kitchen_name || null,
+    kitchenNameEn: user.kitchen_name_en || null,
+    kitchenScope: user.kitchen_scope || null,
+    kitchenScopeEn: user.kitchen_scope_en || null,
   };
 }
 
@@ -213,7 +233,7 @@ export async function login({ username, password, ip, userAgent }) {
 
   const { accessToken, expiresIn, roles } = await issueAccessToken(user);
   const refreshToken = await issueRefreshToken({ userId: user.id, ip, userAgent });
-  const path = await getOrgUnitPath(user.org_unit_id);
+  const hierarchy = await getOrgUnitHierarchy(user.org_unit_id);
 
   await writeAudit({ actorUserId: user.id, action: 'auth.login', ip, userAgent });
 
@@ -221,13 +241,15 @@ export async function login({ username, password, ip, userAgent }) {
     accessToken,
     refreshToken,
     expiresIn,
-    user: { ...publicUser(user, path), roles },
+    user: { ...publicUser(user, hierarchy), roles },
   };
 }
 
 export async function register({ name, username, password, unit, contacts = [], ip, userAgent }) {
-  if (!normalizedUsername) throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'اسم المستخدم مطلوب');
-  if (!existing.length === false) { /* noop */ }
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  if (!normalizedUsername) {
+    throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'اسم المستخدم مطلوب');
+  }
 
   const [existing] = await pool.execute(
     `SELECT id FROM users WHERE username = ? AND deleted_at IS NULL LIMIT 1`,
@@ -309,13 +331,13 @@ export async function register({ name, username, password, unit, contacts = [], 
   const user = await findUserById(userId);
   const { accessToken, expiresIn, roles } = await issueAccessToken(user);
   const refreshToken = await issueRefreshToken({ userId: user.id, ip, userAgent });
-  const path = await getOrgUnitPath(user.org_unit_id);
+  const hierarchy = await getOrgUnitHierarchy(user.org_unit_id);
 
   return {
     accessToken,
     refreshToken,
     expiresIn,
-    user: { ...publicUser(user, path), roles },
+    user: { ...publicUser(user, hierarchy), roles },
   };
 }
 
@@ -397,14 +419,14 @@ export async function rotateRefreshToken({ refreshToken, ip, userAgent }) {
   }
 
   const { accessToken, expiresIn, roles } = await issueAccessToken(user);
-  const path = await getOrgUnitPath(user.org_unit_id);
+  const hierarchy = await getOrgUnitHierarchy(user.org_unit_id);
   await writeAudit({ actorUserId: user.id, action: 'auth.refresh', ip, userAgent });
 
   return {
     accessToken,
     refreshToken: newRaw,
     expiresIn,
-    user: { ...publicUser(user, path), roles },
+    user: { ...publicUser(user, hierarchy), roles },
   };
 }
 
@@ -429,6 +451,171 @@ export async function getMe(userId) {
     throw new AppError(401, ErrorCodes.UNAUTHORIZED, 'Account is not available');
   }
   const { roles, permissionMap } = await loadRolesAndPermissions(userId);
-  const path = await getOrgUnitPath(user.org_unit_id);
-  return { user: { ...publicUser(user, path), roles, permissions: permissionMap } };
+  const hierarchy = await getOrgUnitHierarchy(user.org_unit_id);
+  return { user: { ...publicUser(user, hierarchy), roles, permissions: permissionMap } };
+}
+
+/**
+ * Updates the signed-in user's own profile and app preferences.
+ *
+ * Every field is optional; only the keys present in the payload are touched.
+ * Name/avatar/org unit live on `employees`, username on `users`, and
+ * language/theme/kitchen choice on `user_settings`. The three tables are
+ * updated inside one transaction so a partial failure cannot desync them.
+ */
+export async function updateMyProfile({
+  userId,
+  fullNameAr,
+  username,
+  avatarUrl,
+  orgUnitId,
+  language,
+  theme,
+  kitchenChoice,
+  ip,
+  userAgent,
+}) {
+  const user = await findUserById(userId);
+  if (!user || !isActive(user.is_active)) {
+    throw new AppError(401, ErrorCodes.UNAUTHORIZED, 'Account is not available');
+  }
+
+  const wantsUsername = username !== undefined && username !== null;
+  const normalizedUsername = wantsUsername ? String(username).trim().toLowerCase() : null;
+
+  if (wantsUsername && normalizedUsername !== user.username) {
+    const [taken] = await pool.execute(
+      `SELECT id FROM users WHERE username = ? AND deleted_at IS NULL AND id <> ? LIMIT 1`,
+      [normalizedUsername, userId]
+    );
+    if (taken.length > 0) {
+      throw new AppError(409, ErrorCodes.CONFLICT, 'اسم المستخدم مستخدَم بالفعل', {
+        code: ErrorCodes.CONFLICT,
+      });
+    }
+  }
+
+  let resolvedOrgUnitId = user.org_unit_id;
+  if (orgUnitId !== undefined && orgUnitId !== null && orgUnitId !== '') {
+    const [units] = await pool.execute(
+      `SELECT id FROM org_units WHERE id = ? AND deleted_at IS NULL AND is_active = 1 LIMIT 1`,
+      [orgUnitId]
+    );
+    if (units.length === 0) {
+      throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'الوحدة التنظيمية غير صحيحة');
+    }
+    resolvedOrgUnitId = units[0].id;
+  }
+
+  let resolvedKitchenId = user.settings_kitchen_id || null;
+  if (kitchenChoice !== undefined) {
+    if (kitchenChoice === null || kitchenChoice === '') {
+      resolvedKitchenId = null;
+    } else {
+      const [kitchens] = await pool.execute(
+        `SELECT id FROM kitchens WHERE id = ? AND is_active = 1 LIMIT 1`,
+        [kitchenChoice]
+      );
+      if (kitchens.length === 0) {
+        throw new AppError(422, ErrorCodes.VALIDATION_ERROR, 'المطبخ المحدد غير متاح');
+      }
+      resolvedKitchenId = kitchens[0].id;
+    }
+  }
+
+  const resolvedLanguage = language === undefined || language === null ? null : String(language);
+  const resolvedTheme = theme === undefined || theme === null ? null : String(theme);
+  const hasSettingsRow =
+    user.settings_language !== null && user.settings_language !== undefined;
+
+  const changed = {};
+
+  await withTransaction(async (conn) => {
+    if (fullNameAr !== undefined && fullNameAr !== null) {
+      const trimmed = String(fullNameAr).trim();
+      if (trimmed && trimmed !== user.full_name_ar) {
+        await conn.execute(`UPDATE employees SET full_name_ar = ? WHERE id = ?`, [
+          trimmed,
+          user.employee_id,
+        ]);
+        changed.fullNameAr = trimmed;
+      }
+    }
+
+    if (avatarUrl !== undefined) {
+      const nextAvatar = avatarUrl === null || avatarUrl === '' ? null : String(avatarUrl);
+      if (nextAvatar !== (user.avatar_url || null)) {
+        await conn.execute(`UPDATE employees SET avatar_url = ? WHERE id = ?`, [
+          nextAvatar,
+          user.employee_id,
+        ]);
+        changed.avatarUrl = nextAvatar;
+      }
+    }
+
+    if (resolvedOrgUnitId !== user.org_unit_id) {
+      await conn.execute(`UPDATE employees SET org_unit_id = ? WHERE id = ?`, [
+        resolvedOrgUnitId,
+        user.employee_id,
+      ]);
+      changed.orgUnitId = resolvedOrgUnitId;
+    }
+
+    if (wantsUsername && normalizedUsername !== user.username) {
+      await conn.execute(
+        `UPDATE users SET username = ?, updated_at = UTC_TIMESTAMP(3) WHERE id = ?`,
+        [normalizedUsername, userId]
+      );
+      changed.username = normalizedUsername;
+    }
+
+    if (resolvedLanguage !== null && resolvedLanguage !== (user.settings_language || 'ar')) {
+      changed.language = resolvedLanguage;
+    }
+    if (resolvedTheme !== null && resolvedTheme !== (user.settings_theme || 'light')) {
+      changed.theme = resolvedTheme;
+    }
+    if (resolvedKitchenId !== (user.settings_kitchen_id || null)) {
+      changed.kitchenChoice = resolvedKitchenId;
+    }
+
+    const settingsTouched =
+      resolvedLanguage !== null || resolvedTheme !== null || kitchenChoice !== undefined;
+    const settingsChanged =
+      changed.language !== undefined ||
+      changed.theme !== undefined ||
+      changed.kitchenChoice !== undefined;
+
+    if (settingsTouched && (settingsChanged || !hasSettingsRow)) {
+      await conn.execute(
+        `INSERT INTO user_settings (user_id, language, theme, kitchen_choice_id)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           language = VALUES(language),
+           theme = VALUES(theme),
+           kitchen_choice_id = VALUES(kitchen_choice_id)`,
+        [
+          userId,
+          resolvedLanguage !== null ? resolvedLanguage : user.settings_language || 'ar',
+          resolvedTheme !== null ? resolvedTheme : user.settings_theme || 'light',
+          resolvedKitchenId,
+        ]
+      );
+    }
+
+    await conn.execute(
+      `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, ip, user_agent, metadata)
+       VALUES (?, 'auth.profile.update', 'user', ?, ?, ?, ?)`,
+      [userId, userId, ip || null, userAgent || null, JSON.stringify({ fields: Object.keys(changed) })]
+    );
+  });
+
+  const fresh = await findUserById(userId);
+  const hierarchy = await getOrgUnitHierarchy(fresh.org_unit_id);
+  const { roles, permissionMap } = await loadRolesAndPermissions(userId);
+
+  return {
+    user: { ...publicUser(fresh, hierarchy), roles, permissions: permissionMap },
+    changed: Object.keys(changed),
+  };
 }

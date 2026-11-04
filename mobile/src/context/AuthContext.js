@@ -8,6 +8,8 @@ import {
   setUnauthorizedHandler,
   isBackendConfigured,
 } from '../services/api';
+import { useTheme } from './ThemeContext';
+import { useLanguage } from './LanguageContext';
 
 const AuthContext = createContext();
 
@@ -89,6 +91,23 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { setThemeMode } = useTheme();
+  const { setLanguage } = useLanguage();
+
+  // The server is the source of truth for theme/language, so a preference
+  // changed on one device follows the account to the next login.
+  const applyServerPreferences = useCallback(
+    async (nextUser) => {
+      if (!nextUser) return;
+      if (nextUser.theme === 'light' || nextUser.theme === 'dark') {
+        await setThemeMode(nextUser.theme);
+      }
+      if (nextUser.language === 'ar' || nextUser.language === 'en') {
+        await setLanguage(nextUser.language);
+      }
+    },
+    [setThemeMode, setLanguage]
+  );
 
   const handleUnauthorized = useCallback(async () => {
     await clearSession();
@@ -108,6 +127,7 @@ export const AuthProvider = ({ children }) => {
           setAuthTokens(session.tokens);
           setUser(session.user);
           setIsAuthenticated(true);
+          await applyServerPreferences(session.user);
 
           // Validate the stored session against the server; a revoked or
           // expired token must not keep the user signed in. A network failure
@@ -116,6 +136,7 @@ export const AuthProvider = ({ children }) => {
             try {
               const freshUser = await api.auth.me();
               setUser(freshUser);
+              await applyServerPreferences(freshUser);
               await AsyncStorage.setItem(
                 USER_KEY,
                 JSON.stringify(sanitizeUserForStorage(freshUser))
@@ -149,6 +170,7 @@ export const AuthProvider = ({ children }) => {
       await persistSession(result.accessToken, result.refreshToken, result.user);
       setUser(result.user);
       setIsAuthenticated(true);
+      await applyServerPreferences(result.user);
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message, code: error.code, status: error.status };
@@ -161,6 +183,7 @@ export const AuthProvider = ({ children }) => {
       await persistSession(result.accessToken, result.refreshToken, result.user);
       setUser(result.user);
       setIsAuthenticated(true);
+      await applyServerPreferences(result.user);
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message || 'حدث خطأ أثناء إنشاء الحساب', code: error.code, status: error.status };
