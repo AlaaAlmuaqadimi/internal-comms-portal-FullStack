@@ -25,6 +25,13 @@ import CustomInput from '../../components/CustomInput';
 import SearchBar from '../../components/SearchBar';
 import Modal from '../../components/Modal';
 import { api, isBackendConfigured } from '../../services/api';
+import {
+  DEFAULT_NOTIFICATION_SOUND,
+  NOTIFICATION_SOUNDS,
+  loadNotificationSound,
+  playNotificationSound,
+  saveNotificationSound,
+} from '../../services/sound';
 import { mockData } from '../../utils/mockData';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
@@ -239,6 +246,9 @@ const SettingsScreen = ({ navigation }) => {
   const [savingContacts, setSavingContacts] = useState(false);
   const [status, setStatus] = useState(null);
   const statusTimer = useRef(null);
+  const [notificationSound, setNotificationSound] = useState(
+    DEFAULT_NOTIFICATION_SOUND
+  );
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -286,6 +296,16 @@ const SettingsScreen = ({ navigation }) => {
     },
     []
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    loadNotificationSound().then((sound) => {
+      if (!cancelled) setNotificationSound(sound);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -894,6 +914,17 @@ const SettingsScreen = ({ navigation }) => {
     }
   };
 
+  const handleSelectNotificationSound = async (key) => {
+    setNotificationSound(key);
+    await saveNotificationSound(key);
+
+    if (key !== 'silent') {
+      playNotificationSound(key);
+    }
+
+    showStatus('success', t('settings.notificationSoundSaved'));
+  };
+
   const openOrgPicker = (target) => {
     const currentId =
       target === 'contact' ? contactForm.orgUnitId : profileForm.orgUnitId;
@@ -968,6 +999,7 @@ const SettingsScreen = ({ navigation }) => {
   const profileAvatar = user?.avatarUrl || user?.avatar;
   const profileName = user?.name || user?.fullNameAr || user?.username || '—';
   const profileManagement = user?.management || user?.unitName;
+  const profileOffice = user?.office || user?.unitName;
   const profileOrgPath = user?.path || user?.unitName || user?.management;
 
   const avatarSize = isSmallScreen ? 'medium' : isLargeScreen ? 'xlarge' : 'large';
@@ -1043,7 +1075,11 @@ const SettingsScreen = ({ navigation }) => {
             >
               <View style={styles.profileAvatarRing}>
                 <UserAvatar
-                  person={{ ...user, avatar: profileAvatar }}
+                  person={{
+                    ...user,
+                    avatarUrl: profileAvatar || null,
+                    avatar: profileAvatar || null,
+                  }}
                   size={avatarSize}
                   style={styles.profileAvatarImage}
                 />
@@ -1302,6 +1338,86 @@ const SettingsScreen = ({ navigation }) => {
                       color={colors.primaryLight}
                     />
                   )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* نغمة الإشعارات */}
+        <View style={[styles.section, { padding: sectionPadding }]}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              isSmallScreen && styles.sectionTitleSmall,
+            ]}
+          >
+            {t('settings.notificationSoundTitle')}
+          </Text>
+          <Text
+            style={[
+              styles.sectionDescription,
+              isSmallScreen && styles.sectionDescriptionSmall,
+            ]}
+          >
+            {t('settings.notificationSoundDescription')}
+          </Text>
+
+          <View style={styles.soundOptions}>
+            {NOTIFICATION_SOUNDS.map((option) => {
+              const isSelected = notificationSound === option.key;
+              return (
+                <Pressable
+                  key={option.key}
+                  style={[
+                    styles.soundOption,
+                    isSelected && styles.soundOptionSelected,
+                  ]}
+                  onPress={() => handleSelectNotificationSound(option.key)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
+                >
+                  <View
+                    style={[
+                      styles.soundIcon,
+                      isSelected && styles.soundIconSelected,
+                    ]}
+                  >
+                    <Ionicons
+                      name={option.icon}
+                      size={isSmallScreen ? 16 : 18}
+                      color={isSelected ? colors.textWhite : colors.primaryLight}
+                    />
+                  </View>
+
+                  <View style={styles.soundInfo}>
+                    <Text
+                      style={[
+                        styles.soundLabel,
+                        isSmallScreen && styles.soundLabelSmall,
+                      ]}
+                    >
+                      {t(option.labelKey)}
+                    </Text>
+                    <Text
+                      style={styles.soundHint}
+                      numberOfLines={1}
+                    >
+                      {t(option.descriptionKey)}
+                    </Text>
+                  </View>
+
+                  <Ionicons
+                    name={
+                      isSelected
+                        ? 'checkmark-circle'
+                        : option.key === 'silent'
+                          ? 'volume-mute-outline'
+                          : 'play-circle-outline'
+                    }
+                    size={isSmallScreen ? 18 : 20}
+                    color={isSelected ? colors.primaryLight : colors.textLight}
+                  />
                 </Pressable>
               );
             })}
@@ -1788,8 +1904,126 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 11,
   },
   profileCard: {
+    alignItems: 'center',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+    paddingBottom: spacing.md,
+  },
+  profileBanner: {
+    width: '100%',
+    height: 96,
+    backgroundColor: colors.surfaceDark,
+    marginBottom: -52,
+  },
+  profileBannerOrb: {
+    position: 'absolute',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    top: -56,
+    right: -30,
+  },
+  profileBannerOrbSmall: {
+    position: 'absolute',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(196,165,106,0.18)',
+    bottom: -18,
+    left: 18,
+  },
+  profileAvatarWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  profileAvatarRing: {
+    padding: 4,
+    borderRadius: borderRadius.full,
+    borderWidth: 3,
+    borderColor: colors.primaryLight,
+    backgroundColor: colors.surface,
+    ...shadows.md,
+  },
+  profileAvatarImage: {
+    borderRadius: borderRadius.full,
+  },
+  profileName: {
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  profileUsernamePill: {
     flexDirection: 'row',
-    gap: spacing.md,
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.infoLight,
+  },
+  profileUsername: {
+    ...typography.captionBold,
+    color: colors.primaryLight,
+  },
+  profileMeta: {
+    width: '100%',
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  profileMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  profileMetaIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.iconSurface,
+  },
+  profileMetaBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileMetaLabel: {
+    ...typography.small,
+    color: colors.textLight,
+  },
+  profileMetaValue: {
+    ...typography.bodySmallBold,
+    color: colors.text,
+    marginTop: 1,
+  },
+  profilePathRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  profilePath: {
+    ...typography.small,
+    color: colors.textLight,
+    flex: 1,
+  },
+  profileEditButton: {
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    minWidth: 180,
   },
   avatarWrapper: {
     alignSelf: 'flex-start',
@@ -2061,6 +2295,51 @@ const createStyles = (colors) => StyleSheet.create({
   },
   themeOptions: {
     gap: spacing.sm,
+  },
+  soundOptions: {
+    gap: spacing.sm,
+  },
+  soundOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  soundOptionSelected: {
+    borderColor: colors.primaryLight,
+    backgroundColor: colors.selectedSurface,
+  },
+  soundIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.iconSurface,
+  },
+  soundIconSelected: {
+    backgroundColor: colors.primaryLight,
+  },
+  soundInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  soundLabel: {
+    ...typography.bodyBold,
+    color: colors.text,
+  },
+  soundLabelSmall: {
+    fontSize: 13,
+  },
+  soundHint: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 1,
   },
   themeOption: {
     flexDirection: 'row',

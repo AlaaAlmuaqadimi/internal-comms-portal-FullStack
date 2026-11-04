@@ -37,17 +37,24 @@ const NotificationItem = ({
   };
 
   const getIconColor = () => {
-    switch (notification.type) {
+    switch (notification.typeKey || notification.type) {
+      case 'announcement':
       case 'إعلان':
         return colors.primaryLight;
+      case 'circular':
       case 'تعميم':
         return colors.warning;
+      case 'message':
       case 'مراسلة':
         return colors.success;
       default:
         return colors.primaryLight;
     }
   };
+
+  const typeLabel = notification.typeKey
+    ? t(`notifications.type${notification.typeKey.charAt(0).toUpperCase()}${notification.typeKey.slice(1)}`)
+    : localizeText(notification.type);
 
   return (
     <Pressable
@@ -65,7 +72,7 @@ const NotificationItem = ({
         </View>
         <View style={styles.textContainer}>
           <View style={styles.header}>
-            <Text style={styles.type}>{localizeText(notification.type)}</Text>
+            <Text style={styles.type}>{typeLabel}</Text>
             <View style={styles.status}>
               {notification.unread && (
                 <View style={styles.unreadBadge}>

@@ -33,7 +33,7 @@ export const useAuth = () => {
 // downscaled before upload, but a very large value must not be written to the
 // profile cache because some storage backends limit the size of a single row.
 // Small avatars are kept so they survive an offline launch.
-const MAX_CACHED_AVATAR = 500_000;
+const MAX_CACHED_AVATAR = 1_500_000;
 function sanitizeUserForStorage(user) {
   if (!user || typeof user !== 'object') return user;
   const cached = { ...user };
@@ -224,7 +224,27 @@ export const AuthProvider = ({ children }) => {
 
       if (!options.localOnly && isBackendConfigured()) {
         const result = await api.settings.updateProfile(updates);
-        if (result?.user) updatedUser = result.user;
+        if (result?.user) {
+          // The server is authoritative, but a freshly uploaded avatar can be
+          // missing from the response (for example on a schema that still has
+          // the old short column). Keep the local copy so the profile card
+          // never falls back to the previous photo after a successful save.
+          updatedUser = { ...updatedUser, ...result.user };
+          if (normalized.avatarUrl !== undefined) {
+            const uploadedAvatar =
+              typeof normalized.avatarUrl === 'string' ? normalized.avatarUrl : '';
+            if (uploadedAvatar) {
+              if (!updatedUser.avatarUrl) {
+                updatedUser.avatarUrl = uploadedAvatar;
+                updatedUser.avatar = uploadedAvatar;
+              }
+            } else {
+              // Explicitly removed: never resurrect the previous photo.
+              delete updatedUser.avatar;
+              delete updatedUser.avatarUrl;
+            }
+          }
+        }
       }
 
       await AsyncStorage.setItem(
