@@ -74,6 +74,14 @@ const NotificationItem = ({
           <View style={styles.header}>
             <Text style={styles.type}>{typeLabel}</Text>
             <View style={styles.status}>
+              {notification.isSender && (
+                <View style={styles.senderBadge}>
+                  <Ionicons name="send" size={10} color={colors.primaryLight} />
+                  <Text style={styles.senderText}>
+                    {t('notifications.senderBadge')}
+                  </Text>
+                </View>
+              )}
               {notification.unread && (
                 <View style={styles.unreadBadge}>
                   <Text style={styles.unreadText}>{t('common.unread')}</Text>
@@ -83,7 +91,17 @@ const NotificationItem = ({
           </View>
           <Text style={styles.title}>{localizeText(notification.title)}</Text>
           <Text style={styles.summary} numberOfLines={2}>{localizeText(notification.summary)}</Text>
-          <Text style={styles.date}>{notification.date} · {notification.time}</Text>
+          <View style={styles.footerRow}>
+            <Text style={styles.date}>{notification.date} · {notification.time}</Text>
+            {notification.isSender && !!notification.recipientCount && (
+              <Text style={styles.readSummary}>
+                {t('notifications.readSummary', {
+                  read: notification.readCount || 0,
+                  total: notification.recipientCount,
+                })}
+              </Text>
+            )}
+          </View>
         </View>
       </View>
     </Pressable>
@@ -133,6 +151,33 @@ const createStyles = (colors) => StyleSheet.create({
   status: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.xs,
+    flexShrink: 0,
+  },
+  senderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 1,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.infoLight,
+  },
+  senderText: {
+    ...typography.caption,
+    color: colors.primaryLight,
+    fontSize: 9,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  readSummary: {
+    ...typography.caption,
+    color: colors.success,
+    fontSize: 10,
   },
   unreadBadge: {
     flexDirection: 'row',

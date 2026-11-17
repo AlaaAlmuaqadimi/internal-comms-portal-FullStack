@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,15 @@ import {
   RefreshControl,
   Pressable,
   ScrollView,
+  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../context/ThemeContext';
+import { useNotifications } from '../../context/NotificationsContext';
 import { typography } from '../../constants/typography';
-import { spacing, borderRadius, shadows } from '../../constants/spacing';
+import { spacing, borderRadius } from '../../constants/spacing';
 import Loading from '../../components/Loading';
 import EmptyState from '../../components/EmptyState';
 import NotificationItem from '../../components/NotificationItem';
@@ -26,28 +27,9 @@ import UserAvatar from '../../components/UserAvatar';
 import WheelPicker from '../../components/WheelPicker';
 import { mockData } from '../../utils/mockData';
 import { api, isBackendConfigured } from '../../services/api';
-import {
-  loadNotificationSound,
-  playNotificationSound,
-} from '../../services/sound';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
-
-const STORAGE_KEY = 'notifications.items.v1';
-
-const TYPE_KEYS = {
-  'إعلان': 'announcement',
-  'تعميم': 'circular',
-  'مراسلة': 'message',
-};
-
-const seedNotifications = () =>
-  mockData.notifications.map((notification) => ({
-    ...notification,
-    typeKey: TYPE_KEYS[notification.type] || 'announcement',
-    audience: 'all',
-  }));
 
 const formatExpiry = (timestamp) => {
   const date = new Date(timestamp);
@@ -108,11 +90,24 @@ const NotificationsScreen = () => {
   const isLargeScreen = width > 768;
   const isLandscape = width > height;
 
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    error,
+    refresh,
+    markRead,
+    markAllRead,
+    publish,
+  } = useNotifications();
+
   const [refreshing, setRefreshing] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const noticeTimer = useRef(null);
+  const [receipts, setReceipts] = useState(null);
+  const [receiptsLoading, setReceiptsLoading] = useState(false);
 
   // نموذج إنشاء إشعار
   const [createVisible, setCreateVisible] = useState(false);
@@ -131,6 +126,7 @@ const NotificationsScreen = () => {
 
   const durationOptions = useMemo(
     () => [
+      { key: '1h', hours: 1, label: t('notifications.duration1h') },
       { key: '24h', hours: 24, label: t('notifications.duration1d') },
       { key: '2d', hours: 48, label: t('notifications.duration2d') },
       { key: '7d', hours: 24 * 7, label: t('notifications.duration7d') },
@@ -164,9 +160,6 @@ const NotificationsScreen = () => {
   const durationLabel =
     durationOptions.find((option) => option.key === newDuration)?.label || '';
 
-  const typeLabel =
-    typeOptions.find((option) => option.key === newType)?.label || '';
-
   // A notification is only visible during the duration chosen when it was
   // published. The clock ticks every 30s so an item disappears on its own
   // while the screen is open, not just after a reload.
@@ -175,6 +168,13 @@ const NotificationsScreen = () => {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(
+    () => () => {
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    },
+    []
+  );
+
   const visibleNotifications = useMemo(
     () =>
       notifications.filter(
@@ -182,18 +182,6 @@ const NotificationsScreen = () => {
       ),
     [notifications, clock]
   );
-
-  // Drop expired items from state (and therefore from storage) as soon as the
-  // clock passes their expiry, so a notification really disappears when the
-  // chosen duration is over.
-  useEffect(() => {
-    setNotifications((prev) => {
-      const next = prev.filter(
-        (item) => !item.expiresAt || item.expiresAt > clock
-      );
-      return next.length === prev.length ? prev : next;
-    });
-  }, [clock]);
 
   const filteredEmployees = useMemo(() => {
     const query = recipientQuery.trim().toLowerCase();
@@ -239,56 +227,52 @@ const NotificationsScreen = () => {
     };
   }, []);
 
-  const loadNotifications = useCallback(async () => {
-    try {
-      setLoading(true);
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const now = Date.now();
-          setNotifications(
-            parsed.filter((item) => !item.expiresAt || item.expiresAt > now)
-          );
-          return;
-        }
-      }
-      setNotifications(seedNotifications());
-    } catch (error) {
-      console.error('Error loading notifications:', error);
-      setNotifications(seedNotifications());
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
-
-  // Keep the list on the device so a published notification survives an app
-  // restart instead of resetting to the sample data.
-  useEffect(() => {
-    if (loading) return;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(notifications)).catch(
-      () => {}
-    );
-  }, [notifications, loading]);
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadNotifications();
-    setRefreshing(false);
-  }, [loadNotifications]);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
+
+  // The sender can see exactly who opened the notification and when. Receipts
+  // are only fetched for notifications the signed-in employee created; the API
+  // also enforces that on the server.
+  const loadReceipts = useCallback(async (notificationId) => {
+    if (!notificationId || !isBackendConfigured()) return;
+
+    setReceiptsLoading(true);
+    try {
+      const data = await api.notifications.getReceipts(notificationId);
+      setReceipts(data);
+    } catch (err) {
+      setReceipts({
+        recipientCount: 0,
+        readCount: 0,
+        recipients: [],
+        error: err?.message || null,
+      });
+    } finally {
+      setReceiptsLoading(false);
+    }
+  }, []);
 
   const handleNotificationPress = (notification) => {
     setSelectedNotification(notification);
     setModalVisible(true);
-    setNotifications((prev) =>
-      prev.map((item) =>
-        item.id === notification.id ? { ...item, unread: false } : item
-      )
-    );
+    setReceipts(null);
+    if (notification.isSender) {
+      loadReceipts(notification.id);
+    }
+    if (notification.unread) {
+      markRead(notification.id);
+    }
+  };
+
+  const closeDetailsModal = () => {
+    setModalVisible(false);
+    setReceipts(null);
   };
 
   const getIconName = (icon) => {
@@ -374,50 +358,30 @@ const NotificationsScreen = () => {
     setCreateErrors(errs);
     if (Object.keys(errs).length) return;
 
-    const now = new Date();
-    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const hours24 = now.getHours();
-    const period = hours24 >= 12 ? 'م' : 'ص';
-    const hours12 = hours24 % 12 || 12;
-    const time = `${String(hours12).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${period}`;
-
-    const typeOption = typeOptions.find((option) => option.key === newType);
     const durationOption = durationOptions.find(
       (option) => option.key === newDuration
     );
     const hours = durationOption?.hours || 24;
     const body = newBody.trim();
-    const firstLine = body.split('\n')[0].trim();
-    const title = firstLine.length > 70 ? `${firstLine.slice(0, 70)}…` : firstLine;
 
-    const notification = {
-      id: `${Date.now()}`,
-      typeKey: newType,
-      type: typeOption?.label || typeLabel,
-      title: title || typeOption?.label || typeLabel,
-      summary: body.slice(0, 120),
-      body,
-      icon: typeOption?.icon || 'megaphone',
-      date,
-      time,
-      unread: true,
-      createdAt: now.getTime(),
-      expiresAt: now.getTime() + hours * 60 * 60 * 1000,
-      durationKey: newDuration,
-      audience: allSelected ? 'all' : 'selected',
-      recipientIds: allSelected ? [] : [...newRecipients],
-      recipientCount: newRecipients.length,
-    };
-
-    setNotifications((prev) => [notification, ...prev]);
-    closeCreateModal();
-
-    // Give the publisher the same audible feedback the recipients would get.
     try {
-      const sound = await loadNotificationSound();
-      playNotificationSound(sound);
-    } catch {
-      // Sound is optional feedback.
+      await publish({
+        type: newType,
+        body,
+        recipientIds: allSelected ? [] : newRecipients,
+        audience: allSelected ? 'all' : 'selected',
+        durationHours: hours,
+      });
+      closeCreateModal();
+      setNotice(t('notifications.submitSuccess'));
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+      noticeTimer.current = setTimeout(() => setNotice(null), 4000);
+    } catch (err) {
+      const field = err?.details?.[0]?.field;
+      setCreateErrors({
+        [field === 'recipientIds' ? 'recipients' : 'body']:
+          err?.message || t('notifications.publishError'),
+      });
     }
   };
 
@@ -452,24 +416,58 @@ const NotificationsScreen = () => {
           </View>
         </View>
         <View style={[styles.headerActions, { alignItems: 'flex-start' }]}>
+          {/* Any employee can send a notification or message. Only the people
+              they select receive it, so there is no admin-only gate here. */}
           <Pressable style={styles.createButton} onPress={() => setCreateVisible(true)}>
             <Ionicons name="add" size={18} color={colors.textWhite} />
             <Text style={styles.createButtonText}>{t('notifications.create')}</Text>
           </Pressable>
-          <View style={styles.badge}>
-            <Text style={[styles.badgeText, isSmallScreen && styles.badgeTextSmall]}>
-              {t('notifications.demoBadge')}
-            </Text>
+          <View style={styles.badgeRow}>
+            <View style={styles.badge}>
+              <Text style={[styles.badgeText, isSmallScreen && styles.badgeTextSmall]}>
+                {unreadCount > 0
+                  ? t('notifications.unreadBadge', { count: unreadCount })
+                  : t('notifications.allRead')}
+              </Text>
+            </View>
+            {unreadCount > 0 && (
+              <Pressable
+                onPress={markAllRead}
+                style={styles.markAllButton}
+                accessibilityRole="button"
+                accessibilityLabel={t('notifications.markAllRead')}
+              >
+                <Ionicons name="checkmark-done" size={14} color={colors.primaryLight} />
+                <Text style={styles.markAllText}>
+                  {t('notifications.markAllRead')}
+                </Text>
+              </Pressable>
+            )}
           </View>
         </View>
       </View>
 
+      {!!notice && (
+        <View style={styles.noticeBar}>
+          <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+          <Text style={styles.noticeText}>{notice}</Text>
+        </View>
+      )}
+
       {/* قائمة الإشعارات */}
       {visibleNotifications.length === 0 ? (
         <EmptyState
-          icon="notifications-off"
-          title={t('notifications.emptyTitle')}
-          description={t('notifications.emptyDescription')}
+          icon={error ? 'cloud-offline-outline' : 'notifications-off'}
+          title={
+            error ? t('notifications.loadErrorTitle') : t('notifications.emptyTitle')
+          }
+          description={
+            error
+              ? t('notifications.loadError')
+              : t('notifications.emptyDescription')
+          }
+          actionTitle={error ? t('common.retry') : undefined}
+          onAction={error ? handleRefresh : undefined}
         />
       ) : (
         <FlatList
@@ -489,12 +487,16 @@ const NotificationsScreen = () => {
       {/* نافذة تفاصيل الإشعار */}
       <Modal
         visible={modalVisible}
-        onClose={() => setModalVisible(false)}
+        onClose={closeDetailsModal}
         title={t('notifications.detailsTitle')}
         size="medium"
       >
         {selectedNotification && (
-          <View style={styles.modalContent}>
+          <ScrollView
+            style={{ maxHeight: height * 0.7 }}
+            contentContainerStyle={styles.modalContent}
+            nestedScrollEnabled
+          >
             <View style={styles.modalHeader}>
               <View style={[styles.modalIcon, { width: iconSize, height: iconSize, borderRadius: iconSize / 2 }]}>
                 <Ionicons
@@ -509,6 +511,14 @@ const NotificationsScreen = () => {
                     localizeText(selectedNotification.type)
                   : localizeText(selectedNotification.type)}
               </Text>
+              {selectedNotification.isSender && (
+                <View style={styles.senderBadge}>
+                  <Ionicons name="send" size={11} color={colors.primaryLight} />
+                  <Text style={styles.senderBadgeText}>
+                    {t('notifications.senderBadge')}
+                  </Text>
+                </View>
+              )}
             </View>
 
             <Text style={[styles.modalTitle, isSmallScreen && styles.modalTitleSmall]}>
@@ -520,9 +530,14 @@ const NotificationsScreen = () => {
 
             {!!selectedNotification.recipientCount && (
               <Text style={styles.modalMeta}>
-                {t('notifications.detailsRecipients', {
-                  count: selectedNotification.recipientCount,
-                })}
+                {selectedNotification.isSender
+                  ? t('notifications.readSummary', {
+                      read: receipts ? receipts.readCount : selectedNotification.readCount || 0,
+                      total: selectedNotification.recipientCount,
+                    })
+                  : t('notifications.detailsRecipients', {
+                      count: selectedNotification.recipientCount,
+                    })}
               </Text>
             )}
 
@@ -537,7 +552,72 @@ const NotificationsScreen = () => {
             <Text style={[styles.modalDate, isSmallScreen && styles.modalDateSmall]}>
               {selectedNotification.date} · {selectedNotification.time}
             </Text>
-          </View>
+
+            {selectedNotification.isSender && (
+              <View style={styles.receiptsSection}>
+                <Text style={styles.receiptsTitle}>
+                  {t('notifications.receiptsTitle')}
+                </Text>
+
+                {receiptsLoading ? (
+                  <View style={styles.receiptsLoading}>
+                    <ActivityIndicator size="small" color={colors.primaryLight} />
+                    <Text style={styles.receiptsLoadingText}>
+                      {t('notifications.receiptsLoading')}
+                    </Text>
+                  </View>
+                ) : receipts?.error ? (
+                  <Pressable
+                    style={styles.receiptsRetry}
+                    onPress={() => loadReceipts(selectedNotification.id)}
+                  >
+                    <Ionicons name="refresh" size={14} color={colors.primaryLight} />
+                    <Text style={styles.receiptsRetryText}>
+                      {t('common.retry')}
+                    </Text>
+                  </Pressable>
+                ) : receipts?.recipients?.length ? (
+                  receipts.recipients.map((recipient) => (
+                    <View key={recipient.employeeId} style={styles.receiptRow}>
+                      <UserAvatar
+                        person={{
+                          name: recipient.name,
+                          avatarUrl: recipient.avatarUrl,
+                        }}
+                        size="small"
+                      />
+                      <View style={styles.receiptBody}>
+                        <Text style={styles.receiptName} numberOfLines={1}>
+                          {localizeText(recipient.name)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.receiptStatus,
+                            recipient.read && styles.receiptStatusRead,
+                          ]}
+                        >
+                          {recipient.read
+                            ? t('notifications.receiptReadAt', {
+                                date: formatExpiry(recipient.readAt),
+                              })
+                            : t('notifications.receiptUnread')}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name={recipient.read ? 'checkmark-done' : 'time-outline'}
+                        size={18}
+                        color={recipient.read ? colors.success : colors.textSecondary}
+                      />
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.receiptsEmpty}>
+                    {t('notifications.receiptsEmpty')}
+                  </Text>
+                )}
+              </View>
+            )}
+          </ScrollView>
         )}
       </Modal>
 
@@ -815,6 +895,45 @@ const createStyles = (colors) => StyleSheet.create({
     borderRadius: borderRadius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  markAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.infoBorder,
+    backgroundColor: colors.infoLight,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  markAllText: {
+    ...typography.captionBold,
+    color: colors.primaryLight,
+  },
+  noticeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.successLight,
+    borderWidth: 1,
+    borderColor: colors.successBorder,
+  },
+  noticeText: {
+    ...typography.caption,
+    color: colors.success,
+    flex: 1,
   },
   headerActions: {
     gap: spacing.sm,
@@ -1106,6 +1225,84 @@ const createStyles = (colors) => StyleSheet.create({
   },
   modalDateSmall: {
     fontSize: 10,
+  },
+  senderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.infoLight,
+  },
+  senderBadgeText: {
+    ...typography.captionBold,
+    color: colors.primaryLight,
+    fontSize: 10,
+  },
+  receiptsSection: {
+    width: '100%',
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  receiptsTitle: {
+    ...typography.bodyBold,
+    color: colors.text,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  receiptsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  receiptsLoadingText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  receiptsRetry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  receiptsRetryText: {
+    ...typography.captionBold,
+    color: colors.primaryLight,
+  },
+  receiptsEmpty: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+  },
+  receiptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  receiptBody: {
+    flex: 1,
+  },
+  receiptName: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontFamily: 'Cairo_700Bold',
+  },
+  receiptStatus: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 10,
+  },
+  receiptStatusRead: {
+    color: colors.success,
   },
   footer: {
     padding: spacing.sm,

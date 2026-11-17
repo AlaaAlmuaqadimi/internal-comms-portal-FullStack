@@ -1002,7 +1002,7 @@ const SettingsScreen = ({ navigation }) => {
   const profileOffice = user?.office || user?.unitName;
   const profileOrgPath = user?.path || user?.unitName || user?.management;
 
-  const avatarSize = isSmallScreen ? 'medium' : isLargeScreen ? 'xlarge' : 'large';
+  const avatarSize = isSmallScreen ? 'large' : 'xlarge';
   const sectionPadding = isSmallScreen
     ? spacing.sm
     : isLargeScreen
@@ -2595,6 +2595,10 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textSecondary,
     paddingVertical: spacing.lg,
   },
+
 });
+
+
+
 
 export default SettingsScreen;

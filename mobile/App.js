@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { LanguageProvider } from './src/context/LanguageContext';
+import { NotificationsProvider } from './src/context/NotificationsContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useFonts, Cairo_400Regular, Cairo_700Bold, Cairo_800ExtraBold } from '@expo-google-fonts/cairo';
 import { View, ActivityIndicator, Text, TextInput } from 'react-native';
@@ -42,8 +43,10 @@ export default function App() {
       <ThemeProvider>
         <LanguageProvider>
           <AuthProvider>
-            <ThemedStatusBar />
-            <AppNavigator />
+            <NotificationsProvider>
+              <ThemedStatusBar />
+              <AppNavigator />
+            </NotificationsProvider>
           </AuthProvider>
         </LanguageProvider>
       </ThemeProvider>

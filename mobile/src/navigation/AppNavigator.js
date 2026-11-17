@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
+import { useNotifications } from '../context/NotificationsContext';
 import { spacing } from '../constants/spacing';
 
 // Auth Screens
@@ -50,6 +51,7 @@ const AuthStack = () => {
 const MainTabs = () => {
   const { t, isRTL } = useLanguage();
   const { colors } = useTheme();
+  const { unreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const tabs = [
     { name: 'Calls', component: CallsScreen, label: t('tabs.calls'), icon: 'call' },
@@ -88,6 +90,22 @@ const MainTabs = () => {
           component={tab.component}
           options={{
             tabBarLabel: tab.label,
+            // A numeric badge on the notifications tab tells the user how many
+            // notifications are still unread.
+            ...(tab.name === 'Notifications' && unreadCount > 0
+              ? {
+                  tabBarBadge: unreadCount > 99 ? '99+' : unreadCount,
+                  tabBarBadgeStyle: {
+                    backgroundColor: colors.danger,
+                    color: colors.textWhite,
+                    fontSize: 10,
+                    fontWeight: '700',
+                    minWidth: 18,
+                    height: 18,
+                    lineHeight: 18,
+                  },
+                }
+              : {}),
             tabBarIcon: ({ color, size }) => (
               <Ionicons name={tab.icon} size={size} color={color} />
             ),

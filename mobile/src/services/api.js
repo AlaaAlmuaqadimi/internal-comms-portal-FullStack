@@ -285,9 +285,39 @@ export const api = {
 
   // Notifications
   notifications: {
+    // Returns the notifications that were delivered to the signed-in employee
+    // plus the unread count used by the tab badge.
     getAll: async () => {
       const { data } = await request('/api/notifications');
-      return data;
+      return {
+        notifications: Array.isArray(data?.notifications) ? data.notifications : [],
+        unreadCount:
+          typeof data?.unreadCount === 'number'
+            ? data.unreadCount
+            : (data?.notifications || []).filter((item) => item.unread).length,
+      };
+    },
+
+    getUnreadCount: async () => {
+      const { data } = await request('/api/notifications/unread-count');
+      return Number(data?.count || 0);
+    },
+
+    create: async (payload) => {
+      const { data } = await request('/api/notifications', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      return data.notification;
+    },
+
+    getReceipts: async (id) => {
+      const { data } = await request(`/api/notifications/${id}/receipts`);
+      return {
+        recipientCount: Number(data?.recipientCount || 0),
+        readCount: Number(data?.readCount || 0),
+        recipients: Array.isArray(data?.recipients) ? data.recipients : [],
+      };
     },
 
     markAsRead: async (id) => {
