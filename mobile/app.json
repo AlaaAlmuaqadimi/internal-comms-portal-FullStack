@@ -34,7 +34,8 @@
           "backgroundColor": "#14283f"
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store"
     ]
   }
 }
