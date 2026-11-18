@@ -450,6 +450,15 @@ check('disconnect ending creates no notification', () => {
   assert.equal(/createMissedCallNotification|notifications/.test(body), false);
 });
 
+check('every missed_call goes through the single notification writer', () => {
+  // Regression: the foundation commit removed the redactedLabelForKind import
+  // while missCall still wrote its notification inline (ReferenceError).
+  assert.equal(/INSERT INTO notifications/.test(serviceSource), false, 'no inline notification insert');
+  assert.equal(/redactedLabelForKind/.test(serviceSource), false);
+  const missBody = serviceSource.slice(serviceSource.indexOf('export async function missCall'));
+  assert.match(missBody, /createMissedCallNotification\(/);
+});
+
 for (const run of pending) {
   // eslint-disable-next-line no-await-in-loop
   await run();

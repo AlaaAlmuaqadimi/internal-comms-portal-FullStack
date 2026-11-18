@@ -675,42 +675,15 @@ export async function missCall(callId, viewerEmployeeId, ctx = {}) {
       throw invalidStateError();
     }
 
-    const metadata = metadataOf(loaded.call);
-    const callerKind =
-      metadata.callerOrgUnitKind ?? loaded.caller?.orgUnitKind ?? null;
-    const calleeKind =
-      metadata.calleeOrgUnitKind ?? loaded.callee?.orgUnitKind ?? null;
-    const redacted = isLeadershipKind(callerKind) && !isLeadershipKind(calleeKind);
-    const displayName = redacted
-      ? redactedLabelForKind(callerKind, labels)
-      : loaded.caller?.name || 'موظف';
-
-    const notificationId = crypto.randomUUID();
-    const summary = `مكالمة فائتة من ${displayName}`;
-
-    await conn.execute(
-      `INSERT INTO notifications
-         (id, type, title_ar, summary_ar, body_ar, icon, audience,
-          created_by_user_id, published_at, expires_at, metadata)
-       VALUES (?, 'missed_call', 'مكالمة فائتة', ?, ?, 'call', 'selected',
-               NULL, UTC_TIMESTAMP(3), DATE_ADD(UTC_TIMESTAMP(3), INTERVAL 7 DAY), ?)`,
-      [
-        notificationId,
-        summary,
-        summary,
-        // The notification payload carries the minimum needed to render the
-        // row: the call id and the already-redacted display label. It never
-        // contains employee ids, org-unit kinds or the original name.
-        JSON.stringify({ callId, label: displayName }),
-      ]
-    );
-
-    await conn.execute(
-      `INSERT INTO notification_recipients
-         (notification_id, employee_id, delivered_at, read_at)
-       VALUES (?, ?, UTC_TIMESTAMP(3), NULL)`,
-      [notificationId, loaded.call.calleeEmployeeId]
-    );
+    // Same single writer as the ring timeout and the cancel path, so the
+    // payload stays exactly { callId, label } everywhere.
+    await createMissedCallNotification({
+      call: loaded.call,
+      caller: loaded.caller,
+      callee: loaded.callee,
+      labels,
+      executor: conn,
+    });
   });
 
   const fresh = await loadCall(pool, callId);
