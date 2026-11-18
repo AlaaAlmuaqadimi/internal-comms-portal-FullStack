@@ -1,0 +1,2067 @@
+{
+  "info": {
+    "_postman_id": "c0a11a5e-0001-4a11-9a11-000000000001",
+    "name": "ICP Calls — Phase A (manual test kit)",
+    "description": "Ready-made requests for the Phase A calls API.\n\nSetup:\n1. `npm run migrate --prefix backend`\n2. `npm run seed:calls --prefix backend` (prints the demo password once)\n3. Import this collection and calls.postman_environment.json, select the environment.\n4. Put the printed password into the five *Password variables.\n5. Run the folders in order (Collection Runner runs them in order too).\n\nEvery request asserts its expected result; a green run means the policy held.\nInvites are rate limited per user (default 10 per minute). If you see 429\nCALL_RATE_LIMITED, wait a minute or raise CALL_INVITE_RATE_MAX in backend/.env.\nAccess tokens are short-lived; re-run the login folder if you get 401.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0) Setup — login & lookup",
+      "description": "Run this folder first. It fills the token and employee-id variables used everywhere else.",
+      "item": [
+        {
+          "name": "Login — ordinary employee 1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Logs in with the demo account. The password must be filled in the environment (it is never stored in the repo).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{employee1Username}}\",\n  \"password\": \"{{employee1Password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('access token returned', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('employee1AccessToken', body.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login — ordinary employee 2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Logs in with the demo account. The password must be filled in the environment (it is never stored in the repo).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{employee2Username}}\",\n  \"password\": \"{{employee2Password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('access token returned', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('employee2AccessToken', body.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login — Director",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Logs in with the demo account. The password must be filled in the environment (it is never stored in the repo).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{directorUsername}}\",\n  \"password\": \"{{directorPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('access token returned', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('directorAccessToken', body.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login — Deputy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Logs in with the demo account. The password must be filled in the environment (it is never stored in the repo).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{deputyUsername}}\",\n  \"password\": \"{{deputyPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('access token returned', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('deputyAccessToken', body.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login — Admin (settings only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Logs in with the demo account. The password must be filled in the environment (it is never stored in the repo).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('access token returned', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('adminAccessToken', body.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup demo employee IDs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/employees?q=dev.",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "dev."
+                }
+              ]
+            },
+            "description": "Searches the directory by the demo username prefix and stores the employee ids."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "const byUsername = {};",
+                  "(body.employees || []).forEach((e) => { if (e.username) byUsername[e.username] = e; });",
+                  "const wanted = {",
+                  "  'dev.director': 'directorEmployeeId',",
+                  "  'dev.deputy': 'deputyEmployeeId',",
+                  "  'dev.employee1': 'employee1EmployeeId',",
+                  "  'dev.employee2': 'employee2EmployeeId'",
+                  "};",
+                  "for (const [username, varName] of Object.entries(wanted)) {",
+                  "  const emp = byUsername[username];",
+                  "  pm.test('found ' + username, () => pm.expect(emp, 'run npm run seed:calls first').to.be.an('object'));",
+                  "  if (emp) pm.environment.set(varName, emp.id);",
+                  "}",
+                  "pm.test('director is in a root unit', () => pm.expect(byUsername['dev.director'].orgUnitKind).to.eql('root'));",
+                  "pm.test('deputy is in a deputy unit', () => pm.expect(byUsername['dev.deputy'].orgUnitKind).to.eql('deputy'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Capture current redaction labels",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/app",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings",
+                "app"
+              ]
+            },
+            "description": "Stores the label that is live right now, so the settings folder can restore exactly the same value at the end."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const settings = pm.response.json().settings || {};",
+                  "const label = settings['call.redacted_label.director'];",
+                  "pm.test('director label present', () => pm.expect(label).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('directorRedactedLabel', label);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1) Policy matrix — denials",
+      "description": "Ordinary employees may never call the Director or Deputy. Denials must look identical for existing, unknown and inactive targets, and for a self-call.",
+      "item": [
+        {
+          "name": "Employee 1 → Director (expect 403 CALL_TARGET_FORBIDDEN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "description": "Every target-side denial must be indistinguishable from the others: same status, code and message.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{directorEmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test('code is CALL_TARGET_FORBIDDEN', () => pm.expect(body.code).to.eql('CALL_TARGET_FORBIDDEN'));",
+                  "pm.test('identical public message', () => pm.expect(body.error).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('deniedMessage', body.error);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 → Deputy (expect 403 CALL_TARGET_FORBIDDEN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "description": "Every target-side denial must be indistinguishable from the others: same status, code and message.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{deputyEmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test('code is CALL_TARGET_FORBIDDEN', () => pm.expect(body.code).to.eql('CALL_TARGET_FORBIDDEN'));",
+                  "pm.test('identical public message', () => pm.expect(body.error).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('deniedMessage', body.error);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 → unknown employee id (expect the same 403 body)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "description": "This is the oracle test: an unknown target must be indistinguishable from the Director.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{unknownEmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test('same code as the Director denial', () => pm.expect(body.code).to.eql('CALL_TARGET_FORBIDDEN'));",
+                  "pm.test('same message as the Director denial', () => pm.expect(body.error).to.eql(pm.environment.get('deniedMessage')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 → themselves (expect 403 CALL_TARGET_FORBIDDEN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "description": "Every target-side denial must be indistinguishable from the others: same status, code and message.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{employee1EmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test('code is CALL_TARGET_FORBIDDEN', () => pm.expect(body.code).to.eql('CALL_TARGET_FORBIDDEN'));",
+                  "pm.test('identical public message', () => pm.expect(body.error).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('deniedMessage', body.error);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2) Policy matrix — allowed",
+      "description": "Leadership may call anyone, including each other. Ordinary employees may call each other across units.",
+      "item": [
+        {
+          "name": "Director → Deputy (allowed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{directorAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{deputyEmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('call is ringing', () => pm.expect(body.call.status).to.eql('ringing'));",
+                  "pm.environment.set('callId', body.call.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Director cancels the leadership call (cleanup)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{directorAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{callId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{callId}}",
+                "cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('cancelled', () => pm.expect(body.call.status).to.eql('cancelled'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deputy → Director (allowed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{deputyAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{directorEmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('call is ringing', () => pm.expect(body.call.status).to.eql('ringing'));",
+                  "pm.environment.set('callId', body.call.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deputy cancels the leadership call (cleanup)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{deputyAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{callId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{callId}}",
+                "cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('cancelled', () => pm.expect(body.call.status).to.eql('cancelled'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3) Lifecycle — invite → accept → end",
+      "description": "Employee 1 (section u53) calls Employee 2 (directorate u24). Different units, no relationship required.",
+      "item": [
+        {
+          "name": "Employee 1 → Employee 2 (allowed, different units)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{employee2EmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('call is ringing', () => pm.expect(body.call.status).to.eql('ringing'));",
+                  "pm.environment.set('callId', body.call.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 2 reads the incoming call",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee2AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{callId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{callId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const call = pm.response.json().call;",
+                  "pm.test('incoming', () => pm.expect(call.direction).to.eql('incoming'));",
+                  "pm.test('not redacted', () => pm.expect(call.redacted).to.eql(false));",
+                  "pm.test('can call back', () => pm.expect(call.canCallBack).to.eql(true));",
+                  "pm.test('direct ICE', () => pm.expect(call.iceTransportPolicy).to.eql('all'));",
+                  "pm.test('caller is the real employee', () => pm.expect(call.caller.employeeId).to.eql(pm.environment.get('employee1EmployeeId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 2 accepts (expect accepted)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee2AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{callId}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{callId}}",
+                "accept"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status is accepted', () => pm.expect(body.call.status).to.eql('accepted'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 2 ends (expect ended)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee2AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{callId}}/end",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{callId}}",
+                "end"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status is ended', () => pm.expect(body.call.status).to.eql('ended'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4) Lifecycle — decline (no notification)",
+      "item": [
+        {
+          "name": "Employee 2 unread count (baseline)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee2AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "unread-count"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('employee2UnreadBefore', String(body.count));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 → Employee 2 (fresh call)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{employee2EmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('call is ringing', () => pm.expect(body.call.status).to.eql('ringing'));",
+                  "pm.environment.set('callId', body.call.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 2 declines (expect rejected)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee2AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{callId}}/decline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{callId}}",
+                "decline"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status is rejected', () => pm.expect(body.call.status).to.eql('rejected'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 2 unread count unchanged (decline created nothing)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee2AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "unread-count"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('no notification from a rejected call', () => pm.expect(String(body.count)).to.eql(pm.environment.get('employee2UnreadBefore')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5) Lifecycle — invite → cancel",
+      "item": [
+        {
+          "name": "Employee 1 → Employee 2 (fresh call)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{employee2EmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('call is ringing', () => pm.expect(body.call.status).to.eql('ringing'));",
+                  "pm.environment.set('callId', body.call.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 cancels (expect cancelled)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{callId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{callId}}",
+                "cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status is cancelled', () => pm.expect(body.call.status).to.eql('cancelled'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6) Call history",
+      "item": [
+        {
+          "name": "Employee 1 history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const calls = pm.response.json().calls;",
+                  "pm.test('returns an array', () => pm.expect(calls).to.be.an('array'));",
+                  "pm.test('contains the calls created above', () => pm.expect(calls.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7) Leadership redaction & missed_call",
+      "description": "The Director calls Employee 1. Employee 1 must see فقط the configured label, cannot call back, and gets relay-only ICE. Marking it missed creates the only call notification.",
+      "item": [
+        {
+          "name": "Director → Employee 1 (allowed, relay-only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{directorAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{employee1EmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('call is ringing', () => pm.expect(body.call.status).to.eql('ringing'));",
+                  "pm.environment.set('leadershipCallId', body.call.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 sees the redacted caller",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{leadershipCallId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{leadershipCallId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const call = pm.response.json().call;",
+                  "pm.test('redacted', () => pm.expect(call.redacted).to.eql(true));",
+                  "pm.test('caller employeeId is hidden', () => pm.expect(call.caller.employeeId).to.eql(null));",
+                  "pm.test('caller name is the label', () => pm.expect(call.caller.name).to.eql(pm.environment.get('directorRedactedLabel')));",
+                  "pm.test('cannot call back', () => pm.expect(call.canCallBack).to.eql(false));",
+                  "pm.test('relay-only ICE', () => pm.expect(call.iceTransportPolicy).to.eql('relay'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 history shows the same redacted entry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const call = pm.response.json().calls.find((c) => c.id === pm.environment.get('leadershipCallId'));",
+                  "pm.test('call present in history', () => pm.expect(call).to.be.an('object'));",
+                  "pm.test('history is redacted too', () => pm.expect(call.caller.name).to.eql(pm.environment.get('directorRedactedLabel')));",
+                  "pm.test('history cannot call back', () => pm.expect(call.canCallBack).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 marks the call as missed",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{leadershipCallId}}/missed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{leadershipCallId}}",
+                "missed"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('missed', () => pm.expect(body.call.status).to.eql('missed'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 notifications use the redacted label",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json().notifications || [];",
+                  "const expected = 'مكالمة فائتة من ' + pm.environment.get('directorRedactedLabel');",
+                  "pm.test('missed_call notification uses the label', () => pm.expect(list.some((n) => n.summary === expected)).to.eql(true));",
+                  "pm.test('notification does not leak the Director name', () => pm.expect(list.some((n) => (n.summary || '').indexOf('مدير المصلحة (تجريبي)') !== -1)).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8) Settings — read, edit, verify live, restore",
+      "description": "Any authenticated user can read /api/settings/app; only an admin can change it. The label is read at view time, so an edit applies to the next view and to new notifications without a restart.",
+      "item": [
+        {
+          "name": "GET app settings (ordinary employee)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/app",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings",
+                "app"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('director label exists', () => pm.expect(body.settings['call.redacted_label.director']).to.be.a('string').and.not.empty);",
+                  "pm.test('deputy label exists', () => pm.expect(body.settings['call.redacted_label.deputy']).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH app settings as ordinary employee (expect 403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/app",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings",
+                "app"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"settings\": {\n    \"call.redacted_label.director\": \"غير مسموح\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH app settings as admin (edit the Director label)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/app",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings",
+                "app"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"settings\": {\n    \"call.redacted_label.director\": \"{{editedDirectorLabel}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('edited value stored', () => pm.expect(body.settings['call.redacted_label.director']).to.eql(pm.environment.get('editedDirectorLabel')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET settings shows the edited label",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/app",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings",
+                "app"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('fresh read, no cache', () => pm.expect(pm.response.json().settings['call.redacted_label.director']).to.eql(pm.environment.get('editedDirectorLabel')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Director → Employee 1 (after the edit)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{directorAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calleeEmployeeId\": \"{{employee1EmployeeId}}\",\n  \"callType\": \"audio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('call is ringing', () => pm.expect(body.call.status).to.eql('ringing'));",
+                  "pm.environment.set('leadershipCallId', body.call.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 sees the edited label (no restart)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{leadershipCallId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{leadershipCallId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const call = pm.response.json().call;",
+                  "pm.test('edited label applied', () => pm.expect(call.caller.name).to.eql(pm.environment.get('editedDirectorLabel')));",
+                  "pm.test('still redacted', () => pm.expect(call.redacted).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH app settings as admin (restore the default)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/app",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings",
+                "app"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"settings\": {\n    \"call.redacted_label.director\": \"{{directorRedactedLabel}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('restored', () => pm.expect(pm.response.json().settings['call.redacted_label.director']).to.eql(pm.environment.get('directorRedactedLabel')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employee 1 sees the restored label on the next view",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{leadershipCallId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{leadershipCallId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('restored label applied to the existing call', () => pm.expect(pm.response.json().call.caller.name).to.eql(pm.environment.get('directorRedactedLabel')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Director cancels the settings-flow call (cleanup)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{directorAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/{{leadershipCallId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "{{leadershipCallId}}",
+                "cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('cancelled', () => pm.expect(pm.response.json().call.status).to.eql('cancelled'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9) Admin oversight (metadata only)",
+      "description": "Only admin/auditor may read GET /api/calls/oversight. It returns calls that involved the Director or Deputy as metadata only: no names, avatars, employee ids, SDP or ICE. Ordinary employees get 403.",
+      "item": [
+        {
+          "name": "Employee 1 reads oversight (expect 403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employee1AccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/oversight",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "oversight"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin reads oversight (metadata only)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/oversight?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "oversight"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const calls = pm.response.json().calls || [];",
+                  "pm.test('returns an array', () => pm.expect(calls).to.be.an('array'));",
+                  "const leadership = calls.filter((c) => ['root', 'deputy'].indexOf((c.metadata || {}).callerOrgUnitKind) !== -1 || ['root', 'deputy'].indexOf((c.metadata || {}).calleeOrgUnitKind) !== -1);",
+                  "pm.test('every entry involves leadership', () => pm.expect(leadership.length).to.eql(calls.length));",
+                  "pm.test('no participant identity is returned', () => pm.expect(calls.every((c) => !('caller' in c) && !('callee' in c) && !('callerEmployeeId' in c) && !('calleeEmployeeId' in c))).to.eql(true));",
+                  "pm.test('metadata is present', () => pm.expect(calls.every((c) => c.metadata && typeof c.metadata === 'object')).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

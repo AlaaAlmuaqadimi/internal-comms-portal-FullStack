@@ -19,7 +19,8 @@
     "test:users": "node scripts/user-form-test.js",
     "test:employees": "node scripts/employee-directory-test.js",
     "test:calls": "node scripts/call-policy-test.js",
-    "test:calls:db": "node scripts/call-service-test.js"
+    "test:calls:db": "node scripts/call-service-test.js",
+    "seed:calls": "node scripts/seed-call-demo-users.js"
   },
   "dependencies": {
     "argon2": "^0.41.1",
