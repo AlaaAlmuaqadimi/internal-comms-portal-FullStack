@@ -17,7 +17,9 @@
     "smoke": "node scripts/smoke-test.js",
     "test:org": "node scripts/org-smoke-test.js",
     "test:users": "node scripts/user-form-test.js",
-    "test:employees": "node scripts/employee-directory-test.js"
+    "test:employees": "node scripts/employee-directory-test.js",
+    "test:calls": "node scripts/call-policy-test.js",
+    "test:calls:db": "node scripts/call-service-test.js"
   },
   "dependencies": {
     "argon2": "^0.41.1",
