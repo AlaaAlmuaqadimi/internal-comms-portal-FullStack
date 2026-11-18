@@ -58,6 +58,9 @@ const schema = z.object({
 
   LOGIN_RATE_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
   LOGIN_RATE_MAX: z.coerce.number().int().positive().default(10),
+
+  CALL_INVITE_RATE_WINDOW_MINUTES: z.coerce.number().int().positive().default(1),
+  CALL_INVITE_RATE_MAX: z.coerce.number().int().positive().default(10),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -113,6 +116,11 @@ export const env = {
   loginRateLimit: {
     windowMs: raw.LOGIN_RATE_WINDOW_MINUTES * 60 * 1000,
     max: raw.LOGIN_RATE_MAX,
+  },
+
+  callInviteRateLimit: {
+    windowMs: raw.CALL_INVITE_RATE_WINDOW_MINUTES * 60 * 1000,
+    max: raw.CALL_INVITE_RATE_MAX,
   },
 };
 

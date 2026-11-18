@@ -18,11 +18,38 @@ import Loading from '../../components/Loading';
 import EmptyState from '../../components/EmptyState';
 import UserAvatar from '../../components/UserAvatar';
 import CustomButton from '../../components/CustomButton';
-import { mockData } from '../../utils/mockData';
+import { api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 import { flipStyles } from '../../i18n/rtlStyles';
+
+// The API returns the call view built by `callView.service.js`. The history
+// screen renders exactly those fields; nothing here comes from mock data.
+function counterpartOf(call) {
+  return call?.direction === 'outgoing' ? call?.callee : call?.caller;
+}
+
+function typeOf(call) {
+  if (call?.status === 'missed') return 'missed';
+  return call?.direction === 'outgoing' ? 'outgoing' : 'incoming';
+}
+
+function formatDuration(seconds) {
+  const total = Number.isFinite(Number(seconds)) ? Math.max(0, Number(seconds)) : 0;
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  return `${minutes}:${String(rest).padStart(2, '0')}`;
+}
+
+function formatWhen(iso, locale) {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return { date: '', time: '' };
+  return {
+    date: date.toLocaleDateString(locale),
+    time: date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }),
+  };
+}
 
 const CallsScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
@@ -32,67 +59,80 @@ const CallsScreen = ({ navigation }) => {
     () => flipStyles(createStyles(colors), isRTL),
     [colors, isRTL]
   );
-  
+
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
   const isLandscape = width > height;
-  
+
   const [calls, setCalls] = useState([]);
-  const [filteredCalls, setFilteredCalls] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
-  useEffect(() => {
-    loadCalls();
+  const loadCalls = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const data = await api.calls.getAll();
+      setCalls(Array.isArray(data?.calls) ? data.calls : []);
+      setError(null);
+    } catch (err) {
+      setError(err);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    filterCalls();
-  }, [debouncedSearch, selectedType, calls]);
+    loadCalls();
+  }, [loadCalls]);
 
-  const loadCalls = async () => {
-    try {
-      setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setCalls(mockData.calls);
-    } catch (error) {
-      console.error('Error loading calls:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterCalls = () => {
+  const filteredCalls = useMemo(() => {
     let filtered = [...calls];
 
     if (debouncedSearch) {
-      const query = debouncedSearch.toLowerCase();
-      filtered = filtered.filter(call =>
-        call.contact.name.toLowerCase().includes(query) ||
-        call.contact.unitName.toLowerCase().includes(query) ||
-        call.contact.management.toLowerCase().includes(query)
-      );
+      const query = debouncedSearch.trim().toLowerCase();
+      filtered = filtered.filter((call) => {
+        const person = counterpartOf(call) || {};
+        return [person.name, person.nameEn, person.unitName, person.unitNameEn]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(query));
+      });
     }
 
     if (selectedType !== 'all') {
-      filtered = filtered.filter(call => call.type === selectedType);
+      filtered = filtered.filter((call) => typeOf(call) === selectedType);
     }
 
-    setFilteredCalls(filtered);
-  };
+    return filtered;
+  }, [calls, debouncedSearch, selectedType]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadCalls();
+    await loadCalls({ silent: true });
     setRefreshing(false);
-  }, []);
+  }, [loadCalls]);
 
   const handleCallPress = (call) => {
-    navigation.navigate('CallActive', { contact: call.contact });
+    // Redacted leadership calls expose no employee id and must not be callable.
+    if (call?.canCallBack === false) return;
+    const person = counterpartOf(call);
+    if (!person?.employeeId) return;
+
+    navigation.navigate('CallActive', {
+      contact: {
+        id: person.employeeId,
+        name: person.name,
+        unitName: person.unitName,
+        management: person.unitName,
+        avatarUrl: person.avatarUrl || null,
+        isKitchen: false,
+        presence: 'offline',
+      },
+    });
   };
 
   const resetFilters = () => {
@@ -119,8 +159,6 @@ const CallsScreen = ({ navigation }) => {
         return 'arrow-down';
       case 'outgoing':
         return 'arrow-up';
-      case 'missed':
-        return 'call';
       default:
         return 'call';
     }
@@ -130,50 +168,85 @@ const CallsScreen = ({ navigation }) => {
   const avatarSize = isSmallScreen ? 'small' : isLargeScreen ? 'large' : 'medium';
   const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.lg : spacing.md;
   const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
+  const dateLocale = isRTL ? 'ar-LY' : 'en-GB';
 
-  const renderCall = ({ item }) => (
-    <View style={[
-      styles.callCard,
-      { padding: cardPadding },
-      item.type === 'missed' && styles.callCardMissed,
-    ]}>
-      <View style={styles.callHeader}>
-        <UserAvatar person={item.contact} size={avatarSize} />
-        <View style={styles.callInfo}>
-          <Text style={[styles.callName, isSmallScreen && styles.callNameSmall]}>
-            {localizeText(item.contact.name)}
+  const renderCall = ({ item }) => {
+    const person = counterpartOf(item) || {};
+    const type = typeOf(item);
+    const { date, time } = formatWhen(item.initiatedAt, dateLocale);
+    const typeLabel =
+      type === 'missed'
+        ? t('calls.typeMissed')
+        : type === 'outgoing'
+        ? t('calls.typeOutgoing')
+        : t('calls.typeIncoming');
+    const canCall = item.canCallBack !== false && Boolean(person.employeeId);
+
+    return (
+      <View
+        style={[
+          styles.callCard,
+          { padding: cardPadding },
+          type === 'missed' && styles.callCardMissed,
+        ]}
+      >
+        <View style={styles.callHeader}>
+          <UserAvatar
+            person={{ name: person.name, avatarUrl: person.avatarUrl }}
+            size={avatarSize}
+          />
+          <View style={styles.callInfo}>
+            <Text style={[styles.callName, isSmallScreen && styles.callNameSmall]}>
+              {localizeText(person.name || '')}
+            </Text>
+            {!!person.unitName && (
+              <Text style={[styles.callUnit, isSmallScreen && styles.callUnitSmall]}>
+                {localizeText(person.unitName)}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.callDetails}>
+          <View style={styles.callType}>
+            <Ionicons
+              name={getTypeIcon(type)}
+              size={isSmallScreen ? 14 : 16}
+              color={getTypeColor(type)}
+            />
+            <Text
+              style={[
+                styles.callTypeText,
+                { color: getTypeColor(type) },
+                isSmallScreen && styles.callTypeTextSmall,
+              ]}
+            >
+              {typeLabel}
+            </Text>
+          </View>
+          <Text style={[styles.callDate, isSmallScreen && styles.callDateSmall]}>
+            {date}
+            {time ? ` · ${time}` : ''}
           </Text>
-          <Text style={[styles.callUnit, isSmallScreen && styles.callUnitSmall]}>
-            {localizeText(item.contact.unitName)}
-          </Text>
+          {item.durationSeconds > 0 && (
+            <Text style={[styles.callDuration, isSmallScreen && styles.callDurationSmall]}>
+              {t('calls.duration', { duration: formatDuration(item.durationSeconds) })}
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.callActions}>
+          <CustomButton
+            title={t('calls.callButton')}
+            onPress={() => handleCallPress(item)}
+            icon="call"
+            size="small"
+            disabled={!canCall}
+          />
         </View>
       </View>
-
-      <View style={styles.callDetails}>
-        <View style={styles.callType}>
-          <Ionicons name={getTypeIcon(item.type)} size={isSmallScreen ? 14 : 16} color={getTypeColor(item.type)} />
-          <Text style={[styles.callTypeText, { color: getTypeColor(item.type) }, isSmallScreen && styles.callTypeTextSmall]}>
-            {localizeText(item.typeLabel)}
-          </Text>
-        </View>
-        <Text style={[styles.callDate, isSmallScreen && styles.callDateSmall]}>
-          {item.date} · {item.time}
-        </Text>
-        <Text style={[styles.callDuration, isSmallScreen && styles.callDurationSmall]}>
-          {t('calls.duration', { duration: item.duration })}
-        </Text>
-      </View>
-
-      <View style={styles.callActions}>
-        <CustomButton
-          title={t('calls.callButton')}
-          onPress={() => handleCallPress(item)}
-          icon="call"
-          size="small"
-        />
-      </View>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return <Loading fullScreen text={t('calls.loading')} />;
@@ -240,7 +313,15 @@ const CallsScreen = ({ navigation }) => {
       </View>
 
       {/* قائمة المكالمات */}
-      {filteredCalls.length === 0 ? (
+      {error && calls.length === 0 ? (
+        <EmptyState
+          icon="cloud-offline"
+          title={t('calls.fetchErrorTitle')}
+          description={t('calls.fetchError')}
+          actionTitle={t('calls.retry')}
+          onAction={() => loadCalls()}
+        />
+      ) : filteredCalls.length === 0 ? (
         <EmptyState
           icon="call"
           title={t('calls.noMatchTitle')}
@@ -262,8 +343,6 @@ const CallsScreen = ({ navigation }) => {
           }
         />
       )}
-
-      {/* نافذة تأكيد الاتصال */}
     </SafeAreaView>
   );
 };
@@ -434,38 +513,6 @@ callTypeText: {
   },
   callActions: {
     alignItems: 'flex-start',
-  },
-  modalContent: {
-    alignItems: 'center',
-  },
-  modalIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#eaf1f7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  modalDescription: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-    lineHeight: 22,
-  },
-  modalName: {
-    ...typography.h4,
-    color: colors.text,
-    marginBottom: spacing.lg,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    width: '100%',
-  },
-  modalButton: {
-    flex: 1,
   },
 });
 

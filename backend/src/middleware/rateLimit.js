@@ -1,5 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import { env } from '../config/env.js';
+import { pool } from '../db/pool.js';
 
 export const loginRateLimiter = rateLimit({
   windowMs: env.loginRateLimit.windowMs,
@@ -11,6 +12,42 @@ export const loginRateLimiter = rateLimit({
       success: false,
       error: 'Too many login attempts. Please try again later.',
       code: 'RATE_LIMITED',
+    });
+  },
+});
+
+/**
+ * Per-user limiter for call invitations. `authenticate` must run first so the
+ * key is the signed-in user rather than an IP shared by an office NAT.
+ *
+ * A rate-limited invite is still a denied call, so it is written to the audit
+ * trail as `call.denied` with reason RATE_LIMITED.
+ */
+export const callInviteRateLimiter = rateLimit({
+  windowMs: env.callInviteRateLimit.windowMs,
+  max: env.callInviteRateLimit.max,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || 'anonymous',
+  handler: (req, res) => {
+    const metadata = JSON.stringify({
+      reason: 'RATE_LIMITED',
+      callerUserId: req.user?.id ?? null,
+      callerEmployeeId: req.user?.employeeId ?? null,
+      targetEmployeeId: req.body?.calleeEmployeeId ?? req.body?.targetEmployeeId ?? null,
+    });
+    pool
+      .execute(
+        `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, metadata)
+         VALUES (?, 'call.denied', 'call', NULL, ?)`,
+        [req.user?.id ?? null, metadata]
+      )
+      .catch(() => {});
+
+    res.status(429).json({
+      success: false,
+      error: 'تم تجاوز الحد المسموح من محاولات الاتصال. يرجى المحاولة لاحقاً.',
+      code: 'CALL_RATE_LIMITED',
     });
   },
 });

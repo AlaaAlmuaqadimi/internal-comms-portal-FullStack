@@ -281,6 +281,39 @@ export const api = {
       const { data } = await request(`/api/calls/${id}`);
       return data;
     },
+
+    invite: async ({ calleeEmployeeId, callType = 'audio' }) => {
+      const { data } = await request('/api/calls', {
+        method: 'POST',
+        body: JSON.stringify({ calleeEmployeeId, callType }),
+      });
+      return data.call;
+    },
+
+    accept: async (id) => {
+      const { data } = await request(`/api/calls/${id}/accept`, { method: 'POST' });
+      return data.call;
+    },
+
+    decline: async (id) => {
+      const { data } = await request(`/api/calls/${id}/decline`, { method: 'POST' });
+      return data.call;
+    },
+
+    cancel: async (id) => {
+      const { data } = await request(`/api/calls/${id}/cancel`, { method: 'POST' });
+      return data.call;
+    },
+
+    end: async (id) => {
+      const { data } = await request(`/api/calls/${id}/end`, { method: 'POST' });
+      return data.call;
+    },
+
+    markMissed: async (id) => {
+      const { data } = await request(`/api/calls/${id}/missed`, { method: 'POST' });
+      return data.call;
+    },
   },
 
   // Notifications
@@ -424,6 +457,20 @@ export const api = {
         body: JSON.stringify({ kitchenChoice: kitchenId }),
       });
       return { success: data.success, user: data.user };
+    },
+
+    // Administrator-editable application settings (call redaction labels).
+    getAppSettings: async () => {
+      const { data } = await request('/api/settings/app');
+      return { settings: data.settings || {}, items: data.items || [] };
+    },
+
+    updateAppSettings: async (settings) => {
+      const { data } = await request('/api/settings/app', {
+        method: 'PATCH',
+        body: JSON.stringify({ settings }),
+      });
+      return { settings: data.settings || {}, items: data.items || [] };
     },
   },
 };
