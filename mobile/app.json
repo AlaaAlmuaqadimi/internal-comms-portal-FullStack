@@ -13,7 +13,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourcompany.internalcommsportal",
-      "buildNumber": "1.0.0"
+      "buildNumber": "1.0.0",
+      "infoPlist": {},
+      "bitcode": false
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +23,17 @@
         "backgroundColor": "#14283f"
       },
       "package": "com.yourcompany.internalcommsportal",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK",
+        "android.permission.BLUETOOTH"
+      ]
     },
     "plugins": [
       "expo-status-bar",
@@ -44,6 +56,11 @@
           "cameraPermission": "يستخدم التطبيق الكاميرا لصورة الملف الشخصي فقط."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "75088367-edd2-41a3-bea1-8d8ee1f1cf7a"
+      }
+    }
   }
 }
