@@ -70,6 +70,13 @@ const schema = z.object({
   SIGNALING_TICKET_TTL_SECONDS: z.coerce.number().int().positive().default(120),
   SIGNALING_TICKET_RATE_WINDOW_MINUTES: z.coerce.number().int().positive().default(1),
   SIGNALING_TICKET_RATE_MAX: z.coerce.number().int().positive().default(30),
+
+  // ICE servers handed to clients with each signalling ticket. Leadership
+  // calls are relay-only, so they cannot connect until TURN is configured.
+  STUN_URLS: z.string().default(''),
+  TURN_URLS: z.string().default(''),
+  TURN_SHARED_SECRET: z.string().default(''),
+  TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -79,6 +86,13 @@ if (!parsed.success) {
 }
 
 const raw = parsed.data;
+
+function splitList(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 const jwtPrivateKey = readKey(raw.JWT_PRIVATE_KEY, raw.JWT_PRIVATE_KEY_PATH, 'JWT_PRIVATE_KEY');
 const jwtPublicKey = readKey(raw.JWT_PUBLIC_KEY, raw.JWT_PUBLIC_KEY_PATH, 'JWT_PUBLIC_KEY');
@@ -140,6 +154,12 @@ export const env = {
     ticketRateLimit: {
       windowMs: raw.SIGNALING_TICKET_RATE_WINDOW_MINUTES * 60 * 1000,
       max: raw.SIGNALING_TICKET_RATE_MAX,
+    },
+    ice: {
+      stunUrls: splitList(raw.STUN_URLS),
+      turnUrls: splitList(raw.TURN_URLS),
+      turnSharedSecret: raw.TURN_SHARED_SECRET,
+      turnCredentialTtlSeconds: raw.TURN_CREDENTIAL_TTL_SECONDS,
     },
   },
 };

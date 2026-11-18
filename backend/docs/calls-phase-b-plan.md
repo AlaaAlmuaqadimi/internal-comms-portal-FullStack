@@ -1,7 +1,7 @@
 # Calls Phase B — Signalling plan
 
-Status: **draft for review**. No signalling code is written until this plan is
-approved. Base branch: `feature/calls-phase-b` (`bb557e6`, "Phase B foundation").
+Status: **backend implemented** on `feature/calls-phase-b-signaling` with the
+defaults below; decisions 1, 2 and 4 still need confirmation. Base branch: `feature/calls-phase-b` (`bb557e6`, "Phase B foundation").
 
 ## 1. Scope
 
@@ -167,7 +167,7 @@ DB + sockets (disposable DB, `npm run test:calls:signaling:db`):
 - a third employee cannot send signals for someone else's call;
 - flag off: ticket endpoint 404, no socket server.
 
-## 9. Decisions needed before coding
+## 9. Decisions (defaults taken in the implementation)
 
 1. **Cancel → missed-call notification.** The base WIP commit changed
    `cancelCall` so that a caller cancelling while ringing now creates a
@@ -184,3 +184,24 @@ DB + sockets (disposable DB, `npm run test:calls:signaling:db`):
    `TURN_CREDENTIAL_TTL_SECONDS`), returned in the ticket response. Who hosts it?
 5. **Ticket vs. token.** The plan uses one-time tickets (matching the env
    variables already added). Confirm.
+
+Defaults used in the code until confirmed:
+
+| # | Default |
+| --- | --- |
+| 1 | Kept the foundation commit's behaviour (cancel while ringing creates `missed_call`); `calls.md` flags it as open. |
+| 2 | Busy creates no notification and the callee is not told. |
+| 3 | All devices ring; `call:accepted` reaches the callee's other devices as "answered elsewhere". |
+| 4 | TURN is configurable (`TURN_URLS`, `TURN_SHARED_SECRET`); nothing is hosted yet. |
+| 5 | One-time tickets. |
+
+Implementation notes that differ from the draft:
+
+- the ring timeout writes `ended_reason = 'timeout'` (status `missed`);
+- there is no separate `call:answered-elsewhere` event (see decision 3);
+- a caller who is already in a call gets `409 CALL_INVALID_STATE` (audited as
+  `CALLER_BUSY`);
+- the plan's file names became `signaling/ticketStore.js`,
+  `signaling/callTimers.js`, `signaling/rateWindow.js`,
+  `signaling/iceServers.js`, `signaling/relay.js` and
+  `signaling/signaling.server.js`.

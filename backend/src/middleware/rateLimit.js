@@ -51,3 +51,19 @@ export const callInviteRateLimiter = rateLimit({
     });
   },
 });
+
+/** Per-user limiter for signalling tickets (Phase B). */
+export const signalingTicketRateLimiter = rateLimit({
+  windowMs: env.callSignaling.ticketRateLimit.windowMs,
+  max: env.callSignaling.ticketRateLimit.max,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || 'anonymous',
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.',
+      code: 'CALL_RATE_LIMITED',
+    });
+  },
+});

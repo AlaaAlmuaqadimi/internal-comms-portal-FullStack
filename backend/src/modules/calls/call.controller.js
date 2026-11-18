@@ -1,4 +1,5 @@
 import * as callService from './call.service.js';
+import { issueSignalingTicket, publishCallUpdate } from './signaling/signaling.server.js';
 
 function context(req) {
   return {
@@ -16,6 +17,7 @@ export async function inviteCall(req, res, next) {
       callType: req.body.callType,
       ...context(req),
     });
+    publishCallUpdate(call?.id);
     res.status(201).json({ success: true, call });
   } catch (err) {
     next(err);
@@ -66,6 +68,7 @@ export async function acceptCall(req, res, next) {
       req.user.employeeId,
       context(req)
     );
+    publishCallUpdate(req.params.id);
     res.json({ success: true, call });
   } catch (err) {
     next(err);
@@ -79,6 +82,7 @@ export async function declineCall(req, res, next) {
       req.user.employeeId,
       context(req)
     );
+    publishCallUpdate(req.params.id);
     res.json({ success: true, call });
   } catch (err) {
     next(err);
@@ -92,6 +96,7 @@ export async function cancelCall(req, res, next) {
       req.user.employeeId,
       context(req)
     );
+    publishCallUpdate(req.params.id);
     res.json({ success: true, call });
   } catch (err) {
     next(err);
@@ -105,6 +110,7 @@ export async function endCall(req, res, next) {
       req.user.employeeId,
       context(req)
     );
+    publishCallUpdate(req.params.id);
     res.json({ success: true, call });
   } catch (err) {
     next(err);
@@ -118,7 +124,21 @@ export async function missCall(req, res, next) {
       req.user.employeeId,
       context(req)
     );
+    publishCallUpdate(req.params.id);
     res.json({ success: true, call });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * One-time ticket for opening the signalling socket. 404 while
+ * CALL_SIGNALING_ENABLED is off.
+ */
+export async function issueTicket(req, res, next) {
+  try {
+    const result = issueSignalingTicket(req.user);
+    res.status(201).json({ success: true, ...result });
   } catch (err) {
     next(err);
   }
