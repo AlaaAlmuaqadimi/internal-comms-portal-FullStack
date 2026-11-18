@@ -1,7 +1,7 @@
 # Calls Phase C — Mobile audio calls plan
 
-Status: **draft for review**. No mobile code is written until this plan is
-approved. Builds on the Phase B backend (`feature/calls-phase-b-signaling`,
+Status: **C2 implemented** (signalling, ringing, answer/decline/cancel/hang-up,
+busy, missed; no audio yet). C1, C3 and C4 are next. Builds on the Phase B backend (`feature/calls-phase-b-signaling`,
 all signalling tests green on 2026-11-18).
 
 ## 1. Goal and scope
@@ -178,3 +178,29 @@ backend policy tests.
    and an Apple developer account.
 4. **Ringtone:** reuse one of the existing sounds in `assets/sounds/`, or add a
    dedicated ringtone?
+
+## 9. C2 — what was built and how to test it
+
+Files: `src/calls/callMachine.js`, `src/services/signaling.js`,
+`src/context/CallContext.js`, `src/components/calls/CallOverlay.js`,
+`src/screens/main/IncomingCallScreen.js`, `CallActiveScreen.js` (now driven by
+the context), Directory/Calls call buttons, `api.calls.signalingTicket()`.
+The `CallActive` stack route is gone: the call is a full-screen overlay above
+any screen. `AUDIO_ENABLED = false` in `CallContext.js` until C3.
+
+Works in **Expo Go** (socket.io-client is plain JavaScript).
+
+1. Backend: `CALL_SIGNALING_ENABLED=true` in `backend/.env`, `npm run dev`.
+2. Mobile: `npm install`, then `npm run test:calls` (24 pure checks).
+3. Two phones (or one phone + an emulator), two different employees.
+4. Check:
+   - A calls B → B rings (sound + vibration) on any screen; A sees «جارٍ الاتصال…»;
+   - B answers → both show the timer; either hangs up → both see the summary;
+   - B declines → A sees «رُفضت المكالمة»;
+   - A cancels while ringing → B stops ringing;
+   - nobody answers for 45 s → both see «لم يتم الرد», B gets a missed-call notification;
+   - C calls A while A is in a call → C sees «الموظف في مكالمة أخرى», A sees nothing;
+   - employee → Director: refused with the generic message;
+   - Director → employee: the employee sees only «المدير العام», no photo, no unit;
+   - same account on two phones: answer on one, the other stops ringing;
+   - backend flag off: the call button shows «خدمة المكالمات المباشرة غير مفعّلة».

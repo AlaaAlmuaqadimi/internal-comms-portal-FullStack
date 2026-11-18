@@ -20,7 +20,6 @@ import RegisterScreen from '../screens/auth/RegisterScreen';
 // Main Screens
 import DirectoryScreen from '../screens/main/DirectoryScreen';
 import CallsScreen from '../screens/main/CallsScreen';
-import CallActiveScreen from '../screens/main/CallActiveScreen';
 import OrgScreen from '../screens/main/OrgScreen';
 import NotificationsScreen from '../screens/main/NotificationsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
@@ -136,14 +135,7 @@ const MainStack = () => {
       {isAdmin && (
         <Stack.Screen name="AddUser" component={AddUserScreen} />
       )}
-      <Stack.Screen 
-        name="CallActive" 
-        component={CallActiveScreen}
-        options={{
-          presentation: 'fullScreenModal',
-          animation: 'slide_from_bottom',
-        }}
-      />
+      {/* The live call is shown by CallOverlay (App.js), not as a route. */}
     </Stack.Navigator>
   ); // تم إضافة قوس الإغلاق الناقص هنا
 };

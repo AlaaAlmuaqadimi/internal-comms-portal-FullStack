@@ -17,6 +17,9 @@ const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, '');
 
 export const isBackendConfigured = () => !!API_BASE_URL && API_BASE_URL.trim() !== '';
 
+/** Base URL without a trailing slash, e.g. for the signalling socket. */
+export const getApiBaseUrl = () => API_BASE_URL;
+
 // Error carrying the HTTP status and the API error code so callers can react
 // (e.g. distinguish 401 invalid credentials from a network failure).
 export class ApiError extends Error {
@@ -308,6 +311,13 @@ export const api = {
     end: async (id) => {
       const { data } = await request(`/api/calls/${id}/end`, { method: 'POST' });
       return data.call;
+    },
+
+    // Phase B: one-time ticket for the signalling socket. 404
+    // CALL_SIGNALING_DISABLED while the server flag is off.
+    signalingTicket: async () => {
+      const { data } = await request('/api/calls/signaling/ticket', { method: 'POST' });
+      return data;
     },
 
     markMissed: async (id) => {
