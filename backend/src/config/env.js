@@ -61,6 +61,15 @@ const schema = z.object({
 
   CALL_INVITE_RATE_WINDOW_MINUTES: z.coerce.number().int().positive().default(1),
   CALL_INVITE_RATE_MAX: z.coerce.number().int().positive().default(10),
+
+  // Phase B signalling. The feature flag defaults to off so REST history keeps
+  // working even when the socket build has not shipped yet.
+  CALL_SIGNALING_ENABLED: z.string().optional().default('false'),
+  CALL_RING_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(45),
+  CALL_DISCONNECT_GRACE_SECONDS: z.coerce.number().int().positive().default(30),
+  SIGNALING_TICKET_TTL_SECONDS: z.coerce.number().int().positive().default(120),
+  SIGNALING_TICKET_RATE_WINDOW_MINUTES: z.coerce.number().int().positive().default(1),
+  SIGNALING_TICKET_RATE_MAX: z.coerce.number().int().positive().default(30),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -121,6 +130,17 @@ export const env = {
   callInviteRateLimit: {
     windowMs: raw.CALL_INVITE_RATE_WINDOW_MINUTES * 60 * 1000,
     max: raw.CALL_INVITE_RATE_MAX,
+  },
+
+  callSignaling: {
+    enabled: String(raw.CALL_SIGNALING_ENABLED).trim().toLowerCase() === 'true',
+    ringTimeoutSeconds: raw.CALL_RING_TIMEOUT_SECONDS,
+    disconnectGraceSeconds: raw.CALL_DISCONNECT_GRACE_SECONDS,
+    ticketTtlSeconds: raw.SIGNALING_TICKET_TTL_SECONDS,
+    ticketRateLimit: {
+      windowMs: raw.SIGNALING_TICKET_RATE_WINDOW_MINUTES * 60 * 1000,
+      max: raw.SIGNALING_TICKET_RATE_MAX,
+    },
   },
 };
 

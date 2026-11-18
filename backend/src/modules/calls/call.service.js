@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { env } from '../../config/env.js';
 import { pool, withTransaction } from '../../db/pool.js';
 import { AppError, ErrorCodes } from '../../lib/errors.js';
 import { getCallRedactedLabels } from '../settings/appSetting.service.js';
@@ -7,7 +8,8 @@ import {
   evaluateCallPermission,
   isLeadershipKind,
 } from './callAuth.service.js';
-import { buildCallView, redactedLabelForKind } from './callView.service.js';
+import { buildCallView } from './callView.service.js';
+import { createMissedCallNotification } from './callNotifications.service.js';
 
 const CALL_DENIED_MESSAGE = 'لا يمكن إجراء هذه المكالمة.';
 
@@ -25,7 +27,7 @@ const PARTICIPANT_SELECT = `
 const CALL_SELECT = `
   SELECT c.id, c.caller_employee_id, c.callee_employee_id, c.call_type, c.status,
          c.initiated_at, c.answered_at, c.ended_at, c.duration_seconds,
-         c.ended_reason, c.metadata,
+         c.ended_reason, c.ring_expires_at, c.metadata,
          ce.full_name_ar AS caller_name_ar, ce.full_name_en AS caller_name_en,
          ce.avatar_url AS caller_avatar_url, ce.is_active AS caller_is_active,
          ce.deleted_at AS caller_deleted_at,
@@ -91,6 +93,7 @@ function mapCallRow(row) {
       endedAt: row.ended_at,
       durationSeconds: row.duration_seconds,
       endedReason: row.ended_reason,
+      ringExpiresAt: row.ring_expires_at ?? null,
       metadata: row.metadata,
     },
     caller: mapParticipant(row, 'caller_'),
@@ -112,6 +115,14 @@ async function loadCall(executor, callId) {
   return mapCallRow(rows[0]);
 }
 
+/**
+ * Loads a call with both participants for the signalling layer. `executor` may
+ * be a transaction connection.
+ */
+export async function loadCallById(callId, executor = pool) {
+  return loadCall(executor, callId);
+}
+
 function isCallParticipant(call, employeeId) {
   return Boolean(
     employeeId &&
@@ -119,7 +130,7 @@ function isCallParticipant(call, employeeId) {
   );
 }
 
-async function writeCallDenied({
+export async function writeCallDenied({
   actorUserId = null,
   callId = null,
   callerEmployeeId = null,
@@ -234,13 +245,16 @@ export async function inviteCall({
   try {
     await pool.execute(
       `INSERT INTO calls
-         (id, caller_employee_id, callee_employee_id, call_type, status, metadata)
-       VALUES (?, ?, ?, ?, 'ringing', ?)`,
+         (id, caller_employee_id, callee_employee_id, call_type, status,
+          ring_expires_at, metadata)
+       VALUES (?, ?, ?, ?, 'ringing',
+               DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? SECOND), ?)`,
       [
         id,
         caller.employeeId,
         target.employeeId,
         callType,
+        env.callSignaling.ringTimeoutSeconds,
         JSON.stringify({
           callerOrgUnitKind: caller.orgUnitKind,
           calleeOrgUnitKind: target.orgUnitKind,
@@ -297,6 +311,70 @@ export async function listCalls(employeeId) {
       callee: loaded.callee,
       labels,
     }));
+}
+
+/**
+ * Active calls for the signalling `call:sync` response. "Active" here means
+ * ringing or accepted; terminal calls belong to history, not to the live call
+ * UI.
+ */
+export async function listActiveCallViews(employeeId) {
+  const [rows] = await pool.execute(
+    `${CALL_SELECT}
+      WHERE (c.caller_employee_id = ? OR c.callee_employee_id = ?)
+        AND c.status IN ('ringing', 'accepted')
+      ORDER BY c.initiated_at DESC`,
+    [employeeId, employeeId]
+  );
+
+  const labels = await getCallRedactedLabels();
+  return rows
+    .map((row) => mapCallRow(row))
+    .filter(Boolean)
+    .map((loaded) => viewFor(loaded, employeeId, labels));
+}
+
+/** One authorized call view for the socket layer; audits non-participants. */
+export async function getCallViewForEmployee(callId, viewerEmployeeId, ctx = {}) {
+  const loaded = await requireCallForAction(callId, viewerEmployeeId, ctx);
+  return viewFor(loaded, viewerEmployeeId, await getCallRedactedLabels());
+}
+
+/**
+ * Busy means the employee has a ringing or accepted call in either direction.
+ * Presence is deliberately not part of this rule.
+ */
+export async function isEmployeeBusy(employeeId, { excludeCallId = null } = {}) {
+  const params = [employeeId, employeeId];
+  let exclusion = '';
+  if (excludeCallId) {
+    exclusion = 'AND c.id <> ?';
+    params.push(excludeCallId);
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT c.id
+       FROM calls c
+      WHERE (c.caller_employee_id = ? OR c.callee_employee_id = ?)
+        AND c.status IN ('ringing', 'accepted')
+        ${exclusion}
+      LIMIT 1`,
+    params
+  );
+  return rows.length > 0;
+}
+
+/** Accepted call ids for the disconnect-grace path. */
+export async function listAcceptedCallIdsForEmployee(employeeId) {
+  const [rows] = await pool.execute(
+    `SELECT c.id
+       FROM calls c
+      WHERE (c.caller_employee_id = ? OR c.callee_employee_id = ?)
+        AND c.status = 'accepted'
+      ORDER BY c.initiated_at DESC`,
+    [employeeId, employeeId]
+  );
+  return rows.map((row) => row.id);
 }
 
 /**
@@ -482,15 +560,34 @@ export async function cancelCall(callId, viewerEmployeeId, ctx = {}) {
     await denyInvalidState(loaded, viewerEmployeeId, ctx, 'NOT_RINGING');
   }
 
-  await pool.execute(
-    `UPDATE calls
-        SET status = 'cancelled', ended_at = UTC_TIMESTAMP(3), ended_reason = 'cancelled'
-      WHERE id = ? AND status = 'ringing'`,
-    [callId]
-  );
+  const labels = await getCallRedactedLabels();
 
-  const fresh = await loadCall(pool, callId);
-  return viewFor(fresh, viewerEmployeeId, await getCallRedactedLabels());
+  // Phase B deliberately changes the Phase A behaviour: a call the caller
+  // abandons while it is ringing is a missed call from the callee's point of
+  // view, so it creates the same single `missed_call` notification.
+  const fresh = await withTransaction(async (conn) => {
+    const [result] = await conn.execute(
+      `UPDATE calls
+          SET status = 'cancelled', ended_at = UTC_TIMESTAMP(3), ended_reason = 'cancelled'
+        WHERE id = ? AND status = 'ringing'`,
+      [callId]
+    );
+    if (result.affectedRows !== 1) {
+      throw invalidStateError();
+    }
+
+    const current = await loadCall(conn, callId);
+    await createMissedCallNotification({
+      call: current.call,
+      caller: current.caller,
+      callee: current.callee,
+      labels,
+      executor: conn,
+    });
+    return current;
+  });
+
+  return viewFor(fresh, viewerEmployeeId, labels);
 }
 
 export async function endCall(callId, viewerEmployeeId, ctx = {}) {
