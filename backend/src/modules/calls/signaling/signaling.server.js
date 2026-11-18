@@ -45,7 +45,7 @@ function roomOf(employeeId) {
 }
 
 function isActive() {
-  return Boolean(state?.namespace);
+  return Boolean(state?.namespace) && !state.closing;
 }
 
 function errorAck(err) {
@@ -121,8 +121,9 @@ function fanOut(views, { exceptSocketId = null } = {}) {
 
 async function publishLoadedCall(callId, options) {
   const loaded = await callService.loadCallById(callId);
-  if (!loaded) return null;
+  if (!loaded || !isActive()) return null;
   const views = await callService.buildParticipantViews(loaded);
+  if (!isActive()) return null;
   if (views.status === 'ringing' && loaded.call.ringExpiresAt) {
     state.timers.armRing(callId, new Date(loaded.call.ringExpiresAt));
   }
@@ -216,6 +217,10 @@ function contextOf(socket) {
 function on(socket, event, handler) {
   socket.on(event, async (payload, ack) => {
     const reply = typeof ack === 'function' ? ack : () => {};
+    if (!state || state.closing) {
+      reply({ ok: false, code: ErrorCodes.CALL_SIGNALING_DISABLED, message: 'الخدمة قيد الإيقاف.' });
+      return;
+    }
     try {
       const result = await handler(payload ?? {});
       reply({ ok: true, ...(result || {}) });
@@ -313,12 +318,16 @@ function registerHandlers(socket) {
   }
 
   socket.on('disconnect', () => {
+    // During shutdown (or after it) there is nothing to arm: the boot sweep
+    // and the next connection take over.
+    if (!state || state.closing) return;
     const room = state.namespace.adapter.rooms.get(roomOf(employeeId));
     if (room && room.size > 0) return; // another device is still connected
 
     callService
       .listAcceptedCallIdsForEmployee(employeeId)
       .then((callIds) => {
+        if (!state || state.closing) return;
         for (const callId of callIds) {
           state.timers.armGrace(employeeId, callId, env.callSignaling.disconnectGraceSeconds);
         }
@@ -408,10 +417,14 @@ export async function attachSignaling(httpServer) {
 export async function closeSignaling() {
   if (!state) return;
   const { io, namespace, timers } = state;
+  // Mark the server as closing first: the disconnect handlers that fire below
+  // must not arm grace timers that would end live calls on the way down.
+  state.closing = true;
   timers.clearAll();
-  state = null;
   // Not io.close(): that would also close the shared HTTP server, which
   // server.js closes itself during shutdown.
   namespace.disconnectSockets(true);
   io.engine.close();
+  timers.clearAll();
+  state = null;
 }

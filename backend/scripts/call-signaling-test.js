@@ -459,6 +459,18 @@ check('every missed_call goes through the single notification writer', () => {
   assert.match(missBody, /createMissedCallNotification\(/);
 });
 
+check('socket handlers survive shutdown (no state access after close)', () => {
+  // Regression: closeSignaling() cleared the state before disconnecting the
+  // sockets, so every disconnect handler crashed the process.
+  const closeBody = serverSource.slice(serverSource.indexOf('export async function closeSignaling'));
+  assert.ok(
+    closeBody.indexOf('disconnectSockets') < closeBody.indexOf('state = null'),
+    'sockets must be disconnected before the state is cleared'
+  );
+  const disconnectBody = serverSource.slice(serverSource.indexOf("socket.on('disconnect'"));
+  assert.match(disconnectBody, /if \(!state \|\| state\.closing\) return;/);
+});
+
 for (const run of pending) {
   // eslint-disable-next-line no-await-in-loop
   await run();
