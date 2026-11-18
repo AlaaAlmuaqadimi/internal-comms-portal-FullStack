@@ -9,8 +9,8 @@
  *   idle -> incoming -> connecting -> active -> ended -> idle
  *
  * `connecting` is the gap between "the call was accepted" and "audio is
- * flowing". Until WebRTC lands (Phase C3) the provider moves straight from
- * connecting to active.
+ * flowing". In a build without WebRTC (Expo Go) the provider moves straight
+ * from connecting to active.
  *
  * The `call` object is always the server's call view for this user. The UI
  * renders only that view, so a redacted leadership caller stays redacted.
@@ -32,6 +32,7 @@ export const ENDED_REASONS = Object.freeze({
   BUSY: 'busy',
   ENDED: 'ended',
   FAILED: 'failed',
+  MIC_DENIED: 'micDenied',
   ANSWERED_ELSEWHERE: 'answeredElsewhere',
 });
 
@@ -185,7 +186,7 @@ export function callReducer(state = initialCallState, action = {}) {
 
     case 'MEDIA_FAILED':
       if (state.phase !== PHASES.CONNECTING && state.phase !== PHASES.ACTIVE) return state;
-      return ended(state.call, ENDED_REASONS.FAILED);
+      return ended(state.call, action.reason || ENDED_REASONS.FAILED);
 
     case 'LOCAL_ENDED': {
       // Result of our own reject / cancel / hang-up. Uses the server's view

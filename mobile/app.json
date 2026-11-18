@@ -36,7 +36,14 @@
         }
       ],
       "expo-asset",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "يحتاج التطبيق إلى الميكروفون لإجراء المكالمات الصوتية.",
+          "cameraPermission": "يستخدم التطبيق الكاميرا لصورة الملف الشخصي فقط."
+        }
+      ]
     ]
   }
 }

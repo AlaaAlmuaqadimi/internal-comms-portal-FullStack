@@ -196,6 +196,15 @@ check('media failure ends the call as failed', () => {
   assert.equal(state.endedReason, ENDED_REASONS.FAILED);
 });
 
+check('a denied microphone ends with its own reason', () => {
+  const state = run(
+    server('call:incoming', incomingView()),
+    { type: 'ACCEPT_SENT' },
+    { type: 'MEDIA_FAILED', reason: ENDED_REASONS.MIC_DENIED }
+  );
+  assert.equal(state.endedReason, ENDED_REASONS.MIC_DENIED);
+});
+
 check('RESET returns to idle', () => {
   const state = run({ type: 'OUTGOING_STARTED', call: view() }, { type: 'RESET' });
   assert.deepEqual(state, initialCallState);

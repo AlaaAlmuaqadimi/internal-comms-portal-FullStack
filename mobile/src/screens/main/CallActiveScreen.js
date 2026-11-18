@@ -39,7 +39,7 @@ const CallActiveScreen = () => {
   const { width, height } = useWindowDimensions();
   const { t, isRTL } = useLanguage();
   const { colors } = useTheme();
-  const { state, hangUp, muted, setMuted, speaker, setSpeaker, audioEnabled } = useCall();
+  const { state, hangUp, muted, setMuted, speaker, setSpeaker, audioEnabled, speakerEnabled } = useCall();
   const styles = useMemo(
     () => flipStyles(createStyles(colors), isRTL),
     [colors, isRTL]
@@ -183,7 +183,7 @@ const CallActiveScreen = () => {
             <Pressable
               style={[styles.controlButton, speaker && styles.controlButtonActive]}
               onPress={() => setSpeaker(!speaker)}
-              disabled={!audioEnabled}
+              disabled={!speakerEnabled}
             >
               <Ionicons
                 name="volume-high"

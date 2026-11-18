@@ -1,7 +1,8 @@
 # Calls Phase C — Mobile audio calls plan
 
-Status: **C2 implemented** (signalling, ringing, answer/decline/cancel/hang-up,
-busy, missed; no audio yet). C1, C3 and C4 are next. Builds on the Phase B backend (`feature/calls-phase-b-signaling`,
+Status: **C2 and C3 implemented.** Same JavaScript in Expo Go (ringing only)
+and in the development build (WebRTC audio). C1 (prove the native build on
+Expo 58) and C4 (TURN, polish) remain. Builds on the Phase B backend (`feature/calls-phase-b-signaling`,
 all signalling tests green on 2026-11-18).
 
 ## 1. Goal and scope
@@ -204,3 +205,38 @@ Works in **Expo Go** (socket.io-client is plain JavaScript).
    - Director → employee: the employee sees only «المدير العام», no photo, no unit;
    - same account on two phones: answer on one, the other stops ringing;
    - backend flag off: the call button shows «خدمة المكالمات المباشرة غير مفعّلة».
+
+## 10. C3 — audio: what was built and how to test it
+
+Files: `src/calls/callSession.js` (WebRTC session, 12 fake-WebRTC checks in
+`scripts/call-session-test.mjs`), `CallContext.js` (session lifecycle, signal
+routing and buffering, mute/speaker), `app.json` (webrtc config plugin with an
+Arabic microphone message).
+
+- `AUDIO_ENABLED` is decided at runtime: `react-native-webrtc` present → audio;
+  Expo Go → C2 behaviour with the disclaimer line.
+- Caller offers after `call:accepted`, callee answers; ICE is trickled; offers
+  and ICE that arrive early are buffered.
+- `iceTransportPolicy` comes from the call view. A relay-only call without a
+  TURN server in the ticket fails immediately with «تعذّر الاتصال» instead of
+  hanging.
+- Microphone denied → «لا يمكن إجراء المكالمة بدون إذن الميكروفون».
+- No connection within 20 s, or ICE `failed` → the call is ended on the server
+  too, so the other side does not wait for the grace timeout.
+- Speaker toggle uses `react-native-incall-manager` (decision 1, default yes);
+  without it the button is disabled.
+
+Steps (this is also C1):
+
+```
+cd mobile
+npx expo install react-native-webrtc @config-plugins/react-native-webrtc react-native-incall-manager
+npm run test:calls
+npm run build:dev:android        # EAS cloud build → APK link
+# or, with Android Studio and a phone on USB:
+npx expo run:android
+```
+
+Install the APK on both phones, then `npm start` (dev client, not `start:go`).
+Ordinary calls on the same Wi-Fi need no TURN. Director/Deputy calls need TURN
+(C4).

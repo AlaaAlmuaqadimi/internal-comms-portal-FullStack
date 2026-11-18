@@ -5,9 +5,10 @@
  * The call UI (`components/calls/CallOverlay.js`) and the screens that start
  * calls read everything from `useCall()`.
  *
- * C2 scope: ringing, answering, declining, cancelling, hanging up, busy and
- * missed. There is no audio yet: `AUDIO_ENABLED` is false and a call goes
- * straight from "connecting" to "active". Phase C3 plugs WebRTC in here.
+ * Ringing, answering, declining, cancelling, hanging up, busy and missed
+ * (C2), plus WebRTC audio when the build has it (C3). In Expo Go
+ * `AUDIO_ENABLED` is false and a call goes straight from "connecting" to
+ * "active" without audio.
  */
 import React, {
   createContext,
@@ -30,8 +31,13 @@ import {
 } from '../calls/callMachine';
 import { createSignalingClient, SIGNALING_STATUS } from '../services/signaling';
 import { playSound } from '../services/sound';
+import { createCallSession, isAudioSupported, isSpeakerSupported } from '../calls/callSession';
 
-export const AUDIO_ENABLED = false;
+// Decided once: true in the development build (react-native-webrtc present),
+// false in Expo Go, where calls ring and connect without audio.
+export const AUDIO_ENABLED = isAudioSupported();
+const SPEAKER_ENABLED = AUDIO_ENABLED && isSpeakerSupported();
+const MAX_BUFFERED_SIGNALS = 200;
 
 const SUMMARY_MS = 2000;
 const RING_REPEAT_MS = 3000;
@@ -99,8 +105,33 @@ export const CallProvider = ({ children }) => {
   const [lastEndedAt, setLastEndedAt] = useState(0);
 
   const clientRef = useRef(null);
+  const sessionRef = useRef(null);
+  // Signals that arrive before the session exists (e.g. the offer racing the
+  // callee's microphone prompt), keyed by call id.
+  const bufferedSignalsRef = useRef(new Map());
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const closeSession = useCallback(() => {
+    sessionRef.current?.close();
+    sessionRef.current = null;
+    bufferedSignalsRef.current.clear();
+  }, []);
+
+  const routeSignal = useCallback((event, payload) => {
+    const kind = event.slice('signal:'.length);
+    const callId = payload?.callId;
+    if (!callId) return;
+    const session = sessionRef.current;
+    if (session && session.callId === callId) {
+      session.handleSignal(kind, payload.data);
+      return;
+    }
+    if (stateRef.current.call?.id !== callId) return;
+    const buffer = bufferedSignalsRef.current.get(callId) || [];
+    if (buffer.length < MAX_BUFFERED_SIGNALS) buffer.push([kind, payload.data]);
+    bufferedSignalsRef.current.set(callId, buffer);
+  }, []);
 
   const sync = useCallback(async () => {
     const client = clientRef.current;
@@ -127,8 +158,9 @@ export const CallProvider = ({ children }) => {
       onEvent: (event, payload) => {
         if (event.startsWith('call:')) {
           dispatch({ type: 'SERVER_EVENT', event, call: payload });
+        } else if (event.startsWith('signal:')) {
+          routeSignal(event, payload);
         }
-        // signal:* events are handled by the WebRTC session in Phase C3.
       },
       onStatus: setStatus,
       onConnect: sync,
@@ -137,11 +169,12 @@ export const CallProvider = ({ children }) => {
     client.start();
 
     return () => {
+      closeSession();
       client.stop();
       clientRef.current = null;
       dispatch({ type: 'RESET' });
     };
-  }, [isAuthenticated, user?.employeeId, sync]);
+  }, [isAuthenticated, user?.employeeId, sync, routeSignal, closeSession]);
 
   // Back in the foreground: reconnect if needed, otherwise reconcile.
   useEffect(() => {
@@ -155,12 +188,60 @@ export const CallProvider = ({ children }) => {
     return () => subscription.remove();
   }, [sync]);
 
-  // C2 has no audio: "connecting" means "accepted", so go straight to active.
+  // "connecting": open the microphone and set up WebRTC. Without WebRTC
+  // (Expo Go) the call is considered connected straight away.
   useEffect(() => {
-    if (state.phase === PHASES.CONNECTING && !AUDIO_ENABLED) {
+    if (state.phase !== PHASES.CONNECTING || !state.call) return;
+    if (!AUDIO_ENABLED) {
       dispatch({ type: 'MEDIA_CONNECTED' });
+      return;
     }
-  }, [state.phase]);
+    if (sessionRef.current?.callId === state.call.id) return;
+
+    const client = clientRef.current;
+    const callId = state.call.id;
+    let session;
+    try {
+      session = createCallSession({
+        call: state.call,
+        iceServers: client?.getIceServers() || [],
+        sendSignal: (kind, data) => {
+          clientRef.current?.emit(`signal:${kind}`, { callId, data }).catch(() => {});
+        },
+        onConnected: () => dispatch({ type: 'MEDIA_CONNECTED' }),
+        onFailed: (reason) => {
+          // Tell the server so the other side does not wait for the grace
+          // timeout, then show the reason here.
+          clientRef.current?.emit('call:end', { callId }).catch(() => {});
+          dispatch({ type: 'MEDIA_FAILED', reason });
+        },
+      });
+    } catch {
+      dispatch({ type: 'MEDIA_FAILED' });
+      return;
+    }
+
+    sessionRef.current = session;
+    const buffered = bufferedSignalsRef.current.get(callId) || [];
+    bufferedSignalsRef.current.delete(callId);
+    buffered.forEach(([kind, data]) => session.handleSignal(kind, data));
+    session.start();
+  }, [state.phase, state.call]);
+
+  // The audio session lives only while the call is connecting or active.
+  useEffect(() => {
+    if (state.phase !== PHASES.CONNECTING && state.phase !== PHASES.ACTIVE) {
+      closeSession();
+    }
+  }, [state.phase, closeSession]);
+
+  useEffect(() => {
+    sessionRef.current?.setMuted(muted);
+  }, [muted, state.phase]);
+
+  useEffect(() => {
+    sessionRef.current?.setSpeaker(speaker);
+  }, [speaker, state.phase]);
 
   // Show the summary briefly, then close the call UI.
   useEffect(() => {
@@ -242,6 +323,7 @@ export const CallProvider = ({ children }) => {
       status,
       available: status === SIGNALING_STATUS.CONNECTED,
       audioEnabled: AUDIO_ENABLED,
+      speakerEnabled: SPEAKER_ENABLED,
       muted,
       setMuted,
       speaker,
