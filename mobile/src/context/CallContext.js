@@ -253,6 +253,12 @@ export const CallProvider = ({ children }) => {
     return () => clearTimeout(timer);
   }, [state.phase, state.call?.id]);
 
+  // Diagnostics: phase changes only (no names, ids or call details).
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[call] phase', state.phase, state.endedReason || '', state.call?.direction || '');
+  }, [state.phase, state.endedReason, state.call?.direction]);
+
   useRingtone(state.phase === PHASES.INCOMING);
 
   const requireClient = useCallback(() => {
@@ -288,7 +294,9 @@ export const CallProvider = ({ children }) => {
       dispatch({ type: 'ACCEPT_CONFIRMED', call: reply.call });
     } catch {
       // Usually the caller cancelled at the same moment; the server's event
-      // has already ended the call. Otherwise end it locally.
+      // has already ended the call. Otherwise end it here and tell the server,
+      // so the call does not stay "accepted" and block the next one.
+      clientRef.current?.emit('call:end', { callId: call.id }).catch(() => {});
       dispatch({ type: 'LOCAL_ENDED', reason: 'failed' });
     }
   }, [requireClient]);
@@ -313,6 +321,9 @@ export const CallProvider = ({ children }) => {
       const reply = await requireClient().emit(event, { callId: call.id });
       dispatch({ type: 'LOCAL_ENDED', call: reply.call });
     } catch {
+      // Best effort: whichever of cancel/end applies, so nothing stays open.
+      clientRef.current?.emit('call:end', { callId: call.id }).catch(() => {});
+      clientRef.current?.emit('call:cancel', { callId: call.id }).catch(() => {});
       dispatch({ type: 'LOCAL_ENDED', reason: 'ended' });
     }
   }, [requireClient]);

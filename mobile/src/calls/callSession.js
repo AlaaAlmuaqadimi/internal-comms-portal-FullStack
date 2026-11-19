@@ -71,6 +71,17 @@ async function ensureMicrophonePermission() {
   return result === PermissionsAndroid.RESULTS.GRANTED;
 }
 
+function candidateType(candidate) {
+  const match = /\btyp\s+(\w+)/i.exec(candidate || '');
+  return match ? match[1].toLowerCase() : 'unknown';
+}
+
+/** Diagnostics only: counts and states, never addresses, SDP or ICE strings. */
+function logDiag(...args) {
+  // eslint-disable-next-line no-console
+  console.log('[call]', ...args);
+}
+
 function hasTurn(iceServers) {
   return (iceServers || []).some((server) =>
     [].concat(server?.urls || []).some((url) => /^turns?:/i.test(url))
@@ -111,12 +122,20 @@ export function createCallSession({
   let connectTimer = null;
   const queuedCandidates = [];
   const queuedSignals = [];
+  const localTypes = {};
+  const remoteTypes = {};
+  const countType = (bucket, candidate) => {
+    const type = candidateType(candidate);
+    // eslint-disable-next-line no-param-reassign
+    bucket[type] = (bucket[type] || 0) + 1;
+  };
   let resolveReady;
   const ready = new Promise((resolve) => {
     resolveReady = resolve;
   });
 
   function fail(reason = SESSION_FAILURES.FAILED) {
+    logDiag('session fail', role, reason, 'ice', pc?.iceConnectionState, 'local', localTypes, 'remote', remoteTypes);
     if (closed) return;
     close();
     onFailed?.(reason);
@@ -152,6 +171,7 @@ export function createCallSession({
       await flushCandidates();
     } else if (kind === 'ice') {
       if (!data || !data.candidate) return; // end-of-candidates
+      countType(remoteTypes, data.candidate);
       if (!remoteDescriptionSet) queuedCandidates.push(data);
       else await pc.addIceCandidate(new rtc.RTCIceCandidate(data)).catch(() => {});
     }
@@ -193,6 +213,7 @@ export function createCallSession({
       inCallManager?.start?.({ media: 'audio' });
       inCallManager?.setForceSpeakerphoneOn?.(false);
 
+      logDiag('session start', role, 'relayOnly', relayOnly, 'iceServers', (iceServers || []).length);
       pc = new rtc.RTCPeerConnection({
         iceServers: iceServers || [],
         iceTransportPolicy: relayOnly ? 'relay' : 'all',
@@ -201,6 +222,8 @@ export function createCallSession({
 
       pc.addEventListener('icecandidate', (event) => {
         const candidate = event.candidate;
+        if (candidate) countType(localTypes, candidate.candidate);
+        else logDiag('local ICE gathered', role, localTypes);
         sendSignal(
           'ice',
           candidate
@@ -214,6 +237,7 @@ export function createCallSession({
       });
 
       const onState = () => {
+        logDiag('state', role, 'ice', pc?.iceConnectionState, 'pc', pc?.connectionState);
         const state = pc?.connectionState || pc?.iceConnectionState;
         if (state === 'connected' || state === 'completed') markConnected();
         if (state === 'failed') fail();
@@ -240,6 +264,7 @@ export function createCallSession({
         await applySignal(kind, data);
       }
     } catch (err) {
+      logDiag('start failed', role, err?.reason || '', err?.message);
       fail(err?.reason || SESSION_FAILURES.FAILED);
     }
   }
