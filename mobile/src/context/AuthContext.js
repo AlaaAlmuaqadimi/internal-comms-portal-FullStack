@@ -9,6 +9,7 @@ import {
   setTokensRefreshedHandler,
   isBackendConfigured,
 } from '../services/api';
+import { unregisterPushToken } from '../services/pushTokens';
 import { useTheme } from './ThemeContext';
 import { useLanguage } from './LanguageContext';
 
@@ -221,6 +222,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    // Stop this phone ringing for the signed-out user (needs the access token,
+    // so before the server logout). Best effort.
+    await unregisterPushToken();
     await api.auth.logout();
     await clearSession();
     setUser(null);

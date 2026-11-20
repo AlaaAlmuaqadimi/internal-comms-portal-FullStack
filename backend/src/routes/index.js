@@ -7,6 +7,7 @@ import kitchenRoutes from '../modules/kitchens/kitchen.routes.js';
 import notificationRoutes from '../modules/notifications/notification.routes.js';
 import callRoutes from '../modules/calls/call.routes.js';
 import appSettingRoutes from '../modules/settings/appSetting.routes.js';
+import pushRoutes from '../modules/push/push.routes.js';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/kitchens', kitchenRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/calls', callRoutes);
 router.use('/settings', appSettingRoutes);
+router.use('/push', pushRoutes);
 
 export default router;

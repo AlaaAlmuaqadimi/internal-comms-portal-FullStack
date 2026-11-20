@@ -22,3 +22,12 @@ Thumbs.db
 all_backend.txt
 phase-b-patches/
 *.patch
+
+# Firebase service account for FCM pushes - secret, server only
+backend/secrets/
+*firebase-adminsdk*.json
+
+# Firebase app config files (mobile). Not secret, but kept out of the public repo;
+# EAS builds get them as file environment variables.
+mobile/google-services.json
+mobile/GoogleService-Info.plist

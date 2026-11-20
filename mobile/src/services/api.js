@@ -366,6 +366,25 @@ export const api = {
     },
   },
 
+  // Phase D: this phone's push token, so a call rings even when the app is
+  // closed (FCM on Android, APNs VoIP on iOS).
+  push: {
+    register: async ({ token, platform }) => {
+      const { data } = await request('/api/push/tokens', {
+        method: 'POST',
+        body: JSON.stringify({ token, platform }),
+      });
+      return data;
+    },
+    unregister: async (token) => {
+      const { data } = await request('/api/push/tokens', {
+        method: 'DELETE',
+        body: JSON.stringify({ token }),
+      });
+      return data;
+    },
+  },
+
   // Notifications
   notifications: {
     // Returns the notifications that were delivered to the signed-in employee

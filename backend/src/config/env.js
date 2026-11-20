@@ -84,6 +84,13 @@ const schema = z.object({
   TURN_USERNAME: z.string().default(''),
   TURN_CREDENTIAL: z.string().default(''),
   TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+
+  // Phase D: incoming-call pushes through Firebase Cloud Messaging.
+  PUSH_ENABLED: z.string().optional().default('false'),
+  // Firebase service-account JSON (secret, server only; backend/secrets/ is git-ignored).
+  FCM_SERVICE_ACCOUNT_FILE: z.string().default('./secrets/firebase-service-account.json'),
+  // Put the caller's (possibly redacted) name in the push. Off: Google sees only the call id.
+  PUSH_SHOW_CALLER_NAME: z.string().optional().default('false'),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -171,6 +178,12 @@ export const env = {
       turnCredential: raw.TURN_CREDENTIAL,
       turnCredentialTtlSeconds: raw.TURN_CREDENTIAL_TTL_SECONDS,
     },
+  },
+
+  push: {
+    enabled: String(raw.PUSH_ENABLED).trim().toLowerCase() === 'true',
+    serviceAccountFile: raw.FCM_SERVICE_ACCOUNT_FILE,
+    showCallerName: String(raw.PUSH_SHOW_CALLER_NAME).trim().toLowerCase() === 'true',
   },
 };
 
