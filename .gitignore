@@ -17,3 +17,8 @@ database/legacy/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local dumps and scratch patches - never commit
+all_backend.txt
+phase-b-patches/
+*.patch

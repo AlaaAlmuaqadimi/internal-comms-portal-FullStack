@@ -21,6 +21,7 @@ import {
   endedReasonKey,
   otherParty,
 } from '../../calls/callMachine';
+import { SECURITY_CODE_STATUS, formatSecurityCode } from '../../calls/securityCode';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
 
@@ -39,7 +40,17 @@ const CallActiveScreen = () => {
   const { width, height } = useWindowDimensions();
   const { t, isRTL } = useLanguage();
   const { colors } = useTheme();
-  const { state, hangUp, muted, setMuted, speaker, setSpeaker, audioEnabled, speakerEnabled } = useCall();
+  const {
+    state,
+    hangUp,
+    muted,
+    setMuted,
+    speaker,
+    setSpeaker,
+    audioEnabled,
+    speakerEnabled,
+    securityCode,
+  } = useCall();
   const styles = useMemo(
     () => flipStyles(createStyles(colors), isRTL),
     [colors, isRTL]
@@ -156,6 +167,47 @@ const CallActiveScreen = () => {
               </Text>
             </View>
           </View>
+
+          {/* رمز الأمان: يقرؤه الطرفان لبعض؛ إن اختلف فهناك من يتنصّت */}
+          {phase === PHASES.ACTIVE && audioEnabled && securityCode ? (
+            securityCode.status === SECURITY_CODE_STATUS.READY ? (
+              <View style={styles.securityBox}>
+                <View style={styles.securityHeader}>
+                  <Ionicons name="key" size={isSmallScreen ? 14 : 16} color={colors.success} />
+                  <Text style={[styles.securityTitle, isSmallScreen && styles.securityTitleSmall]}>
+                    {t('callActive.securityCodeTitle')}
+                  </Text>
+                </View>
+                <Text
+                  style={[styles.securityCode, isSmallScreen && styles.securityCodeSmall]}
+                  accessibilityLabel={securityCode.code.split('').join(' ')}
+                >
+                  {formatSecurityCode(securityCode.code)}
+                </Text>
+                <Text style={[styles.securityHint, isSmallScreen && styles.securityHintSmall]}>
+                  {t('callActive.securityCodeHint')}
+                </Text>
+              </View>
+            ) : securityCode.status === SECURITY_CODE_STATUS.MISMATCH ? (
+              <View style={[styles.securityBox, styles.securityBoxDanger]}>
+                <View style={styles.securityHeader}>
+                  <Ionicons name="warning" size={isSmallScreen ? 16 : 18} color={colors.danger} />
+                  <Text style={[styles.securityTitle, styles.securityTitleDanger]}>
+                    {t('callActive.securityMismatchTitle')}
+                  </Text>
+                </View>
+                <Text style={[styles.securityHint, styles.securityHintDanger]}>
+                  {t('callActive.securityMismatch')}
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.securityBox, styles.securityBoxMuted]}>
+                <Text style={[styles.securityHint, isSmallScreen && styles.securityHintSmall]}>
+                  {t('callActive.securityUnavailable')}
+                </Text>
+              </View>
+            )
+          ) : null}
         </View>
 
         {/* التحكم بالمكالمة */}
@@ -308,6 +360,61 @@ const createStyles = (colors) => StyleSheet.create({
   },
   secureTextSmall: {
     fontSize: 10,
+  },
+  securityBox: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.successBorder,
+    backgroundColor: colors.successLight,
+    alignItems: 'center',
+  },
+  securityBoxDanger: {
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerLight,
+  },
+  securityBoxMuted: {
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  securityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  securityTitle: {
+    ...typography.captionBold,
+    color: colors.success,
+  },
+  securityTitleSmall: {
+    fontSize: 11,
+  },
+  securityTitleDanger: {
+    color: colors.danger,
+  },
+  securityCode: {
+    ...typography.h1,
+    color: colors.text,
+    letterSpacing: 4,
+    marginTop: spacing.xs,
+    writingDirection: 'ltr',
+    fontVariant: ['tabular-nums'],
+  },
+  securityCodeSmall: {
+    fontSize: 24,
+  },
+  securityHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  securityHintSmall: {
+    fontSize: 10,
+  },
+  securityHintDanger: {
+    color: colors.danger,
   },
   controls: {
     backgroundColor: colors.surface,

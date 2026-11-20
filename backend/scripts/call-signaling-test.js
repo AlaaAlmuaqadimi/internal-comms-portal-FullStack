@@ -141,6 +141,13 @@ check('malformed signals are rejected', () => {
     ['ice', { candidate: RELAY, sdpMLineIndex: -1 }],
     ['ice', { candidate: RELAY, sdpMid: 'x'.repeat(65) }],
     ['ice', []],
+    ['sas', null],
+    ['sas', {}],
+    ['sas', { commit: 'A'.repeat(64) }],
+    ['sas', { commit: 'f'.repeat(63) }],
+    ['sas', { commit: 'f'.repeat(65) }],
+    ['sas', { commit: 42 }],
+    ['sas', []],
     ['bogus', {}],
   ];
   for (const [kind, data] of bad) {
@@ -166,6 +173,25 @@ check('caller offers, callee answers, both send ICE', () => {
   assert.equal(canSendSignal('ice', 'callee'), true);
   assert.equal(canSendSignal('ice', null), false);
   assert.equal(canSendSignal('offer', 'outsider'), false);
+});
+
+check('security-code commitment: callee only, 64 hex chars, nothing else forwarded', () => {
+  assert.equal(canSendSignal('sas', 'callee'), true);
+  assert.equal(canSendSignal('sas', 'caller'), false);
+  assert.equal(canSendSignal('sas', null), false);
+  const commit = 'ab'.repeat(32);
+  for (const relayOnly of [false, true]) {
+    const result = sanitizeSignal('sas', { commit, from: 'x', sdp: 'y' }, { relayOnly });
+    assert.deepEqual(result, { ok: true, drop: false, data: { commit } });
+  }
+});
+
+check('the socket server registers every signal kind, including sas', () => {
+  const source = fs.readFileSync(
+    path.join(backendRoot, 'src/modules/calls/signaling/signaling.server.js'),
+    'utf8'
+  );
+  assert.match(source, /for \(const kind of SIGNAL_KINDS\)/);
 });
 
 // ---- ticketStore.js ---------------------------------------------------------

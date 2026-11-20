@@ -10,9 +10,24 @@
  * is accepted, the callee answers, both trickle ICE. The ICE transport policy
  * comes from the server's call view (`relay` for leadership calls).
  *
- * Never logs SDP, ICE candidates or the call view.
+ * Security code: see `securityCode.js`. The callee commits to its DTLS
+ * fingerprint (`sas` signal) before the caller sends the offer; both phones
+ * then show the same 6 digits unless someone sits in the middle.
+ *
+ * Never logs SDP, ICE candidates, fingerprints or the call view.
  */
+import {
+  SECURITY_CODE_STATUS,
+  commitmentFor,
+  extractFingerprint,
+  isCommitment,
+  securityCodeFor,
+} from './securityCode.js';
+
 const CONNECT_TIMEOUT_MS = 20_000;
+// How long the caller waits for the callee's commitment before offering
+// without one (older app on the other side: no security code then).
+const SAS_COMMIT_WAIT_MS = 8_000;
 
 let webrtc;
 let webrtcLoaded = false;
@@ -115,9 +130,11 @@ function hasTurn(iceServers) {
  * @param {object} options
  * @param {object} options.call        Server call view (id, direction, iceTransportPolicy)
  * @param {Array}  options.iceServers  From the signalling ticket
- * @param {(kind: 'offer'|'answer'|'ice', data: object|null) => void} options.sendSignal
+ * @param {(kind: 'offer'|'answer'|'ice'|'sas', data: object|null) => void} options.sendSignal
  * @param {() => void} options.onConnected
  * @param {(reason: string) => void} options.onFailed
+ * @param {(result: {status: string, code: string|null}) => void} [options.onSecurityCode]
+ * @param {number} [options.commitWaitMs]     Injected for tests
  * @param {object} [options.rtc]              Injected for tests; defaults to react-native-webrtc
  * @param {object} [options.inCallManager]    Injected for tests; defaults to react-native-incall-manager
  * @param {() => Promise<boolean>} [options.requestMicrophone] Injected for tests
@@ -128,6 +145,8 @@ export function createCallSession({
   sendSignal,
   onConnected,
   onFailed,
+  onSecurityCode,
+  commitWaitMs = SAS_COMMIT_WAIT_MS,
   rtc = loadWebRTC(),
   inCallManager = loadInCallManager(),
   requestMicrophone = ensureMicrophonePermission,
@@ -145,6 +164,12 @@ export function createCallSession({
   let connectTimer = null;
   let audioRouted = false; // InCallManager.start() was called
   let speakerOn = false; // last value sent to InCallManager
+  // Security code state. The fingerprints themselves are never logged.
+  let peerCommitment = null; // caller: the callee's commitment, if it came in time
+  let offerSent = false;
+  let commitWaiter = null;
+  let localFingerprint = null;
+  let securityReported = false;
   const queuedCandidates = [];
   const queuedSignals = [];
   const localTypes = {};
@@ -164,6 +189,67 @@ export function createCallSession({
     if (closed) return;
     close();
     onFailed?.(reason);
+  }
+
+  function reportSecurity(status, code = null) {
+    if (securityReported || closed) return;
+    securityReported = true;
+    logDiag('security code', role, status);
+    try {
+      onSecurityCode?.({ status, code });
+    } catch {
+      // a UI error must not break the call
+    }
+  }
+
+  /** Caller only: the commitment counts only if it arrived before the offer. */
+  function acceptCommitment(payload) {
+    if (role !== 'caller' || offerSent || closed || peerCommitment) return;
+    if (!isCommitment(payload?.commit)) return;
+    peerCommitment = payload.commit;
+    commitWaiter?.();
+  }
+
+  function waitForCommitment() {
+    if (peerCommitment) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, commitWaitMs);
+      commitWaiter = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+  }
+
+  /** Caller, after the answer: check the commitment, then derive the code. */
+  function securityFromAnswer(remoteSdp) {
+    const remoteFingerprint = extractFingerprint(remoteSdp);
+    if (!peerCommitment || !localFingerprint || !remoteFingerprint) {
+      reportSecurity(SECURITY_CODE_STATUS.UNAVAILABLE);
+      return;
+    }
+    if (commitmentFor(call.id, remoteFingerprint) !== peerCommitment) {
+      reportSecurity(SECURITY_CODE_STATUS.MISMATCH);
+      return;
+    }
+    reportSecurity(
+      SECURITY_CODE_STATUS.READY,
+      securityCodeFor(call.id, localFingerprint, remoteFingerprint)
+    );
+  }
+
+  /** Callee, after answering: derive the code from the two descriptions. */
+  function securityFromOffer(remoteSdp, localSdp) {
+    const remoteFingerprint = extractFingerprint(remoteSdp);
+    const ownFingerprint = extractFingerprint(localSdp);
+    if (!remoteFingerprint || !ownFingerprint) {
+      reportSecurity(SECURITY_CODE_STATUS.UNAVAILABLE);
+      return;
+    }
+    reportSecurity(
+      SECURITY_CODE_STATUS.READY,
+      securityCodeFor(call.id, remoteFingerprint, ownFingerprint)
+    );
   }
 
   function markConnected() {
@@ -190,10 +276,12 @@ export function createCallSession({
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       sendSignal('answer', { type: 'answer', sdp: answer.sdp });
+      securityFromOffer(data?.sdp, answer.sdp);
     } else if (kind === 'answer' && role === 'caller') {
       await pc.setRemoteDescription(new rtc.RTCSessionDescription(data));
       remoteDescriptionSet = true;
       await flushCandidates();
+      securityFromAnswer(data?.sdp);
     } else if (kind === 'ice') {
       if (!data || !data.candidate) return; // end-of-candidates
       countType(remoteTypes, data.candidate);
@@ -205,6 +293,11 @@ export function createCallSession({
   /** Feeds a relayed signal. Signals that arrive before start() are queued. */
   async function handleSignal(kind, data) {
     if (closed) return;
+    if (kind === 'sas') {
+      // Needs no peer connection; must be seen before the offer goes out.
+      acceptCommitment(data);
+      return;
+    }
     if (!pc) {
       queuedSignals.push([kind, data]);
       return;
@@ -280,11 +373,29 @@ export function createCallSession({
         if (!connected) fail();
       }, CONNECT_TIMEOUT_MS);
 
+      if (role === 'callee') {
+        // Commit to our fingerprint before the caller reveals theirs. A probe
+        // offer is never applied; it only shows this connection's certificate.
+        try {
+          const probe = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
+          localFingerprint = extractFingerprint(probe?.sdp);
+          if (localFingerprint && !closed) {
+            sendSignal('sas', { commit: commitmentFor(call.id, localFingerprint) });
+          }
+        } catch {
+          localFingerprint = null; // no security code, the call still works
+        }
+      }
+
       resolveReady();
 
       if (role === 'caller') {
         const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
         await pc.setLocalDescription(offer);
+        localFingerprint = extractFingerprint(offer.sdp);
+        await waitForCommitment();
+        if (closed) return;
+        offerSent = true;
         sendSignal('offer', { type: 'offer', sdp: offer.sdp });
       }
 
@@ -323,6 +434,7 @@ export function createCallSession({
     closed = true;
     clearTimeout(connectTimer);
     resolveReady?.();
+    commitWaiter?.();
     try {
       localStream?.getTracks().forEach((track) => track.stop());
     } catch {

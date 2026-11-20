@@ -82,17 +82,19 @@ function fakeInCall() {
 
 const TURN = [{ urls: ['turn:turn.example.ly:3478'], username: 'u', credential: 'c' }];
 
-function setup({ direction = 'outgoing', policy = 'all', iceServers = [], mic = true } = {}) {
+function setup({ direction = 'outgoing', policy = 'all', iceServers = [], mic = true, commitWaitMs = 5 } = {}) {
   const fake = fakeRtc();
   const inCall = fakeInCall();
   const sent = [];
-  const events = { connected: 0, failed: [] };
+  const events = { connected: 0, failed: [], security: [] };
   const session = createCallSession({
     call: { id: 'call-1', direction, iceTransportPolicy: policy },
     iceServers,
     sendSignal: (kind, data) => sent.push([kind, data]),
     onConnected: () => { events.connected += 1; },
     onFailed: (reason) => events.failed.push(reason),
+    onSecurityCode: (result) => events.security.push(result),
+    commitWaitMs,
     rtc: fake.rtc,
     inCallManager: inCall,
     requestMicrophone: async () => mic,

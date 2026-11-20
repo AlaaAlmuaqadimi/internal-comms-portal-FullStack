@@ -215,6 +215,7 @@ loaded and `POST /api/calls/signaling/ticket` returns
 | `call:sync` | `{}` → `{ calls }` (ringing and accepted calls) |
 | `signal:offer` / `signal:answer` | `{ callId, data: { type, sdp } }` |
 | `signal:ice` | `{ callId, data: { candidate, sdpMid, sdpMLineIndex } \| null }` |
+| `signal:sas` | `{ callId, data: { commit } }`, callee only (64 hex chars) |
 
 | Server → client | Meaning |
 | --- | --- |
@@ -223,7 +224,7 @@ loaded and `POST /api/calls/signaling/ticket` returns
 | `call:accepted` | for the callee's other devices it also means "answered elsewhere" |
 | `call:rejected`, `call:cancelled`, `call:missed`, `call:ended` | terminal states |
 | `call:busy` | to the caller only; the callee is told nothing |
-| `signal:offer`, `signal:answer`, `signal:ice` | `{ callId, data }` from the other participant |
+| `signal:offer`, `signal:answer`, `signal:ice`, `signal:sas` | `{ callId, data }` from the other participant |
 
 Rules enforced by the server:
 
@@ -244,8 +245,35 @@ Rules enforced by the server:
 - REST actions are pushed to connected sockets too, so both paths stay in step.
 
 ICE servers come from `STUN_URLS`, `TURN_URLS` and `TURN_SHARED_SECRET`
-(coturn `use-auth-secret`). Leadership calls cannot connect until TURN is
-configured; `turnConfigured` tells the client.
+(coturn `use-auth-secret`) or fixed `TURN_USERNAME` / `TURN_CREDENTIAL`
+(hosted TURN). Leadership calls cannot connect until TURN is configured;
+`turnConfigured` tells the client.
+
+### Encryption and the security code
+
+Audio is always encrypted end to end by WebRTC (DTLS-SRTP, keys created on the
+phones, new keys every call). Neither this server nor a TURN relay can decrypt
+it. What the server *could* do, if it were compromised, is swap the DTLS
+fingerprints inside the SDP and sit in the middle. The security code makes that
+visible:
+
+1. The callee sends `signal:sas` with `commit = SHA-256(prefix | callId |
+   its DTLS fingerprint)` before the caller sends the offer.
+2. The caller waits up to 8 s for it, then offers. A commitment that arrives
+   after the offer is ignored.
+3. After the answer, the caller checks the answer's fingerprint against the
+   commitment (`mismatch` warning if it differs) and both phones show the same
+   6-digit code derived from the two fingerprints.
+4. The two people read the code to each other; if it differs, they hang up.
+
+Because the man in the middle must fix its fingerprints before seeing ours,
+its chance of producing matching codes is about one in a million per call.
+The server only checks that `commit` is 64 lowercase hex characters; it never
+sees fingerprints in clear or the code. Implementation and tests:
+`mobile/src/calls/securityCode.js`, `mobile/scripts/security-code-test.mjs`.
+
+Signalling itself must run over HTTPS/WSS in production: over plain HTTP the
+login and tokens can be read on the network (the audio stays encrypted).
 
 Single API instance only: tickets, timers and rooms live in process memory.
 

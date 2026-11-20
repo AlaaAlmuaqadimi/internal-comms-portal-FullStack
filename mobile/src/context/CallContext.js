@@ -103,6 +103,8 @@ export const CallProvider = ({ children }) => {
   const [muted, setMuted] = useState(false);
   const [speaker, setSpeaker] = useState(false);
   const [lastEndedAt, setLastEndedAt] = useState(0);
+  // { callId, status, code } from the audio session; see calls/securityCode.js.
+  const [securityCode, setSecurityCode] = useState(null);
 
   const clientRef = useRef(null);
   const sessionRef = useRef(null);
@@ -116,6 +118,7 @@ export const CallProvider = ({ children }) => {
     sessionRef.current?.close();
     sessionRef.current = null;
     bufferedSignalsRef.current.clear();
+    setSecurityCode(null);
   }, []);
 
   const routeSignal = useCallback((event, payload) => {
@@ -209,6 +212,7 @@ export const CallProvider = ({ children }) => {
           clientRef.current?.emit(`signal:${kind}`, { callId, data }).catch(() => {});
         },
         onConnected: () => dispatch({ type: 'MEDIA_CONNECTED' }),
+        onSecurityCode: (result) => setSecurityCode({ ...result, callId }),
         onFailed: (reason) => {
           // Tell the server so the other side does not wait for the grace
           // timeout, then show the reason here.
@@ -340,12 +344,13 @@ export const CallProvider = ({ children }) => {
       speaker,
       setSpeaker,
       lastEndedAt,
+      securityCode: securityCode && securityCode.callId === state.call?.id ? securityCode : null,
       startCall,
       accept,
       reject,
       hangUp,
     }),
-    [state, status, muted, speaker, lastEndedAt, startCall, accept, reject, hangUp]
+    [state, status, muted, speaker, lastEndedAt, securityCode, startCall, accept, reject, hangUp]
   );
 
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;

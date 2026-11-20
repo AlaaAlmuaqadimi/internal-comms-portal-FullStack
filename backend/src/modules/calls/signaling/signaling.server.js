@@ -20,7 +20,7 @@ import { createTicketStore } from './ticketStore.js';
 import { createCallTimers } from './callTimers.js';
 import { createRateWindow } from './rateWindow.js';
 import { buildIceServers, hasTurn } from './iceServers.js';
-import { canSendSignal, sanitizeSignal } from './relay.js';
+import { SIGNAL_KINDS, canSendSignal, sanitizeSignal } from './relay.js';
 
 export const SIGNALING_NAMESPACE = '/calls';
 export const SIGNALING_PATH = '/api/calls/socket';
@@ -288,7 +288,7 @@ function registerHandlers(socket) {
     return { calls };
   });
 
-  for (const kind of ['offer', 'answer', 'ice']) {
+  for (const kind of SIGNAL_KINDS) {
     on(socket, `signal:${kind}`, async (payload) => {
       if (!state.signalRate.hit(socket.id)) {
         throw new AppError(429, ErrorCodes.CALL_RATE_LIMITED, 'عدد الإشارات كبير جداً.');

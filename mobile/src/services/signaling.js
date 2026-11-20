@@ -31,6 +31,7 @@ const SERVER_EVENTS = [
   'signal:offer',
   'signal:answer',
   'signal:ice',
+  'signal:sas',
 ];
 
 const ACK_TIMEOUT_MS = 8000;

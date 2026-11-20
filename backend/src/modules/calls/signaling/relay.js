@@ -8,9 +8,15 @@
  * and size and, for relay-only (leadership) calls, removes every ICE candidate
  * that is not a TURN relay candidate. The client's `iceTransportPolicy` setting
  * is not trusted on its own.
+ *
+ * `sas` carries the callee's security-code commitment (a SHA-256 hex hash of
+ * its DTLS fingerprint, see mobile/src/calls/securityCode.js). The server only
+ * checks its shape; it cannot learn or change the code from it.
  */
 
-export const SIGNAL_KINDS = Object.freeze(['offer', 'answer', 'ice']);
+export const SIGNAL_KINDS = Object.freeze(['offer', 'answer', 'ice', 'sas']);
+
+const COMMITMENT = /^[0-9a-f]{64}$/;
 
 export const SIGNAL_LIMITS = Object.freeze({
   sdpMaxBytes: 16 * 1024,
@@ -100,10 +106,16 @@ function sanitizeCandidate(data, relayOnly) {
   return accepted({ candidate, sdpMid, sdpMLineIndex });
 }
 
+function sanitizeCommitment(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return invalid();
+  if (typeof data.commit !== 'string' || !COMMITMENT.test(data.commit)) return invalid();
+  return accepted({ commit: data.commit });
+}
+
 /**
  * Validates one signal and returns what may be forwarded.
  *
- * @param {'offer'|'answer'|'ice'} kind
+ * @param {'offer'|'answer'|'ice'|'sas'} kind
  * @param {unknown} data   The client payload
  * @param {{relayOnly?: boolean}} [options]
  * @returns {{ok: true, drop: boolean, data: object|null} | {ok: false, code: string}}
@@ -113,13 +125,18 @@ function sanitizeCandidate(data, relayOnly) {
 export function sanitizeSignal(kind, data, { relayOnly = false } = {}) {
   if (!SIGNAL_KINDS.includes(kind)) return invalid();
   if (kind === 'ice') return sanitizeCandidate(data, relayOnly);
+  if (kind === 'sas') return sanitizeCommitment(data);
   return sanitizeDescription(kind, data, relayOnly);
 }
 
-/** Who may send which signal. The caller offers, the callee answers. */
+/**
+ * Who may send which signal. The caller offers, the callee answers; only the
+ * callee commits to its fingerprint (before the offer).
+ */
 export function canSendSignal(kind, role) {
   if (kind === 'offer') return role === 'caller';
   if (kind === 'answer') return role === 'callee';
+  if (kind === 'sas') return role === 'callee';
   if (kind === 'ice') return role === 'caller' || role === 'callee';
   return false;
 }
