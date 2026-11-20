@@ -214,9 +214,69 @@ check('a session closed while the mic is opening releases the mic', async () => 
   assert.equal(tracks.every((track) => track.stopped), true);
 });
 
+check('speaker is sent only when it changes', async () => {
+  const { session, inCall } = setup();
+  session.setSpeaker(true); // before start: remembered, applied at start
+  await session.start();
+  assert.deepEqual(inCall.calls.filter(([name]) => name === 'speaker'), [['speaker', true]]);
+  session.setSpeaker(true);
+  session.setSpeaker(true);
+  assert.equal(inCall.calls.filter(([name]) => name === 'speaker').length, 1);
+  session.setSpeaker(false);
+  assert.deepEqual(inCall.calls.at(-1), ['speaker', false]);
+  session.close();
+  session.setSpeaker(true); // after close: ignored
+  assert.deepEqual(inCall.calls.at(-1), ['stop']);
+});
+
+check('a broken InCallManager never breaks the call', async () => {
+  const logs = [];
+  const original = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    const fake = fakeRtc();
+    const events = { connected: 0, failed: [] };
+    const broken = {
+      start: () => { throw new TypeError('undefined is not a function'); },
+      setForceSpeakerphoneOn: () => Promise.reject(new TypeError('undefined is not a function')),
+      // stop is missing
+    };
+    const session = createCallSession({
+      call: { id: 'call-1', direction: 'outgoing', iceTransportPolicy: 'all' },
+      iceServers: [],
+      sendSignal: () => {},
+      onConnected: () => { events.connected += 1; },
+      onFailed: (reason) => events.failed.push(reason),
+      rtc: fake.rtc,
+      inCallManager: broken,
+      requestMicrophone: async () => true,
+    });
+    await session.start();
+    await tick();
+    fake.instances[0].setState('connected');
+    session.setSpeaker(true);
+    await tick();
+    assert.equal(events.connected, 1);
+    assert.deepEqual(events.failed, []);
+    session.close();
+    assert.equal(fake.tracks[0].stopped, true);
+    assert.ok(logs.some((line) => line.includes('incall error start')));
+    assert.ok(logs.some((line) => line.includes('incall error setForceSpeakerphoneOn')));
+    assert.ok(logs.some((line) => line.includes('incall missing stop')));
+  } finally {
+    console.log = original;
+  }
+});
+
 check('the session never logs SDP or ICE', () => {
   const source = fs.readFileSync(path.join(here, '../src/calls/callSession.js'), 'utf8');
-  assert.equal(/console\./.test(source), false);
+  // console is used in exactly one place: the logDiag helper.
+  assert.equal((source.match(/console\./g) || []).length, 1);
+  const diagCalls = source.split('\n').filter((line) => /logDiag\(/.test(line) && !/function logDiag/.test(line));
+  assert.ok(diagCalls.length > 0);
+  for (const line of diagCalls) {
+    assert.equal(/\bsdp\b|candidate\.candidate|\bdata\b|\bcall\b[^A-Za-z]|offer\b|answer\b/.test(line.replace(/'[^']*'/g, '')), false, line.trim());
+  }
 });
 
 for (const [name, fn] of tests) {

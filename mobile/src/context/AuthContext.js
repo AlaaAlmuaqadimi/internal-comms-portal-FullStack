@@ -6,6 +6,7 @@ import {
   setAuthTokens,
   clearAuthTokens,
   setUnauthorizedHandler,
+  setTokensRefreshedHandler,
   isBackendConfigured,
 } from '../services/api';
 import { useTheme } from './ThemeContext';
@@ -118,6 +119,28 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     setUnauthorizedHandler(handleUnauthorized);
   }, [handleUnauthorized]);
+
+  // The API client refreshed the access token (it expires after
+  // ACCESS_TOKEN_TTL). Save the rotated pair right away: the old refresh token
+  // is now revoked, and using it again would end the session on the server.
+  const handleTokensRefreshed = useCallback(async (result) => {
+    await SecureStore.setItemAsync(
+      TOKENS_KEY,
+      JSON.stringify({ accessToken: result.accessToken, refreshToken: result.refreshToken })
+    );
+    if (result.user) {
+      setUser((current) => {
+        const next = { ...(current || {}), ...result.user };
+        AsyncStorage.setItem(USER_KEY, JSON.stringify(sanitizeUserForStorage(next))).catch(() => {});
+        return next;
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    setTokensRefreshedHandler(handleTokensRefreshed);
+    return () => setTokensRefreshedHandler(null);
+  }, [handleTokensRefreshed]);
 
   useEffect(() => {
     (async () => {

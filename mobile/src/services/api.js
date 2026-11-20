@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { translate } from '../context/LanguageContext';
+import { createAuthedRequest, createRefresher } from './authRefresh';
 
 // API base URL - set via EXPO_PUBLIC_API_BASE_URL in mobile/.env
 // (Expo only inlines env vars prefixed with EXPO_PUBLIC_ into the client
@@ -35,6 +36,7 @@ export class ApiError extends Error {
 let accessToken = null;
 let refreshToken = null;
 let onUnauthorized = null;
+let onTokensRefreshed = null;
 
 export function setAuthTokens(tokens) {
   accessToken = tokens?.accessToken || null;
@@ -48,6 +50,15 @@ export function clearAuthTokens() {
 
 export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
+}
+
+/**
+ * Called after a successful refresh with `{ accessToken, refreshToken, user }`
+ * so the new tokens can be saved to secure storage. The tokens are already in
+ * memory when it runs.
+ */
+export function setTokensRefreshedHandler(handler) {
+  onTokensRefreshed = handler;
 }
 
 function getLocalizedAuthError(code, fallback) {
@@ -72,8 +83,9 @@ function getLocalizedAuthError(code, fallback) {
 }
 
 // Low-level request. Throws ApiError on network failure or non-2xx response -
-// it never silently degrades to mock mode.
-const request = async (endpoint, options = {}) => {
+// it never silently degrades to mock mode. 401 handling (refresh, sign-out)
+// lives in `request` below.
+const rawRequest = async (endpoint, options = {}) => {
   if (!isBackendConfigured()) {
     const code = 'NOT_CONFIGURED';
     throw new ApiError(
@@ -123,10 +135,6 @@ const request = async (endpoint, options = {}) => {
     }
   }
 
-  if (response.status === 401 && auth && onUnauthorized) {
-    onUnauthorized();
-  }
-
   if (!response.ok) {
     const code = data?.code || 'HTTP_ERROR';
     throw new ApiError(getLocalizedAuthError(code, data?.error), {
@@ -138,6 +146,38 @@ const request = async (endpoint, options = {}) => {
 
   return { data, status: response.status };
 };
+
+// One refresh at a time: the server revokes the whole session if the same
+// refresh token is used twice.
+const refreshSession = createRefresher({
+  getRefreshToken: () => refreshToken,
+  callRefresh: async (token) => {
+    const { data } = await rawRequest('/api/auth/refresh', {
+      method: 'POST',
+      auth: false,
+      body: JSON.stringify({ refreshToken: token }),
+    });
+    return data;
+  },
+  onRefreshed: async (result) => {
+    setAuthTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken });
+    try {
+      await onTokensRefreshed?.(result);
+    } catch {
+      // Saving failed: the in-memory session still works until the app closes.
+    }
+  },
+});
+
+// Every API call: on an expired access token, refresh once and retry. Signs
+// out only when the server rejects the session, never on a network error.
+const request = createAuthedRequest({
+  rawRequest,
+  getAccessToken: () => accessToken,
+  getRefreshToken: () => refreshToken,
+  refresh: refreshSession,
+  onUnauthorized: () => onUnauthorized?.(),
+});
 
 
 export const api = {

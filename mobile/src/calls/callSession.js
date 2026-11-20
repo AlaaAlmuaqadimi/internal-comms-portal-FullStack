@@ -82,6 +82,29 @@ function logDiag(...args) {
   console.log('[call]', ...args);
 }
 
+/**
+ * Calls one InCallManager method without ever throwing. Under the New
+ * Architecture some methods of react-native-incall-manager can be missing or
+ * throw ("undefined is not a function"); audio must keep working regardless.
+ * Logs only the method name and the error message.
+ */
+function callInCall(manager, method, ...args) {
+  if (!manager) return;
+  const fn = manager[method];
+  if (typeof fn !== 'function') {
+    logDiag('incall missing', method);
+    return;
+  }
+  try {
+    const result = fn.apply(manager, args);
+    if (result && typeof result.catch === 'function') {
+      result.catch((err) => logDiag('incall error', method, err?.message));
+    }
+  } catch (err) {
+    logDiag('incall error', method, err?.message);
+  }
+}
+
 function hasTurn(iceServers) {
   return (iceServers || []).some((server) =>
     [].concat(server?.urls || []).some((url) => /^turns?:/i.test(url))
@@ -120,6 +143,8 @@ export function createCallSession({
   let connected = false;
   let remoteDescriptionSet = false;
   let connectTimer = null;
+  let audioRouted = false; // InCallManager.start() was called
+  let speakerOn = false; // last value sent to InCallManager
   const queuedCandidates = [];
   const queuedSignals = [];
   const localTypes = {};
@@ -210,8 +235,9 @@ export function createCallSession({
         return;
       }
 
-      inCallManager?.start?.({ media: 'audio' });
-      inCallManager?.setForceSpeakerphoneOn?.(false);
+      callInCall(inCallManager, 'start', { media: 'audio' });
+      audioRouted = true;
+      callInCall(inCallManager, 'setForceSpeakerphoneOn', speakerOn);
 
       logDiag('session start', role, 'relayOnly', relayOnly, 'iceServers', (iceServers || []).length);
       pc = new rtc.RTCPeerConnection({
@@ -237,10 +263,15 @@ export function createCallSession({
       });
 
       const onState = () => {
-        logDiag('state', role, 'ice', pc?.iceConnectionState, 'pc', pc?.connectionState);
-        const state = pc?.connectionState || pc?.iceConnectionState;
-        if (state === 'connected' || state === 'completed') markConnected();
-        if (state === 'failed') fail();
+        try {
+          logDiag('state', role, 'ice', pc?.iceConnectionState, 'pc', pc?.connectionState);
+          const state = pc?.connectionState || pc?.iceConnectionState;
+          if (state === 'connected' || state === 'completed') markConnected();
+          if (state === 'failed') fail();
+        } catch (err) {
+          // Never let a listener error escape into the native event loop.
+          logDiag('state handler error', role, err?.message);
+        }
       };
       pc.addEventListener('connectionstatechange', onState);
       pc.addEventListener('iceconnectionstatechange', onState);
@@ -276,8 +307,15 @@ export function createCallSession({
     });
   }
 
+  /**
+   * Only calls InCallManager when the value really changes; before start()
+   * the value is remembered and applied once audio routing begins.
+   */
   function setSpeaker(on) {
-    inCallManager?.setForceSpeakerphoneOn?.(Boolean(on));
+    const next = Boolean(on);
+    if (next === speakerOn) return;
+    speakerOn = next;
+    if (audioRouted && !closed) callInCall(inCallManager, 'setForceSpeakerphoneOn', next);
   }
 
   function close() {
@@ -295,7 +333,8 @@ export function createCallSession({
     } catch {
       // already closed
     }
-    inCallManager?.stop?.();
+    if (audioRouted) callInCall(inCallManager, 'stop');
+    audioRouted = false;
     localStream = null;
     pc = null;
   }

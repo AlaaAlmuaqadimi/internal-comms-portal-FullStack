@@ -58,6 +58,10 @@ const schema = z.object({
 
   LOGIN_RATE_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
   LOGIN_RATE_MAX: z.coerce.number().int().positive().default(10),
+  // Token refresh has its own, larger budget: with a 15-minute access token
+  // every signed-in device refreshes about 4 times an hour, and a whole office
+  // can share one public IP. Same window as the login limiter.
+  REFRESH_RATE_MAX: z.coerce.number().int().positive().default(300),
 
   CALL_INVITE_RATE_WINDOW_MINUTES: z.coerce.number().int().positive().default(1),
   CALL_INVITE_RATE_MAX: z.coerce.number().int().positive().default(10),
@@ -76,6 +80,9 @@ const schema = z.object({
   STUN_URLS: z.string().default(''),
   TURN_URLS: z.string().default(''),
   TURN_SHARED_SECRET: z.string().default(''),
+  // Fixed credentials for a hosted TURN service (used when no shared secret).
+  TURN_USERNAME: z.string().default(''),
+  TURN_CREDENTIAL: z.string().default(''),
   TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
 });
 
@@ -139,6 +146,7 @@ export const env = {
   loginRateLimit: {
     windowMs: raw.LOGIN_RATE_WINDOW_MINUTES * 60 * 1000,
     max: raw.LOGIN_RATE_MAX,
+    refreshMax: raw.REFRESH_RATE_MAX,
   },
 
   callInviteRateLimit: {
@@ -159,6 +167,8 @@ export const env = {
       stunUrls: splitList(raw.STUN_URLS),
       turnUrls: splitList(raw.TURN_URLS),
       turnSharedSecret: raw.TURN_SHARED_SECRET,
+      turnUsername: raw.TURN_USERNAME,
+      turnCredential: raw.TURN_CREDENTIAL,
       turnCredentialTtlSeconds: raw.TURN_CREDENTIAL_TTL_SECONDS,
     },
   },

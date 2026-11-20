@@ -8,6 +8,10 @@
  * The username deliberately contains a random id and not the employee id, so
  * the TURN server's logs cannot tie a relayed session to a person.
  *
+ * A hosted TURN service (e.g. Metered) gives fixed credentials instead:
+ * set `turnUsername` + `turnCredential` and leave `turnSharedSecret` empty.
+ * The shared secret wins when both are set.
+ *
  * Pure: no env import. The caller passes the configuration.
  */
 import crypto from 'node:crypto';
@@ -17,6 +21,8 @@ import crypto from 'node:crypto';
  * @param {string[]} [config.stunUrls]
  * @param {string[]} [config.turnUrls]
  * @param {string}   [config.turnSharedSecret]
+ * @param {string}   [config.turnUsername]   Fixed credentials (hosted TURN)
+ * @param {string}   [config.turnCredential]
  * @param {number}   [config.turnCredentialTtlSeconds]
  * @param {() => number} [config.now] Milliseconds since the epoch
  * @returns {Array<{urls: string[], username?: string, credential?: string}>}
@@ -25,6 +31,8 @@ export function buildIceServers({
   stunUrls = [],
   turnUrls = [],
   turnSharedSecret = '',
+  turnUsername = '',
+  turnCredential = '',
   turnCredentialTtlSeconds = 3600,
   now = Date.now,
 } = {}) {
@@ -42,6 +50,8 @@ export function buildIceServers({
       .update(username)
       .digest('base64');
     servers.push({ urls: [...turnUrls], username, credential });
+  } else if (turnUrls.length > 0 && turnUsername && turnCredential) {
+    servers.push({ urls: [...turnUrls], username: turnUsername, credential: turnCredential });
   }
 
   return servers;

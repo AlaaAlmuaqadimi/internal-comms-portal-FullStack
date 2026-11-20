@@ -383,6 +383,34 @@ check('TURN credentials follow the coturn shared-secret scheme', () => {
   assert.equal(hasTurn(servers), true);
 });
 
+check('hosted TURN with fixed credentials is offered', () => {
+  const servers = buildIceServers({
+    stunUrls: ['stun:stun.example.ly:3478'],
+    turnUrls: ['turn:relay.example.ly:80', 'turn:relay.example.ly:443?transport=tcp'],
+    turnUsername: 'fixed-user',
+    turnCredential: 'fixed-pass',
+  });
+  assert.equal(servers.length, 2);
+  assert.deepEqual(servers[1], {
+    urls: ['turn:relay.example.ly:80', 'turn:relay.example.ly:443?transport=tcp'],
+    username: 'fixed-user',
+    credential: 'fixed-pass',
+  });
+  assert.equal(hasTurn(servers), true);
+});
+
+check('the shared secret wins over fixed credentials; half a pair is ignored', () => {
+  const both = buildIceServers({
+    turnUrls: ['turn:relay.example.ly:3478'],
+    turnSharedSecret: 'secret',
+    turnUsername: 'fixed-user',
+    turnCredential: 'fixed-pass',
+  });
+  assert.notEqual(both[0].username, 'fixed-user');
+  const half = buildIceServers({ turnUrls: ['turn:relay.example.ly:3478'], turnUsername: 'fixed-user' });
+  assert.equal(hasTurn(half), false);
+});
+
 check('TURN without a shared secret is not offered', () => {
   const servers = buildIceServers({ turnUrls: ['turn:turn.example.ly:3478'] });
   assert.deepEqual(servers, []);
