@@ -80,9 +80,15 @@ async function ensureMicrophonePermission() {
   // eslint-disable-next-line global-require
   const { PermissionsAndroid, Platform } = require('react-native');
   if (Platform.OS !== 'android') return true; // iOS asks on first getUserMedia
-  const result = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
-  );
+  const permission = PermissionsAndroid.PERMISSIONS.RECORD_AUDIO;
+  if (await PermissionsAndroid.check(permission)) return true;
+  // A permission dialog cannot open over the lock screen or from the
+  // background, so only ask while the app is on screen. CallContext asks once
+  // after login so answering a locked phone already has the permission.
+  // eslint-disable-next-line global-require
+  const { AppState } = require('react-native');
+  if (AppState.currentState !== 'active') return false;
+  const result = await PermissionsAndroid.request(permission);
   return result === PermissionsAndroid.RESULTS.GRANTED;
 }
 
@@ -391,6 +397,7 @@ export function createCallSession({
 
       if (role === 'caller') {
         const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
+        if (closed) return; // hung up while the offer was being made
         await pc.setLocalDescription(offer);
         localFingerprint = extractFingerprint(offer.sdp);
         await waitForCommitment();

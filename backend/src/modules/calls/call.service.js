@@ -362,10 +362,14 @@ export async function listActiveCallViews(employeeId) {
   );
 
   const labels = await getCallRedactedLabels();
-  return rows
-    .map((row) => mapCallRow(row))
-    .filter(Boolean)
-    .map((loaded) => viewFor(loaded, employeeId, labels));
+  // viewFor is async: without Promise.all the reply is a list of pending
+  // promises, which serialize as {} and make every active call look ended.
+  return Promise.all(
+    rows
+      .map((row) => mapCallRow(row))
+      .filter(Boolean)
+      .map((loaded) => viewFor(loaded, employeeId, labels))
+  );
 }
 
 /** One authorized call view for the socket layer; audits non-participants. */

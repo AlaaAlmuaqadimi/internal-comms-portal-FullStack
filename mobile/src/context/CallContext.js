@@ -25,7 +25,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Alert, AppState, Vibration } from 'react-native';
+import { Alert, AppState, PermissionsAndroid, Platform, Vibration } from 'react-native';
 import { useAuth } from './AuthContext';
 import { useLanguage } from './LanguageContext';
 import {
@@ -48,6 +48,33 @@ export const AUDIO_ENABLED = isAudioSupported();
 // Phase D: the native call UI module (development / production build only).
 const SYSTEM_CALLS = AUDIO_ENABLED && Boolean(loadCallModule());
 const SPEAKER_ENABLED = AUDIO_ENABLED && (SYSTEM_CALLS || isSpeakerSupported());
+
+/**
+ * Ask for the microphone (and, on Android 13+, notifications) while the app
+ * is on screen. A call answered from the lock screen cannot show a permission
+ * dialog, so without this the first such call ends with "microphone denied".
+ */
+async function askCallPermissions() {
+  if (Platform.OS !== 'android' || !AUDIO_ENABLED) return;
+  const wanted = [PermissionsAndroid.PERMISSIONS.RECORD_AUDIO];
+  if (Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS) {
+    wanted.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+  }
+  try {
+    const missing = [];
+    for (const permission of wanted) {
+      if (!(await PermissionsAndroid.check(permission))) missing.push(permission);
+    }
+    if (missing.length) await PermissionsAndroid.requestMultiple(missing);
+  } catch {
+    // The call itself reports a missing microphone.
+  }
+}
+
+function logCall(...args) {
+  // eslint-disable-next-line no-console
+  console.log('[call]', ...args);
+}
 
 configurePushTokens(api);
 const MAX_BUFFERED_SIGNALS = 200;
@@ -163,6 +190,11 @@ export const CallProvider = ({ children }) => {
     try {
       const { calls } = await client.emit('call:sync', {});
       const orphans = findOrphanedCalls(stateRef.current, calls);
+      const current = stateRef.current.call?.id;
+      if (current) {
+        const seen = (calls || []).find((item) => item?.id === current);
+        logCall('sync', stateRef.current.phase, seen ? seen.status : 'missing', 'orphans', orphans.length);
+      }
       dispatch({ type: 'SYNC', calls });
       // An accepted call this device is not showing has no audio here (the
       // app restarted mid-call): end it instead of leaving the peer waiting.
@@ -181,6 +213,9 @@ export const CallProvider = ({ children }) => {
     const client = createSignalingClient({
       onEvent: (event, payload) => {
         if (event.startsWith('call:')) {
+          if (payload?.id && payload.id === stateRef.current.call?.id) {
+            logCall('server event', event, payload.status);
+          }
           dispatch({ type: 'SERVER_EVENT', event, call: payload });
         } else if (event.startsWith('signal:')) {
           routeSignal(event, payload);
@@ -285,6 +320,7 @@ export const CallProvider = ({ children }) => {
     const bridge = createSystemCallBridge({
       onAnswer: (callId) => {
         const { phase, call } = stateRef.current;
+        logCall('system answer', phase, call?.id === callId ? 'current' : 'pending');
         if (call?.id === callId && phase === PHASES.INCOMING) {
           actionsRef.current.accept?.({ fromSystem: true });
         } else {
@@ -293,6 +329,7 @@ export const CallProvider = ({ children }) => {
       },
       onEnd: (callId) => {
         const { phase, call } = stateRef.current;
+        logCall('system end', phase, call?.id === callId ? 'current' : 'pending');
         if (call?.id !== callId) {
           pendingEndRef.current = callId;
           return;
@@ -315,6 +352,7 @@ export const CallProvider = ({ children }) => {
   useEffect(() => {
     const bridge = bridgeRef.current;
     if (!bridge || !isAuthenticated || !user?.employeeId) return undefined;
+    askCallPermissions();
     bridge.registerPush();
     const current = bridge.getPushToken();
     if (current) registerPushToken(current);
@@ -431,10 +469,12 @@ export const CallProvider = ({ children }) => {
     const { phase, call } = stateRef.current;
     if (!call) return;
     const event = phase === PHASES.OUTGOING ? 'call:cancel' : 'call:end';
+    logCall('hang up', phase, event);
     try {
       const reply = await requireClient().emit(event, { callId: call.id });
       dispatch({ type: 'LOCAL_ENDED', call: reply.call });
-    } catch {
+    } catch (err) {
+      logCall('hang up not confirmed', event, clientRef.current?.getStatus?.(), err?.message);
       // Best effort: whichever of cancel/end applies, so nothing stays open.
       clientRef.current?.emit('call:end', { callId: call.id }).catch(() => {});
       clientRef.current?.emit('call:cancel', { callId: call.id }).catch(() => {});
@@ -451,6 +491,9 @@ export const CallProvider = ({ children }) => {
       available: status === SIGNALING_STATUS.CONNECTED,
       audioEnabled: AUDIO_ENABLED,
       speakerEnabled: SPEAKER_ENABLED,
+      // The phone's own call UI rings and answers; the app shows the call
+      // only once it is answered.
+      systemCalls: SYSTEM_CALLS,
       muted,
       setMuted,
       speaker,

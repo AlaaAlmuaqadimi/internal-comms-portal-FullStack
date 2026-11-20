@@ -321,6 +321,12 @@ check('CallContext: system UI wiring (no InCallManager, no double ring, token on
   assert.match(source, /\.\.\.\(pushToken \? \{ pushToken \} : \{\}\)/);
   assert.match(source, /bridge\.end\(call\.id, endedReason\)/);
   assert.match(source, /pendingAnswerRef\.current = callId/);
+  // Ask for the microphone while on screen: a locked phone cannot show the dialog.
+  assert.match(source, /askCallPermissions\(\);\s*bridge\.registerPush\(\)/);
+  const overlay = fs.readFileSync(path.join(here, '../src/components/calls/CallOverlay.js'), 'utf8');
+  assert.match(overlay, /!\(systemCalls && state\.phase === PHASES\.INCOMING\)/);
+  const session = fs.readFileSync(path.join(here, '../src/calls/callSession.js'), 'utf8');
+  assert.match(session, /AppState\.currentState !== 'active'\) return false/);
   const auth = fs.readFileSync(path.join(here, '../src/context/AuthContext.js'), 'utf8');
   assert.ok(auth.indexOf('await unregisterPushToken()') < auth.indexOf('await api.auth.logout()'), 'token removed before the server logout');
 });

@@ -11,8 +11,11 @@ import CallActiveScreen from '../../screens/main/CallActiveScreen';
  * appears anywhere in the app without touching the navigation stack.
  */
 const CallOverlay = () => {
-  const { state } = useCall();
-  const visible = state.phase !== PHASES.IDLE;
+  const { state, systemCalls } = useCall();
+  // With the phone's call UI, ringing shows only there (banner when in use,
+  // full screen when locked); showing ours too would duplicate it.
+  const visible =
+    state.phase !== PHASES.IDLE && !(systemCalls && state.phase === PHASES.INCOMING);
 
   return (
     <Modal
