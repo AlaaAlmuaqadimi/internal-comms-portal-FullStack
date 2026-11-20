@@ -33,6 +33,7 @@ import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 import { flipStyles } from '../../i18n/rtlStyles';
 import { hasRole } from '../../utils/permissions';
+import { useStartCall } from '../../context/CallContext';
 
 const DirectoryScreen = ({ navigation }) => {
   const { width, height } = useWindowDimensions();
@@ -181,22 +182,13 @@ const DirectoryScreen = ({ navigation }) => {
     setUnitId('');
   }, []);
 
+  const startCall = useStartCall();
   const handleCallPress = useCallback(
     (employee) => {
       if (!employee) return;
-      navigation.navigate('CallActive', {
-        contact: {
-          ...employee,
-          name: employee.fullNameAr,
-          unitName: employee.orgUnitNameAr,
-          avatar: employee.avatarUrl,
-          extension: employee.extension,
-          phoneNumber: employee.extension,
-          isKitchen: false,
-        },
-      });
+      startCall(employee.id);
     },
-    [navigation]
+    [startCall]
   );
 
   const openEdit = useCallback(

@@ -216,6 +216,9 @@ export async function inviteCall({
   callType = 'audio',
   ip,
   userAgent,
+  // The signalling layer turns this on. The REST invite keeps the Phase A
+  // behaviour (no busy handling) so existing clients are unaffected.
+  checkBusy = false,
 }) {
   const caller = await loadParticipant(pool, callerUser?.employeeId);
   const target = await loadParticipant(pool, calleeEmployeeId);
@@ -237,6 +240,30 @@ export async function inviteCall({
     throw targetDeniedError(decision.code);
   }
 
+  // Busy is checked only after the policy allowed the call, so a busy
+  // Director/Deputy is still indistinguishable from any other forbidden target.
+  let initialStatus = 'ringing';
+  if (checkBusy) {
+    if (await isEmployeeBusy(caller.employeeId)) {
+      await writeCallDenied({
+        actorUserId: callerUser?.id ?? null,
+        callerEmployeeId: caller.employeeId,
+        targetEmployeeId: target.employeeId,
+        callerKind: caller.orgUnitKind,
+        targetKind: target.orgUnitKind,
+        callType,
+        reason: 'CALLER_BUSY',
+        code: ErrorCodes.CALL_INVALID_STATE,
+        ip,
+        userAgent,
+      });
+      throw invalidStateError();
+    }
+    if (await isEmployeeBusy(target.employeeId)) {
+      initialStatus = 'busy';
+    }
+  }
+
   const callerIsLeadership = isLeadershipKind(caller.orgUnitKind);
   const calleeIsLeadership = isLeadershipKind(target.orgUnitKind);
   const redacted = callerIsLeadership && !calleeIsLeadership;
@@ -246,15 +273,22 @@ export async function inviteCall({
     await pool.execute(
       `INSERT INTO calls
          (id, caller_employee_id, callee_employee_id, call_type, status,
-          ring_expires_at, metadata)
-       VALUES (?, ?, ?, ?, 'ringing',
-               DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? SECOND), ?)`,
+          ring_expires_at, ended_at, ended_reason, metadata)
+       VALUES (?, ?, ?, ?, ?,
+               IF(? = 'ringing', DATE_ADD(UTC_TIMESTAMP(3), INTERVAL ? SECOND), NULL),
+               IF(? = 'busy', UTC_TIMESTAMP(3), NULL),
+               IF(? = 'busy', 'busy', NULL),
+               ?)`,
       [
         id,
         caller.employeeId,
         target.employeeId,
         callType,
+        initialStatus,
+        initialStatus,
         env.callSignaling.ringTimeoutSeconds,
+        initialStatus,
+        initialStatus,
         JSON.stringify({
           callerOrgUnitKind: caller.orgUnitKind,
           calleeOrgUnitKind: target.orgUnitKind,
@@ -641,44 +675,161 @@ export async function missCall(callId, viewerEmployeeId, ctx = {}) {
       throw invalidStateError();
     }
 
-    const metadata = metadataOf(loaded.call);
-    const callerKind =
-      metadata.callerOrgUnitKind ?? loaded.caller?.orgUnitKind ?? null;
-    const calleeKind =
-      metadata.calleeOrgUnitKind ?? loaded.callee?.orgUnitKind ?? null;
-    const redacted = isLeadershipKind(callerKind) && !isLeadershipKind(calleeKind);
-    const displayName = redacted
-      ? redactedLabelForKind(callerKind, labels)
-      : loaded.caller?.name || 'موظف';
-
-    const notificationId = crypto.randomUUID();
-    const summary = `مكالمة فائتة من ${displayName}`;
-
-    await conn.execute(
-      `INSERT INTO notifications
-         (id, type, title_ar, summary_ar, body_ar, icon, audience,
-          created_by_user_id, published_at, expires_at, metadata)
-       VALUES (?, 'missed_call', 'مكالمة فائتة', ?, ?, 'call', 'selected',
-               NULL, UTC_TIMESTAMP(3), DATE_ADD(UTC_TIMESTAMP(3), INTERVAL 7 DAY), ?)`,
-      [
-        notificationId,
-        summary,
-        summary,
-        // The notification payload carries the minimum needed to render the
-        // row: the call id and the already-redacted display label. It never
-        // contains employee ids, org-unit kinds or the original name.
-        JSON.stringify({ callId, label: displayName }),
-      ]
-    );
-
-    await conn.execute(
-      `INSERT INTO notification_recipients
-         (notification_id, employee_id, delivered_at, read_at)
-       VALUES (?, ?, UTC_TIMESTAMP(3), NULL)`,
-      [notificationId, loaded.call.calleeEmployeeId]
-    );
+    // Same single writer as the ring timeout and the cancel path, so the
+    // payload stays exactly { callId, label } everywhere.
+    await createMissedCallNotification({
+      call: loaded.call,
+      caller: loaded.caller,
+      callee: loaded.callee,
+      labels,
+      executor: conn,
+    });
   });
 
   const fresh = await loadCall(pool, callId);
   return viewFor(fresh, viewerEmployeeId, labels);
+}
+
+// ---------------------------------------------------------------------------
+// Signalling (Phase B) helpers
+//
+// These are used only by `signaling/signaling.server.js`. Every state change
+// keeps the same `WHERE status = ...` guard as the REST actions, so a timer or
+// socket event that races a REST call can never apply twice.
+// ---------------------------------------------------------------------------
+
+/** Active, non-deleted participant for the socket handshake, or null. */
+export async function loadActiveParticipant(employeeId) {
+  const participant = await loadParticipant(pool, employeeId);
+  if (!participant) return null;
+  if (participant.isActive === false || participant.deletedAt) return null;
+  return participant;
+}
+
+/**
+ * Both participants' views of one call, built with one label lookup. Used to
+ * fan out a state change: each side receives only its own view, so a redacted
+ * callee never receives the caller's identity.
+ */
+export async function buildParticipantViews(loaded, labels = null) {
+  if (!loaded) return null;
+  const resolvedLabels = labels ?? (await getCallRedactedLabels());
+  const [callerView, calleeView] = await Promise.all([
+    viewFor(loaded, loaded.call.callerEmployeeId, resolvedLabels),
+    viewFor(loaded, loaded.call.calleeEmployeeId, resolvedLabels),
+  ]);
+  return {
+    callId: loaded.call.id,
+    callerEmployeeId: loaded.call.callerEmployeeId,
+    calleeEmployeeId: loaded.call.calleeEmployeeId,
+    status: loaded.call.status,
+    relayOnly: Boolean(callerView?.relayOnly),
+    caller: callerView,
+    callee: calleeView,
+  };
+}
+
+/**
+ * Ring timeout: `ringing -> missed` plus exactly one `missed_call`
+ * notification, in one transaction. Returns the participant views, or null
+ * when the call had already left `ringing` (accepted, rejected, cancelled...).
+ */
+export async function expireRingingCall(callId) {
+  const labels = await getCallRedactedLabels();
+
+  const loaded = await withTransaction(async (conn) => {
+    const [result] = await conn.execute(
+      `UPDATE calls
+          SET status = 'missed', ended_at = UTC_TIMESTAMP(3), ended_reason = 'timeout'
+        WHERE id = ? AND status = 'ringing'`,
+      [callId]
+    );
+    if (result.affectedRows !== 1) return null;
+
+    const current = await loadCall(conn, callId);
+    await createMissedCallNotification({
+      call: current.call,
+      caller: current.caller,
+      callee: current.callee,
+      labels,
+      executor: conn,
+    });
+    return current;
+  });
+
+  return loaded ? buildParticipantViews(loaded, labels) : null;
+}
+
+/**
+ * Every ringing call with its ring deadline, for the boot sweep. Rows created
+ * before V020 have no `ring_expires_at`, so they fall back to
+ * `initiated_at + CALL_RING_TIMEOUT_SECONDS`.
+ */
+export async function listRingingCallDeadlines() {
+  const [rows] = await pool.execute(
+    `SELECT id,
+            COALESCE(ring_expires_at,
+                     DATE_ADD(initiated_at, INTERVAL ? SECOND)) AS expires_at
+       FROM calls
+      WHERE status = 'ringing'`,
+    [env.callSignaling.ringTimeoutSeconds]
+  );
+  return rows.map((row) => ({
+    callId: row.id,
+    expiresAt: row.expires_at instanceof Date ? row.expires_at : new Date(row.expires_at),
+  }));
+}
+
+/**
+ * Disconnect grace expired: `accepted -> ended` with
+ * `ended_reason = 'disconnected'`. Returns the participant views, or null when
+ * the call was no longer accepted. No notification is created.
+ */
+export async function endCallForDisconnect(callId) {
+  const [result] = await pool.execute(
+    `UPDATE calls
+        SET status = 'ended',
+            ended_at = UTC_TIMESTAMP(3),
+            ended_reason = 'disconnected',
+            duration_seconds = GREATEST(
+              0,
+              TIMESTAMPDIFF(SECOND, COALESCE(answered_at, initiated_at), UTC_TIMESTAMP(3))
+            )
+      WHERE id = ? AND status = 'accepted'`,
+    [callId]
+  );
+  if (result.affectedRows !== 1) return null;
+  return buildParticipantViews(await loadCall(pool, callId));
+}
+
+/**
+ * Lightweight participant check for relaying signals. Returns
+ * `{ role, status, relayOnly, otherEmployeeId }` or null for a non-participant
+ * or unknown call. Never throws for an unknown id, so the socket layer can
+ * answer every bad signal with the same error.
+ */
+export async function getSignalContext(callId, employeeId) {
+  if (!callId || !employeeId) return null;
+  const [rows] = await pool.execute(
+    `SELECT id, caller_employee_id, callee_employee_id, status, metadata
+       FROM calls
+      WHERE id = ?
+      LIMIT 1`,
+    [callId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+
+  let role = null;
+  if (row.caller_employee_id === employeeId) role = 'caller';
+  else if (row.callee_employee_id === employeeId) role = 'callee';
+  if (!role) return null;
+
+  const metadata = metadataOf({ metadata: row.metadata });
+  return {
+    role,
+    status: row.status,
+    relayOnly: Boolean(metadata.relayOnly ?? metadata.callerLeadership),
+    otherEmployeeId: role === 'caller' ? row.callee_employee_id : row.caller_employee_id,
+  };
 }

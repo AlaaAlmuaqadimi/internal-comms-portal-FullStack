@@ -23,6 +23,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { useCall, useStartCall } from '../../context/CallContext';
 
 // The API returns the call view built by `callView.service.js`. The history
 // screen renders exactly those fields; nothing here comes from mock data.
@@ -116,24 +117,20 @@ const CallsScreen = ({ navigation }) => {
     setRefreshing(false);
   }, [loadCalls]);
 
+  const startCall = useStartCall();
   const handleCallPress = (call) => {
     // Redacted leadership calls expose no employee id and must not be callable.
     if (call?.canCallBack === false) return;
     const person = counterpartOf(call);
     if (!person?.employeeId) return;
-
-    navigation.navigate('CallActive', {
-      contact: {
-        id: person.employeeId,
-        name: person.name,
-        unitName: person.unitName,
-        management: person.unitName,
-        avatarUrl: person.avatarUrl || null,
-        isKitchen: false,
-        presence: 'offline',
-      },
-    });
+    startCall(person.employeeId);
   };
+
+  // Refresh the history when a live call finishes.
+  const { lastEndedAt } = useCall();
+  useEffect(() => {
+    if (lastEndedAt) loadCalls({ silent: true });
+  }, [lastEndedAt, loadCalls]);
 
   const resetFilters = () => {
     setSearchQuery('');

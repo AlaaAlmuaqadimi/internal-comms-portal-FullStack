@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { translate } from '../context/LanguageContext';
+import { createAuthedRequest, createRefresher } from './authRefresh';
 
 // API base URL - set via EXPO_PUBLIC_API_BASE_URL in mobile/.env
 // (Expo only inlines env vars prefixed with EXPO_PUBLIC_ into the client
@@ -17,6 +18,9 @@ const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, '');
 
 export const isBackendConfigured = () => !!API_BASE_URL && API_BASE_URL.trim() !== '';
 
+/** Base URL without a trailing slash, e.g. for the signalling socket. */
+export const getApiBaseUrl = () => API_BASE_URL;
+
 // Error carrying the HTTP status and the API error code so callers can react
 // (e.g. distinguish 401 invalid credentials from a network failure).
 export class ApiError extends Error {
@@ -32,6 +36,7 @@ export class ApiError extends Error {
 let accessToken = null;
 let refreshToken = null;
 let onUnauthorized = null;
+let onTokensRefreshed = null;
 
 export function setAuthTokens(tokens) {
   accessToken = tokens?.accessToken || null;
@@ -45,6 +50,15 @@ export function clearAuthTokens() {
 
 export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
+}
+
+/**
+ * Called after a successful refresh with `{ accessToken, refreshToken, user }`
+ * so the new tokens can be saved to secure storage. The tokens are already in
+ * memory when it runs.
+ */
+export function setTokensRefreshedHandler(handler) {
+  onTokensRefreshed = handler;
 }
 
 function getLocalizedAuthError(code, fallback) {
@@ -69,8 +83,9 @@ function getLocalizedAuthError(code, fallback) {
 }
 
 // Low-level request. Throws ApiError on network failure or non-2xx response -
-// it never silently degrades to mock mode.
-const request = async (endpoint, options = {}) => {
+// it never silently degrades to mock mode. 401 handling (refresh, sign-out)
+// lives in `request` below.
+const rawRequest = async (endpoint, options = {}) => {
   if (!isBackendConfigured()) {
     const code = 'NOT_CONFIGURED';
     throw new ApiError(
@@ -120,10 +135,6 @@ const request = async (endpoint, options = {}) => {
     }
   }
 
-  if (response.status === 401 && auth && onUnauthorized) {
-    onUnauthorized();
-  }
-
   if (!response.ok) {
     const code = data?.code || 'HTTP_ERROR';
     throw new ApiError(getLocalizedAuthError(code, data?.error), {
@@ -135,6 +146,38 @@ const request = async (endpoint, options = {}) => {
 
   return { data, status: response.status };
 };
+
+// One refresh at a time: the server revokes the whole session if the same
+// refresh token is used twice.
+const refreshSession = createRefresher({
+  getRefreshToken: () => refreshToken,
+  callRefresh: async (token) => {
+    const { data } = await rawRequest('/api/auth/refresh', {
+      method: 'POST',
+      auth: false,
+      body: JSON.stringify({ refreshToken: token }),
+    });
+    return data;
+  },
+  onRefreshed: async (result) => {
+    setAuthTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken });
+    try {
+      await onTokensRefreshed?.(result);
+    } catch {
+      // Saving failed: the in-memory session still works until the app closes.
+    }
+  },
+});
+
+// Every API call: on an expired access token, refresh once and retry. Signs
+// out only when the server rejects the session, never on a network error.
+const request = createAuthedRequest({
+  rawRequest,
+  getAccessToken: () => accessToken,
+  getRefreshToken: () => refreshToken,
+  refresh: refreshSession,
+  onUnauthorized: () => onUnauthorized?.(),
+});
 
 
 export const api = {
@@ -308,6 +351,13 @@ export const api = {
     end: async (id) => {
       const { data } = await request(`/api/calls/${id}/end`, { method: 'POST' });
       return data.call;
+    },
+
+    // Phase B: one-time ticket for the signalling socket. 404
+    // CALL_SIGNALING_DISABLED while the server flag is off.
+    signalingTicket: async () => {
+      const { data } = await request('/api/calls/signaling/ticket', { method: 'POST' });
+      return data;
     },
 
     markMissed: async (id) => {

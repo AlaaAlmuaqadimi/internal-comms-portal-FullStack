@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/authenticate.js';
 import { validate } from '../../middleware/validate.js';
-import { callInviteRateLimiter } from '../../middleware/rateLimit.js';
+import { callInviteRateLimiter, signalingTicketRateLimiter } from '../../middleware/rateLimit.js';
 import { requireCallOversight } from '../../middleware/requireCallOversight.js';
 import { inviteCallSchema } from './call.schemas.js';
 import {
@@ -11,6 +11,7 @@ import {
   endCall,
   getCall,
   inviteCall,
+  issueTicket,
   listCalls,
   listOversightCalls,
   missCall,
@@ -21,6 +22,9 @@ const router = Router();
 // Invitations are the one call action that is rate limited per user.
 router.post('/', authenticate, callInviteRateLimiter, validate(inviteCallSchema), inviteCall);
 router.post('/invite', authenticate, callInviteRateLimiter, validate(inviteCallSchema), inviteCall);
+
+// Phase B signalling ticket. Registered before `/:id` routes.
+router.post('/signaling/ticket', authenticate, signalingTicketRateLimiter, issueTicket);
 
 router.get('/', authenticate, listCalls);
 router.get('/history', authenticate, listCalls);

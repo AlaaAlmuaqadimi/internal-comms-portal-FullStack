@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,73 +13,74 @@ import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
 import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import UserAvatar from '../../components/UserAvatar';
-import StatusBadge from '../../components/StatusBadge';
 import { useLanguage } from '../../context/LanguageContext';
+import { useCall } from '../../context/CallContext';
+import {
+  PHASES,
+  elapsedSeconds,
+  endedReasonKey,
+  otherParty,
+} from '../../calls/callMachine';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
 
-const CallActiveScreen = ({ route, navigation }) => {
+const formatDuration = (seconds) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
+/**
+ * Outgoing, connecting, active and ended states of the live call. Rendered by
+ * CallOverlay; everything comes from `useCall()` and the server's call view,
+ * so a redacted leadership caller shows only the configured label.
+ */
+const CallActiveScreen = () => {
   const { width, height } = useWindowDimensions();
-  const { contact } = route.params;
   const { t, isRTL } = useLanguage();
   const { colors } = useTheme();
+  const { state, hangUp, muted, setMuted, speaker, setSpeaker, audioEnabled, speakerEnabled } = useCall();
   const styles = useMemo(
     () => flipStyles(createStyles(colors), isRTL),
     [colors, isRTL]
   );
-  
+
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
   const isLandscape = width > height;
-  
-  const [duration, setDuration] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isSpeaker, setIsSpeaker] = useState(false);
-  const [callEnded, setCallEnded] = useState(false);
-  const timerRef = useRef(null);
-  const endTimeoutRef = useRef(null);
 
+  const { phase, call, endedReason } = state;
+  const party = otherParty(call) || {};
+  const redacted = Boolean(call?.redacted);
+  const person = { name: party.name, avatarUrl: redacted ? null : party.avatarUrl };
+
+  // Re-render every second while the call is active.
+  const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setDuration(prev => prev + 1);
-    }, 1000);
+    if (phase !== PHASES.ACTIVE) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [phase]);
 
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, []);
-
-  const formatDuration = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleEndCall = () => {
-    setCallEnded(true);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
+  const [hangingUp, setHangingUp] = useState(false);
+  const handleHangUp = async () => {
+    if (hangingUp) return;
+    setHangingUp(true);
+    try {
+      await hangUp();
+    } finally {
+      setHangingUp(false);
     }
-    // العودة تلقائياً لواجهة المكالمات بعد عرض ملخص المكالمة
-    endTimeoutRef.current = setTimeout(() => {
-      navigation.navigate('Calls');
-    }, 2500);
   };
 
-  useEffect(() => {
-    return () => {
-      if (endTimeoutRef.current) clearTimeout(endTimeoutRef.current);
-    };
-  }, []);
+  const duration = elapsedSeconds(call, now);
 
   // أحجام متجاوبة
   const avatarSize = isSmallScreen ? 'medium' : isLargeScreen ? 'xlarge' : 'large';
   const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
   const controlIconSize = isSmallScreen ? 20 : isLargeScreen ? 28 : 24;
 
-  if (callEnded) {
+  if (phase === PHASES.ENDED) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={[styles.summaryContainer, { padding: cardPadding }]}>
@@ -87,23 +88,32 @@ const CallActiveScreen = ({ route, navigation }) => {
             <Ionicons name="call" size={isSmallScreen ? 24 : 32} color={colors.primaryLight} />
           </View>
           <Text style={[styles.summaryTitle, isSmallScreen && styles.summaryTitleSmall]}>
-            {t('callActive.ended')}
+            {t(endedReasonKey(endedReason))}
           </Text>
 
           <View style={styles.summaryDetails}>
             <Text style={[styles.summaryText, isSmallScreen && styles.summaryTextSmall]}>
               <Text style={styles.summaryLabel}>{t('callActive.employeeLabel')}</Text>
-              {localizeText(contact.name)}
+              {localizeText(party.name || '')}
             </Text>
-            <Text style={[styles.summaryText, isSmallScreen && styles.summaryTextSmall]}>
-              <Text style={styles.summaryLabel}>{t('callActive.durationLabel')}</Text>
-              {formatDuration(duration)}
-            </Text>
+            {duration > 0 ? (
+              <Text style={[styles.summaryText, isSmallScreen && styles.summaryTextSmall]}>
+                <Text style={styles.summaryLabel}>{t('callActive.durationLabel')}</Text>
+                {formatDuration(duration)}
+              </Text>
+            ) : null}
           </View>
         </View>
       </SafeAreaView>
     );
   }
+
+  const statusText =
+    phase === PHASES.OUTGOING
+      ? t('callActive.outgoingRinging')
+      : phase === PHASES.CONNECTING
+      ? t('callActive.connecting')
+      : formatDuration(duration);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -114,22 +124,20 @@ const CallActiveScreen = ({ route, navigation }) => {
         {/* معلومات المكالمة */}
         <View style={[styles.callInfo, { padding: cardPadding }]}>
           <View style={styles.callHeader}>
-            <UserAvatar person={contact} size={avatarSize} />
+            <UserAvatar person={person} size={avatarSize} />
             <View style={styles.callHeaderText}>
               <Text style={[styles.callLabel, isSmallScreen && styles.callLabelSmall]}>
-                {contact.isKitchen ? t('callActive.communicatingWith') : t('callActive.callingEmployee')}
+                {phase === PHASES.ACTIVE ? t('callActive.inCall') : t('callActive.callingEmployee')}
               </Text>
               <Text style={[styles.callName, isSmallScreen && styles.callNameSmall]}>
-                {localizeText(contact.name)}
+                {localizeText(party.name || '')}
               </Text>
-              <Text style={[styles.callUnit, isSmallScreen && styles.callUnitSmall]}>
-                {localizeText(contact.unitName)}
-              </Text>
+              {!redacted && party.unitName ? (
+                <Text style={[styles.callUnit, isSmallScreen && styles.callUnitSmall]}>
+                  {localizeText(party.unitName)}
+                </Text>
+              ) : null}
             </View>
-            <StatusBadge
-              status={contact.isKitchen ? 'kitchen' : 'online'}
-              text={contact.isKitchen ? t('callActive.serviceAvailable') : t('callActive.onlineNow')}
-            />
           </View>
 
           <View style={styles.callMeta}>
@@ -138,7 +146,7 @@ const CallActiveScreen = ({ route, navigation }) => {
                 {t('callActive.durationTitle')}
               </Text>
               <Text style={[styles.duration, isSmallScreen && styles.durationSmall]}>
-                {formatDuration(duration)}
+                {statusText}
               </Text>
             </View>
             <View style={styles.secureBadge}>
@@ -158,50 +166,57 @@ const CallActiveScreen = ({ route, navigation }) => {
 
           <View style={styles.controlsGrid}>
             <Pressable
-              style={[styles.controlButton, isMuted && styles.controlButtonActive]}
-              onPress={() => setIsMuted(!isMuted)}
+              style={[styles.controlButton, muted && styles.controlButtonActive]}
+              onPress={() => setMuted(!muted)}
+              disabled={!audioEnabled}
             >
               <Ionicons
-                name={isMuted ? 'mic-off' : 'mic'}
+                name={muted ? 'mic-off' : 'mic'}
                 size={controlIconSize}
-                color={isMuted ? colors.textWhite : colors.text}
+                color={muted ? colors.textWhite : colors.text}
               />
-              <Text style={[styles.controlLabel, isMuted && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
-                {isMuted ? t('callActive.unmute') : t('callActive.mute')}
+              <Text style={[styles.controlLabel, muted && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
+                {muted ? t('callActive.unmute') : t('callActive.mute')}
               </Text>
             </Pressable>
 
             <Pressable
-              style={[styles.controlButton, isSpeaker && styles.controlButtonActive]}
-              onPress={() => setIsSpeaker(!isSpeaker)}
+              style={[styles.controlButton, speaker && styles.controlButtonActive]}
+              onPress={() => setSpeaker(!speaker)}
+              disabled={!speakerEnabled}
             >
               <Ionicons
                 name="volume-high"
                 size={controlIconSize}
-                color={isSpeaker ? colors.textWhite : colors.text}
+                color={speaker ? colors.textWhite : colors.text}
               />
-              <Text style={[styles.controlLabel, isSpeaker && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
-                {isSpeaker ? t('callActive.speakerOff') : t('callActive.speaker')}
+              <Text style={[styles.controlLabel, speaker && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
+                {speaker ? t('callActive.speakerOff') : t('callActive.speaker')}
               </Text>
             </Pressable>
           </View>
 
-          {/* زر إنهاء المكالمة */}
+          {/* زر إنهاء أو إلغاء المكالمة */}
           <View style={styles.endCallContainer}>
-            <Pressable style={styles.endCallButton} onPress={handleEndCall}>
+            <Pressable
+              style={[styles.endCallButton, hangingUp && { opacity: 0.6 }]}
+              onPress={handleHangUp}
+              disabled={hangingUp}
+            >
               <Ionicons name="call" size={isSmallScreen ? 20 : 24} color={colors.textWhite} />
               <Text style={[styles.endCallText, isSmallScreen && styles.endCallTextSmall]}>
-                {t('callActive.endCall')}
+                {phase === PHASES.OUTGOING ? t('callActive.cancel') : t('callActive.endCall')}
               </Text>
             </Pressable>
           </View>
         </View>
 
-        <Text style={[styles.disclaimer, isSmallScreen && styles.disclaimerSmall]}>
-          {t('callActive.disclaimer')}
-        </Text>
+        {!audioEnabled ? (
+          <Text style={[styles.disclaimer, isSmallScreen && styles.disclaimerSmall]}>
+            {t('callActive.disclaimer')}
+          </Text>
+        ) : null}
       </ScrollView>
-
     </SafeAreaView>
   );
 };
