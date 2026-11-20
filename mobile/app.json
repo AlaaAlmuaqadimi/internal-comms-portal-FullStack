@@ -56,7 +56,45 @@
           "cameraPermission": "يستخدم التطبيق الكاميرا لصورة الملف الشخصي فقط."
         }
       ],
-      "expo-callkit-telecom"
+      [
+        "expo-callkit-telecom",
+        {
+          "microphonePermission": "يحتاج التطبيق إلى الميكروفون لإجراء المكالمات الصوتية.",
+          "incomingCallTimeout": 45,
+          "outgoingCallTimeout": 60,
+          "fulfillAnswerCallTimeout": 45,
+          "supportsVideo": false,
+          "includesCallsInRecents": false,
+          "notificationStringsAndroid": {
+            "default": {
+              "channelIncomingName": "المكالمات الواردة",
+              "channelIncomingDescription": "إشعارات المكالمات الواردة",
+              "channelOngoingName": "المكالمات الجارية",
+              "channelOngoingDescription": "إشعارات المكالمات الجارية",
+              "incomingCall": "مكالمة واردة",
+              "dialing": "جارٍ الاتصال…",
+              "ongoingCall": "مكالمة جارية",
+              "callEnded": "انتهت المكالمة",
+              "unknownCaller": "مكالمة داخلية",
+              "answer": "رد",
+              "decline": "رفض"
+            },
+            "en": {
+              "channelIncomingName": "Incoming calls",
+              "channelIncomingDescription": "Notifications for incoming calls",
+              "channelOngoingName": "Ongoing calls",
+              "channelOngoingDescription": "Notifications for active calls",
+              "incomingCall": "Incoming call",
+              "dialing": "Calling…",
+              "ongoingCall": "Ongoing call",
+              "callEnded": "Call ended",
+              "unknownCaller": "Internal call",
+              "answer": "Answer",
+              "decline": "Decline"
+            }
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
