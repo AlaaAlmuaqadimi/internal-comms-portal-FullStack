@@ -12,7 +12,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.internalcommsportal",
+      "bundleIdentifier": "ly.call.comms",
       "buildNumber": "1.0.0",
       "infoPlist": {},
       "bitcode": false
@@ -22,7 +22,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#14283f"
       },
-      "package": "com.yourcompany.internalcommsportal",
+      "package": "ly.call.comms",
       "versionCode": 1,
       "permissions": [
         "android.permission.ACCESS_NETWORK_STATE",
@@ -55,7 +55,8 @@
           "microphonePermission": "يحتاج التطبيق إلى الميكروفون لإجراء المكالمات الصوتية.",
           "cameraPermission": "يستخدم التطبيق الكاميرا لصورة الملف الشخصي فقط."
         }
-      ]
+      ],
+      "expo-callkit-telecom"
     ],
     "extra": {
       "eas": {

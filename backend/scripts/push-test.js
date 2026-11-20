@@ -20,8 +20,10 @@ import {
   toDataPayload,
 } from '../src/modules/push/fcm.js';
 import {
+  END_REASONS,
+  GENERIC_CALLER_NAME,
   PUSH_TYPES,
-  callStopData,
+  callEndedData,
   createCallPushNotifier,
   incomingCallData,
 } from '../src/modules/push/callPush.js';
@@ -194,34 +196,43 @@ const ringingViews = (overrides = {}) => ({
 
 function setupNotifier(options = {}) {
   const sent = [];
+  let ids = 0;
   const notify = createCallPushNotifier({
     sendToEmployee: async (employeeId, data, opts) => sent.push({ employeeId, data, opts }),
     ringTimeoutSeconds: 45,
     now: () => NOW,
+    newEventId: () => `00000000-0000-4000-8000-00000000000${(ids += 1)}`,
     ...options,
   });
   return { notify, sent };
 }
 
-check('ringing: the callee gets an incoming_call push with only the call id by default', async () => {
+check('ringing: the callee gets an incomingCall push in expo-callkit-telecom format, no names by default', async () => {
   const { notify, sent } = setupNotifier();
   await notify(ringingViews(), { ringExpiresAt: new Date(NOW + 45_000) });
   assert.equal(sent.length, 1);
   assert.equal(sent[0].employeeId, 'emp-callee');
-  assert.deepEqual(sent[0].data, {
-    type: PUSH_TYPES.INCOMING_CALL,
-    callId: 'call-1',
-    expiresAt: new Date(NOW + 45_000).toISOString(),
-    relayOnly: '0',
+  assert.deepEqual(Object.keys(sent[0].data).sort(), ['incomingCall', 'messageType']);
+  assert.equal(sent[0].data.messageType, PUSH_TYPES.INCOMING_CALL);
+  assert.equal(typeof sent[0].data.incomingCall, 'string', 'FCM data values are strings');
+  assert.deepEqual(JSON.parse(sent[0].data.incomingCall), {
+    eventId: '00000000-0000-4000-8000-000000000001',
+    serverCallId: 'call-1',
+    hasVideo: false,
+    startedAt: new Date(NOW).toISOString(),
+    caller: { id: 'internal-comms', displayName: GENERIC_CALLER_NAME },
+    metadata: { expiresAt: new Date(NOW + 45_000).toISOString(), relayOnly: false, redacted: false },
   });
   assert.deepEqual(sent[0].opts, { ttlSeconds: 45 });
+  assert.equal(sent[0].data.incomingCall.includes('emp-'), false, 'no employee ids');
 });
 
 check('caller name only when enabled, and always the callee view (redaction kept)', async () => {
   const { notify, sent } = setupNotifier({ showCallerName: true });
   await notify(ringingViews());
-  assert.equal(sent[0].data.callerName, 'علي');
-  assert.equal(sent[0].data.callerNameEn, 'Ali');
+  const first = JSON.parse(sent[0].data.incomingCall);
+  assert.equal(first.caller.displayName, 'علي');
+  assert.equal(first.metadata.callerNameEn, 'Ali');
 
   const leadership = ringingViews({
     callId: 'call-2',
@@ -229,9 +240,12 @@ check('caller name only when enabled, and always the callee view (redaction kept
     callee: { redacted: true, caller: { name: 'مكتب المدير', nameEn: 'Director office' } },
   });
   await notify(leadership);
-  assert.equal(sent[1].data.callerName, 'مكتب المدير');
-  assert.equal(sent[1].data.redacted, '1');
-  assert.equal(sent[1].data.relayOnly, '1');
+  const second = JSON.parse(sent[1].data.incomingCall);
+  assert.equal(second.caller.displayName, 'مكتب المدير');
+  assert.equal(second.caller.id, 'internal-comms', 'caller id never identifies the caller');
+  assert.equal(second.metadata.redacted, true);
+  assert.equal(second.metadata.relayOnly, true);
+  assert.notEqual(first.eventId, second.eventId, 'one event id per ring');
 });
 
 check('the same ring published twice pushes once; an expired ring never pushes', async () => {
@@ -251,18 +265,49 @@ check('push TTL follows the ring deadline and is capped', async () => {
   assert.deepEqual(sent.map((s) => s.opts.ttlSeconds), [11, 120, 45]);
 });
 
-check('answered / declined / cancelled / missed / ended: the callee gets call_stop', async () => {
-  for (const status of ['accepted', 'rejected', 'cancelled', 'missed', 'ended']) {
+check('declined / cancelled / missed / ended: every callee phone gets callEnded', async () => {
+  const expected = { rejected: 'declinedElsewhere', cancelled: 'remoteEnded', missed: 'unanswered', ended: 'remoteEnded' };
+  for (const [status, reason] of Object.entries(expected)) {
     const { notify, sent } = setupNotifier();
     await notify(ringingViews());
     await notify(ringingViews({ status }));
     assert.equal(sent.length, 2, status);
     assert.equal(sent[1].employeeId, 'emp-callee');
-    assert.deepEqual(sent[1].data, callStopData({ callId: 'call-1', status }));
+    assert.equal(sent[1].data.messageType, PUSH_TYPES.CALL_ENDED);
+    assert.deepEqual(JSON.parse(sent[1].data.callEnded), {
+      eventId: '00000000-0000-4000-8000-000000000002',
+      serverCallId: 'call-1',
+      reason,
+    });
+    assert.equal(sent[1].opts.excludeTokens, undefined, `${status}: no phone excluded`);
     // only once
     await notify(ringingViews({ status: 'ended' }));
     assert.equal(sent.length, 2, `${status}: no second stop`);
   }
+});
+
+check('answered: callEnded skips the phone that answered (it would hang it up)', async () => {
+  const { notify, sent } = setupNotifier();
+  await notify(ringingViews());
+  await notify(ringingViews({ status: 'accepted' }), { answeringToken: 'answering-phone-token-123456' });
+  assert.equal(sent.length, 2);
+  assert.equal(JSON.parse(sent[1].data.callEnded).reason, 'answeredElsewhere');
+  assert.deepEqual(sent[1].opts.excludeTokens, ['answering-phone-token-123456']);
+});
+
+check('answered without the answering token: no callEnded at all (never risk hanging up)', async () => {
+  const { notify, sent } = setupNotifier();
+  await notify(ringingViews());
+  await notify(ringingViews({ status: 'accepted' }));
+  assert.equal(sent.length, 1);
+  await notify(ringingViews({ status: 'ended' }));
+  assert.equal(sent.length, 1, 'the ring is forgotten once answered');
+});
+
+check('every end reason maps to one the module knows', () => {
+  const known = new Set(['failed', 'remoteEnded', 'unanswered', 'answeredElsewhere', 'declinedElsewhere', 'unknown']);
+  for (const reason of Object.values(END_REASONS)) assert.equal(known.has(reason), true, reason);
+  assert.equal(JSON.parse(callEndedData({ callId: 'x', status: 'weird' }, { eventId: 'e' }).callEnded).reason, 'unknown');
 });
 
 check('busy and calls that never rang push nothing', async () => {
@@ -277,9 +322,15 @@ check('busy and calls that never rang push nothing', async () => {
 check('incomingCallData never reads the caller-side view', () => {
   const data = incomingCallData(
     ringingViews({ caller: { caller: { name: 'SECRET' } }, callee: { redacted: true, caller: { name: 'Label' } } }),
-    { expiresAtMs: NOW, showCallerName: true }
+    { expiresAtMs: NOW, showCallerName: true, eventId: 'e', startedAtMs: NOW }
   );
   assert.equal(JSON.stringify(data).includes('SECRET'), false);
+});
+
+check('the accept handler forwards only a well-formed push token', () => {
+  const source = fs.readFileSync(path.join(backendRoot, 'src/modules/calls/signaling/signaling.server.js'), 'utf8');
+  assert.match(source, /answeringToken: event === 'call:accept' \? pushTokenFrom\(payload\) : null/);
+  assert.match(source, /\^\[A-Za-z0-9_:\\-\.\]\{20,512\}\$/);
 });
 
 // ---- wiring (source checks) ---------------------------------------------------

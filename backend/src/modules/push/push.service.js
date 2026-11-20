@@ -95,13 +95,15 @@ export async function unregisterPushToken(user, token) {
  * Sends one data message to every phone of an employee and deletes tokens FCM
  * reports as gone. Never throws: a push failure must not break a call.
  */
-export async function sendToEmployee(employeeId, data, { ttlSeconds = 60 } = {}) {
+export async function sendToEmployee(employeeId, data, { ttlSeconds = 60, excludeTokens = [] } = {}) {
   const fcm = loadClient();
   if (!fcm || !employeeId) return { sent: 0, failed: 0, removed: 0 };
   try {
-    const [rows] = await pool.execute('SELECT id, token FROM push_tokens WHERE employee_id = ?', [
+    const [allRows] = await pool.execute('SELECT id, token FROM push_tokens WHERE employee_id = ?', [
       employeeId,
     ]);
+    const excluded = new Set(excludeTokens.filter(Boolean));
+    const rows = allRows.filter((row) => !excluded.has(row.token));
     if (rows.length === 0) return { sent: 0, failed: 0, removed: 0 };
 
     const results = await Promise.all(
