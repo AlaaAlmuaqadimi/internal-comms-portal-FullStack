@@ -1,5 +1,13 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal as RNModal } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Platform,
+  KeyboardAvoidingView,
+  Modal as RNModal,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
@@ -34,9 +42,17 @@ const Modal = ({
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      statusBarTranslucent
+      hardwareAccelerated
     >
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={[styles.container, getSizeStyle(), style]} onPress={(e) => e.stopPropagation()}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* The backdrop is a sibling of the card, not a parent: a Pressable
+            wrapping the content steals touches from nested scroll views. */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={[styles.container, getSizeStyle(), style]}>
           <View style={styles.header}>
             <Text style={styles.title}>{title}</Text>
             {showClose && (
@@ -45,11 +61,9 @@ const Modal = ({
               </Pressable>
             )}
           </View>
-          <View style={styles.content}>
-            {children}
-          </View>
-        </Pressable>
-      </Pressable>
+          <View style={styles.content}>{children}</View>
+        </View>
+      </KeyboardAvoidingView>
     </RNModal>
   );
 };

@@ -24,12 +24,15 @@ import CustomInput from '../../components/CustomInput';
 import CustomButton from '../../components/CustomButton';
 import SearchBar from '../../components/SearchBar';
 import UserAvatar from '../../components/UserAvatar';
-import WheelPicker from '../../components/WheelPicker';
+import DurationPickerBody from '../../components/DurationPickerBody';
 import { mockData } from '../../utils/mockData';
 import { api, isBackendConfigured } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { useAuth } from '../../context/AuthContext';
+import { clampDurationHours, formatDurationHours } from '../../utils/duration';
+import { isSameEmployee } from '../../utils/isSameEmployee';
 
 const formatExpiry = (timestamp) => {
   const date = new Date(timestamp);
@@ -42,8 +45,18 @@ const formatExpiry = (timestamp) => {
   return `${y}-${m}-${d} ${hh}:${mm}`;
 };
 
+const isExpired = (item, now = Date.now()) =>
+  !!item?.expiresAt && item.expiresAt <= now;
+
 const normalizeEmployee = (employee) => ({
   id: employee.id || employee.employeeId || employee.userId,
+  // Identity fields are kept so the signed-in sender can be recognised and
+  // removed from the recipients (see utils/isSameEmployee).
+  employeeId: employee.employeeId || employee.employee_id || employee.id || '',
+  userId: employee.userId || employee.user_id || '',
+  username: employee.username || '',
+  nameAr: employee.fullNameAr || employee.full_name_ar || '',
+  nameEn: employee.fullNameEn || employee.full_name_en || '',
   name:
     employee.name ||
     employee.fullNameAr ||
@@ -111,54 +124,23 @@ const NotificationsScreen = () => {
 
   // نموذج إنشاء إشعار
   const [createVisible, setCreateVisible] = useState(false);
-  const [newType, setNewType] = useState('announcement');
   const [newRecipients, setNewRecipients] = useState([]);
   const [recipientQuery, setRecipientQuery] = useState('');
   const [newBody, setNewBody] = useState('');
-  const [newDuration, setNewDuration] = useState('24h');
+  // Only the confirmed number of hours lives here. The wheel draft is owned
+  // by DurationPickerBody, so scrolling never re-renders this screen.
+  const [newDurationHours, setNewDurationHours] = useState(24);
   const [durationPickerVisible, setDurationPickerVisible] = useState(false);
-  const [draftDuration, setDraftDuration] = useState('24h');
+  // Two tabs only; Incoming is the default.
+  const [activeDirection, setActiveDirection] = useState('incoming');
   const [createErrors, setCreateErrors] = useState({});
   const [clock, setClock] = useState(() => Date.now());
   const [employees, setEmployees] = useState(() =>
     normalizeDirectory(mockData.employees)
   );
+  const { user } = useAuth();
 
-  const durationOptions = useMemo(
-    () => [
-      { key: '1h', hours: 1, label: t('notifications.duration1h') },
-      { key: '24h', hours: 24, label: t('notifications.duration1d') },
-      { key: '2d', hours: 48, label: t('notifications.duration2d') },
-      { key: '7d', hours: 24 * 7, label: t('notifications.duration7d') },
-      { key: '14d', hours: 24 * 14, label: t('notifications.duration14d') },
-      { key: '30d', hours: 24 * 30, label: t('notifications.duration30d') },
-    ],
-    [t]
-  );
-
-  const typeOptions = useMemo(
-    () => [
-      {
-        key: 'announcement',
-        label: t('notifications.typeAnnouncement'),
-        icon: 'megaphone',
-      },
-      {
-        key: 'circular',
-        label: t('notifications.typeCircular'),
-        icon: 'calendar',
-      },
-      {
-        key: 'message',
-        label: t('notifications.typeMessage'),
-        icon: 'mail',
-      },
-    ],
-    [t]
-  );
-
-  const durationLabel =
-    durationOptions.find((option) => option.key === newDuration)?.label || '';
+  const durationLabel = formatDurationHours(newDurationHours, t);
 
   // A notification is only visible during the duration chosen when it was
   // published. The clock ticks every 30s so an item disappears on its own
@@ -175,31 +157,93 @@ const NotificationsScreen = () => {
     []
   );
 
-  const visibleNotifications = useMemo(
+  // Incoming: notifications the viewer did not send. An expired one
+  // disappears for its recipients (the 30 s clock hides it live).
+  // Outgoing: everything the viewer sent, expired or not, newest first. That
+  // list is the sender's archive and is never filtered by expiry.
+  const incomingNotifications = useMemo(
     () =>
       notifications.filter(
-        (item) => !item.expiresAt || item.expiresAt > clock
+        (item) => !item.isSender && !isExpired(item, clock)
       ),
     [notifications, clock]
   );
 
+  const outgoingNotifications = useMemo(
+    () =>
+      notifications
+        .filter((item) => item.isSender)
+        .slice()
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
+    [notifications]
+  );
+
+  const unreadIncomingCount = useMemo(
+    () => incomingNotifications.filter((item) => item.unread).length,
+    [incomingNotifications]
+  );
+
+  const directionTabs = [
+    {
+      key: 'incoming',
+      label: t('notifications.tabIncoming'),
+      badge: unreadIncomingCount,
+    },
+    { key: 'outgoing', label: t('notifications.tabOutgoing'), badge: 0 },
+  ];
+
+  const displayedNotifications =
+    activeDirection === 'incoming'
+      ? incomingNotifications
+      : outgoingNotifications;
+
+  // The sender is never one of the recipient options: their row is removed
+  // before the list is searched, counted or used for "select all".
+  const recipientDirectory = useMemo(
+    () => employees.filter((employee) => !isSameEmployee(user, employee)),
+    [employees, user]
+  );
+
   const filteredEmployees = useMemo(() => {
     const query = recipientQuery.trim().toLowerCase();
-    if (!query) return employees;
+    if (!query) return recipientDirectory;
 
-    return employees.filter((employee) =>
-      [employee.name, employee.unitName, localizeText(employee.name)]
+    return recipientDirectory.filter((employee) =>
+      [
+        employee.name,
+        employee.nameAr,
+        employee.nameEn,
+        employee.unitName,
+        localizeText(employee.name),
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(query)
     );
-  }, [employees, recipientQuery]);
+  }, [recipientDirectory, recipientQuery]);
 
   const allEmployeeIds = useMemo(
-    () => employees.map((employee) => employee.id),
-    [employees]
+    () => recipientDirectory.map((employee) => employee.id),
+    [recipientDirectory]
   );
+
+  // Keeps only ids that are still offered, so the sender can never stay
+  // selected (for example after the real directory replaces the sample one).
+  const dropSender = useCallback(
+    (ids) => {
+      const allowed = new Set(allEmployeeIds.map(String));
+      return ids.filter((id) => allowed.has(String(id)));
+    },
+    [allEmployeeIds]
+  );
+
+  useEffect(() => {
+    setNewRecipients((prev) => {
+      const next = dropSender(prev);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [dropSender]);
 
   const allSelected =
     allEmployeeIds.length > 0 &&
@@ -263,8 +307,11 @@ const NotificationsScreen = () => {
     setModalVisible(true);
     setReceipts(null);
     if (notification.isSender) {
+      // The sender opening their own notification is not a read.
       loadReceipts(notification.id);
+      return;
     }
+    // A read is recorded only here, when the recipient opens the item.
     if (notification.unread) {
       markRead(notification.id);
     }
@@ -292,21 +339,7 @@ const NotificationsScreen = () => {
     }
   };
 
-  const getIconColor = (notification) => {
-    switch (notification?.typeKey || notification?.type) {
-      case 'announcement':
-      case 'إعلان':
-        return colors.primaryLight;
-      case 'circular':
-      case 'تعميم':
-        return colors.warning;
-      case 'message':
-      case 'مراسلة':
-        return colors.success;
-      default:
-        return colors.primaryLight;
-    }
-  };
+  const getIconColor = () => colors.primaryLight;
 
   const toggleRecipient = (id) => {
     setNewRecipients((prev) =>
@@ -319,30 +352,33 @@ const NotificationsScreen = () => {
   };
 
   const resetCreateForm = () => {
-    setNewType('announcement');
     setNewRecipients([]);
     setRecipientQuery('');
     setNewBody('');
-    setNewDuration('24h');
-    setDraftDuration('24h');
+    setNewDurationHours(24);
     setDurationPickerVisible(false);
     setCreateErrors({});
   };
 
+  // Opening the form starts clean and strips the sender from any selection.
+  const openCreateModal = () => {
+    resetCreateForm();
+    setNewRecipients((prev) => dropSender(prev));
+    setCreateVisible(true);
+  };
+
   const openDurationPicker = () => {
-    setDraftDuration(newDuration);
     setDurationPickerVisible(true);
   };
 
   const closeDurationPicker = () => {
-    setDraftDuration(newDuration);
     setDurationPickerVisible(false);
   };
 
-  const confirmDuration = () => {
-    setNewDuration(draftDuration);
+  const confirmDuration = useCallback((hours) => {
+    setNewDurationHours(clampDurationHours(hours));
     setDurationPickerVisible(false);
-  };
+  }, []);
 
   const closeCreateModal = () => {
     setCreateVisible(false);
@@ -350,26 +386,27 @@ const NotificationsScreen = () => {
   };
 
   const handleCreateNotification = async () => {
+    // Last guard before sending: the sender is never stored as a recipient.
+    const recipients = dropSender(newRecipients);
     const errs = {};
-    if (!newRecipients.length) {
+    if (!recipients.length) {
       errs.recipients = t('notifications.validationRecipient');
     }
     if (!newBody.trim()) errs.body = t('notifications.validationBody');
     setCreateErrors(errs);
     if (Object.keys(errs).length) return;
 
-    const durationOption = durationOptions.find(
-      (option) => option.key === newDuration
-    );
-    const hours = durationOption?.hours || 24;
+    const hours = clampDurationHours(newDurationHours);
     const body = newBody.trim();
 
     try {
+      // "All" is sent as an explicit list of everyone offered (the sender is
+      // already excluded), and the server also drops the sender.
       await publish({
-        type: newType,
+        type: 'announcement',
         body,
-        recipientIds: allSelected ? [] : newRecipients,
-        audience: allSelected ? 'all' : 'selected',
+        recipientIds: recipients,
+        audience: 'selected',
         durationHours: hours,
       });
       closeCreateModal();
@@ -392,9 +429,16 @@ const NotificationsScreen = () => {
   const renderNotification = ({ item }) => (
     <NotificationItem
       notification={item}
+      expired={isExpired(item, clock)}
       onPress={() => handleNotificationPress(item)}
     />
   );
+
+  const selectedExpired =
+    !!selectedNotification && isExpired(selectedNotification, clock);
+  const selectedDurationLabel = selectedNotification?.durationHours
+    ? formatDurationHours(selectedNotification.durationHours, t)
+    : '';
 
   if (loading) {
     return <Loading fullScreen text={t('notifications.loading')} />;
@@ -418,7 +462,7 @@ const NotificationsScreen = () => {
         <View style={[styles.headerActions, { alignItems: 'flex-start' }]}>
           {/* Any employee can send a notification or message. Only the people
               they select receive it, so there is no admin-only gate here. */}
-          <Pressable style={styles.createButton} onPress={() => setCreateVisible(true)}>
+          <Pressable style={styles.createButton} onPress={openCreateModal}>
             <Ionicons name="add" size={18} color={colors.textWhite} />
             <Text style={styles.createButtonText}>{t('notifications.create')}</Text>
           </Pressable>
@@ -454,26 +498,66 @@ const NotificationsScreen = () => {
         </View>
       )}
 
+      {/* وارد / صادر — row order follows flipStyles, so Incoming is on the
+          right in Arabic. */}
+      <View style={styles.tabsBar}>
+        <View style={styles.directionTabs}>
+          {directionTabs.map((tab) => {
+            const active = activeDirection === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                style={[styles.directionTab, active && styles.directionTabActive]}
+                onPress={() => setActiveDirection(tab.key)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+              >
+                <Text
+                  style={[
+                    styles.directionTabText,
+                    active && styles.directionTabTextActive,
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+                {tab.badge > 0 && (
+                  <View style={styles.tabBadge}>
+                    <Text style={styles.tabBadgeText}>{tab.badge}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       {/* قائمة الإشعارات */}
-      {visibleNotifications.length === 0 ? (
+      {displayedNotifications.length === 0 ? (
         <EmptyState
-          icon={error ? 'cloud-offline-outline' : 'notifications-off'}
-          title={
-            error ? t('notifications.loadErrorTitle') : t('notifications.emptyTitle')
-          }
-          description={
+          icon={
             error
-              ? t('notifications.loadError')
-              : t('notifications.emptyDescription')
+              ? 'cloud-offline-outline'
+              : activeDirection === 'incoming'
+                ? 'mail-unread-outline'
+                : 'paper-plane-outline'
           }
+          title={
+            error
+              ? t('notifications.loadErrorTitle')
+              : activeDirection === 'incoming'
+                ? t('notifications.emptyIncoming')
+                : t('notifications.emptyOutgoing')
+          }
+          description={error ? t('notifications.loadError') : undefined}
           actionTitle={error ? t('common.retry') : undefined}
           onAction={error ? handleRefresh : undefined}
         />
       ) : (
         <FlatList
-          data={visibleNotifications}
+          data={displayedNotifications}
           renderItem={renderNotification}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => String(item.id)}
+          extraData={clock}
           contentContainerStyle={[
             styles.listContent,
             isLandscape && styles.listContentLandscape,
@@ -506,10 +590,7 @@ const NotificationsScreen = () => {
                 />
               </View>
               <Text style={[styles.modalType, isSmallScreen && styles.modalTypeSmall]}>
-                {selectedNotification.typeKey
-                  ? typeOptions.find((option) => option.key === selectedNotification.typeKey)?.label ||
-                    localizeText(selectedNotification.type)
-                  : localizeText(selectedNotification.type)}
+                {t('notifications.typeAnnouncement')}
               </Text>
               {selectedNotification.isSender && (
                 <View style={styles.senderBadge}>
@@ -528,16 +609,24 @@ const NotificationsScreen = () => {
               {localizeText(selectedNotification.body)}
             </Text>
 
-            {!!selectedNotification.recipientCount && (
+            {/* Recipient counts and read state are for the sender only. */}
+            {selectedNotification.isSender &&
+              !!selectedNotification.recipientCount && (
+                <Text style={styles.modalMeta}>
+                  {t('notifications.readSummary', {
+                    read: receipts
+                      ? receipts.readCount
+                      : selectedNotification.readCount || 0,
+                    total: selectedNotification.recipientCount,
+                  })}
+                </Text>
+              )}
+
+            {selectedNotification.isSender && !!selectedDurationLabel && (
               <Text style={styles.modalMeta}>
-                {selectedNotification.isSender
-                  ? t('notifications.readSummary', {
-                      read: receipts ? receipts.readCount : selectedNotification.readCount || 0,
-                      total: selectedNotification.recipientCount,
-                    })
-                  : t('notifications.detailsRecipients', {
-                      count: selectedNotification.recipientCount,
-                    })}
+                {t('notifications.detailsDuration', {
+                  duration: selectedDurationLabel,
+                })}
               </Text>
             )}
 
@@ -546,6 +635,12 @@ const NotificationsScreen = () => {
                 {t('notifications.detailsExpires', {
                   date: formatExpiry(selectedNotification.expiresAt),
                 })}
+              </Text>
+            )}
+
+            {selectedNotification.isSender && selectedExpired && (
+              <Text style={styles.modalArchived}>
+                {t('notifications.detailsArchived')}
               </Text>
             )}
 
@@ -630,36 +725,15 @@ const NotificationsScreen = () => {
             ? t('notifications.durationTitle')
             : t('notifications.createTitle')
         }
-        size={durationPickerVisible ? 'small' : 'large'}
+        size="large"
         style={{ maxHeight: height * 0.92 }}
       >
         {durationPickerVisible ? (
-          <View style={styles.durationPickerBody}>
-            <Text style={styles.durationModalHint}>
-              {t('notifications.durationHint')}
-            </Text>
-            <WheelPicker
-              options={durationOptions}
-              value={draftDuration}
-              onChange={setDraftDuration}
-            />
-            <View style={styles.durationModalActions}>
-              <CustomButton
-                title={t('common.cancel')}
-                onPress={closeDurationPicker}
-                variant="outline"
-                size="small"
-                style={styles.durationActionButton}
-              />
-              <CustomButton
-                title={t('common.confirm')}
-                onPress={confirmDuration}
-                size="small"
-                icon="checkmark"
-                style={styles.durationActionButton}
-              />
-            </View>
-          </View>
+          <DurationPickerBody
+            initialHours={newDurationHours}
+            onConfirm={confirmDuration}
+            onCancel={closeDurationPicker}
+          />
         ) : (
         <ScrollView
           style={[styles.createScroll, { maxHeight: height * 0.72 }]}
@@ -669,37 +743,13 @@ const NotificationsScreen = () => {
         >
           <Text style={styles.createSubtitle}>{t('notifications.createSubtitle')}</Text>
 
-          {/* نوع الإشعار */}
-          <Text style={styles.createLabel}>{t('notifications.typeLabel')}</Text>
-          <View style={styles.chipRow}>
-            {typeOptions.map((option) => {
-              const active = newType === option.key;
-              return (
-                <Pressable
-                  key={option.key}
-                  style={[styles.chip, active && styles.chipActive]}
-                  onPress={() => setNewType(option.key)}
-                >
-                  <Ionicons
-                    name={option.icon}
-                    size={16}
-                    color={active ? colors.textWhite : colors.primaryLight}
-                  />
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
           {/* المستهدفون */}
           <View style={styles.labelRow}>
             <Text style={styles.createLabel}>{t('notifications.recipientLabel')}</Text>
             <Text style={styles.labelCounter}>
               {t('notifications.selectedCount', {
                 count: newRecipients.length,
-                total: employees.length,
+                total: recipientDirectory.length,
               })}
             </Text>
           </View>
@@ -979,33 +1029,6 @@ const createStyles = (colors) => StyleSheet.create({
     ...typography.caption,
     color: colors.primaryLight,
   },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  chipActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primaryLight,
-  },
-  chipText: {
-    ...typography.captionBold,
-    color: colors.text,
-  },
-  chipTextActive: {
-    color: colors.textWhite,
-  },
   recipientsPanel: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -1139,22 +1162,62 @@ const createStyles = (colors) => StyleSheet.create({
     ...typography.bodyBold,
     color: colors.text,
   },
-  durationModalHint: {
-    ...typography.bodySmall,
+  tabsBar: {
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  directionTabs: {
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 3,
+  },
+  directionTab: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  directionTabActive: {
+    backgroundColor: colors.primaryLight,
+  },
+  directionTabText: {
+    ...typography.captionBold,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: spacing.sm,
   },
-  durationPickerBody: {
-    paddingVertical: spacing.xs,
+  directionTabTextActive: {
+    color: colors.textWhite,
   },
-  durationModalActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
+  tabBadge: {
+    minWidth: 18,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  durationActionButton: {
-    flex: 1,
+  tabBadgeText: {
+    ...typography.small,
+    color: colors.textWhite,
+    fontSize: 10,
+    textAlign: 'center',
+  },
+  modalArchived: {
+    ...typography.captionBold,
+    color: colors.warning,
+    marginBottom: spacing.xs,
   },
   createError: {
     ...typography.caption,

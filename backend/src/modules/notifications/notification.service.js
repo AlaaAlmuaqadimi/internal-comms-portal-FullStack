@@ -77,6 +77,18 @@ function mapNotification(row, userId) {
     audience: row.audience,
     recipientCount: Number(row.recipient_count || 0),
     readCount: Number(row.read_count || 0),
+    lastReadAt: row.last_read_at ? new Date(row.last_read_at).getTime() : null,
+    durationHours:
+      row.expires_at && (row.published_at || row.created_at)
+        ? Math.max(
+            1,
+            Math.round(
+              (new Date(row.expires_at).getTime() -
+                new Date(row.published_at || row.created_at).getTime()) /
+                3600000
+            )
+          )
+        : null,
     isSender: Boolean(userId && row.created_by_user_id === userId),
   };
 }
@@ -99,7 +111,10 @@ const LIST_COLUMNS = `
     WHERE c.notification_id = n.id) AS recipient_count,
   (SELECT COUNT(*)
      FROM notification_recipients c
-    WHERE c.notification_id = n.id AND c.read_at IS NOT NULL) AS read_count
+    WHERE c.notification_id = n.id AND c.read_at IS NOT NULL) AS read_count,
+  (SELECT MAX(c.read_at)
+     FROM notification_recipients c
+    WHERE c.notification_id = n.id) AS last_read_at
 `;
 
 const RECEIVED_SELECT = `
@@ -112,15 +127,16 @@ const RECEIVED_SELECT = `
     AND (n.expires_at IS NULL OR n.expires_at > UTC_TIMESTAMP(3))
 `;
 
-// Senders keep a copy of what they sent so they can follow read receipts. It is
-// merged by id with the received list (a sender may also be a recipient).
+// Senders keep a copy of everything they sent so they can follow read
+// receipts. Expiry hides a notification from its recipients only: the sender's
+// copy stays as an archive (no expires_at filter here). It is merged by id
+// with the received list (a sender may also be a recipient).
 const SENT_SELECT = `
   SELECT ${LIST_COLUMNS}, NULL AS read_at, 1 AS sent_only
   FROM notifications n
   WHERE n.created_by_user_id = ?
     AND n.deleted_at IS NULL
     AND (n.published_at IS NULL OR n.published_at <= UTC_TIMESTAMP(3))
-    AND (n.expires_at IS NULL OR n.expires_at > UTC_TIMESTAMP(3))
 `;
 
 export async function listNotifications(employeeId, userId) {
@@ -168,22 +184,24 @@ export async function countUnread(employeeId) {
   return Number(rows[0]?.total || 0);
 }
 
-async function resolveRecipients(input) {
+// The sender is never a recipient of their own notification.
+async function resolveRecipients(input, senderEmployeeId) {
   const audience = input.audience === 'all' ? 'all' : 'selected';
+  const notSender = (id) => String(id) !== String(senderEmployeeId);
 
   if (audience === 'all') {
     const [rows] = await pool.execute(
       `SELECT id FROM employees
         WHERE is_active = 1 AND deleted_at IS NULL`
     );
-    const ids = rows.map((row) => row.id);
+    const ids = rows.map((row) => row.id).filter(notSender);
     if (!ids.length) {
       throw validationError('recipientIds', 'لا يوجد موظفون نشطون لإرسال الإشعار إليهم');
     }
     return { audience, ids };
   }
 
-  const requested = [...new Set(input.recipientIds || [])];
+  const requested = [...new Set(input.recipientIds || [])].filter(notSender);
   if (!requested.length) {
     throw validationError('recipientIds', 'يجب تحديد مستهدف واحد على الأقل');
   }
@@ -211,7 +229,7 @@ export async function createNotification(input, actor) {
     throw new AppError(401, ErrorCodes.UNAUTHORIZED, 'Authentication required');
   }
 
-  const { audience, ids } = await resolveRecipients(input);
+  const { audience, ids } = await resolveRecipients(input, actor.employeeId);
 
   const body = input.body.trim();
   const firstLine = body.split('\n')[0].trim();

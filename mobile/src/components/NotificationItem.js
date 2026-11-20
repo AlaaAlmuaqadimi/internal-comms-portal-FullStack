@@ -8,10 +8,26 @@ import { useLanguage } from '../context/LanguageContext';
 import { localizeText } from '../i18n/localize';
 import { flipStyles } from '../i18n/rtlStyles';
 
+// Compact time for the sender's "last read" line; the details window has the
+// full receipt list.
+const formatReadTime = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d} ${hh}:${mm}`;
+};
+
 const NotificationItem = ({
   notification,
   onPress,
   style,
+  // The sender's Outgoing tab keeps expired items as an archive.
+  expired = false,
 }) => {
   const { t, isRTL } = useLanguage();
   const { colors } = useTheme();
@@ -19,89 +35,96 @@ const NotificationItem = ({
     () => flipStyles(createStyles(colors), isRTL),
     [colors, isRTL]
   );
+
+  const isSender = !!notification.isSender;
+  // A sender's own copy is never an unread inbox item.
+  const isUnread = !isSender && !!notification.unread;
+
+  // Read receipts are for the sender only; recipients never see them.
+  const readCount = Number(notification.readCount || 0);
+  const recipientCount = Number(notification.recipientCount || 0);
+  const notReadYet = isSender && readCount === 0;
+  const readSummaryText = useMemo(() => {
+    if (!isSender || readCount === 0) return '';
+    const total = recipientCount || readCount;
+    const time = formatReadTime(notification.lastReadAt);
+    return time
+      ? t('notifications.receiptsInline', { read: readCount, total, time })
+      : t('notifications.receiptsInlineNoTime', { read: readCount, total });
+  }, [isSender, readCount, recipientCount, notification.lastReadAt, t]);
+
   const getIconName = () => {
     switch (notification.icon) {
-      case 'megaphone':
-        return 'megaphone';
-      case 'mail':
-        return 'mail';
-      case 'calendar':
-        return 'calendar';
       case 'alert':
         return 'alert-circle';
       case 'info':
         return 'information-circle';
       default:
-        return 'notifications';
+        return 'megaphone';
     }
   };
 
-  const getIconColor = () => {
-    switch (notification.typeKey || notification.type) {
-      case 'announcement':
-      case 'إعلان':
-        return colors.primaryLight;
-      case 'circular':
-      case 'تعميم':
-        return colors.warning;
-      case 'message':
-      case 'مراسلة':
-        return colors.success;
-      default:
-        return colors.primaryLight;
-    }
-  };
+  const iconColor = colors.primaryLight;
 
-  const typeLabel = notification.typeKey
-    ? t(`notifications.type${notification.typeKey.charAt(0).toUpperCase()}${notification.typeKey.slice(1)}`)
-    : localizeText(notification.type);
+  // Only announcements exist; older items of the removed types are shown as
+  // announcements too.
+  const typeLabel = t('notifications.typeAnnouncement');
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.container,
-        notification.unread && styles.unread,
+        isUnread && styles.unread,
+        expired && styles.expiredCard,
         pressed && styles.pressed,
         style,
       ]}
     >
       <View style={styles.content}>
-        <View style={[styles.iconContainer, { backgroundColor: `${getIconColor()}15` }]}>
-          <Ionicons name={getIconName()} size={24} color={getIconColor()} />
+        <View style={[styles.iconContainer, { backgroundColor: `${iconColor}15` }]}>
+          <Ionicons name={getIconName()} size={24} color={iconColor} />
         </View>
         <View style={styles.textContainer}>
           <View style={styles.header}>
             <Text style={styles.type}>{typeLabel}</Text>
             <View style={styles.status}>
-              {notification.isSender && (
-                <View style={styles.senderBadge}>
-                  <Ionicons name="send" size={10} color={colors.primaryLight} />
-                  <Text style={styles.senderText}>
-                    {t('notifications.senderBadge')}
+              {expired && (
+                <View style={styles.expiredBadge}>
+                  <Text style={styles.expiredText}>
+                    {t('notifications.expired')}
                   </Text>
                 </View>
               )}
-              {notification.unread && (
+              {isUnread && (
                 <View style={styles.unreadBadge}>
                   <Text style={styles.unreadText}>{t('common.unread')}</Text>
+                </View>
+              )}
+              {notReadYet && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadText}>
+                    {t('notifications.notReadYet')}
+                  </Text>
                 </View>
               )}
             </View>
           </View>
           <Text style={styles.title}>{localizeText(notification.title)}</Text>
           <Text style={styles.summary} numberOfLines={2}>{localizeText(notification.summary)}</Text>
-          <View style={styles.footerRow}>
-            <Text style={styles.date}>{notification.date} · {notification.time}</Text>
-            {notification.isSender && !!notification.recipientCount && (
-              <Text style={styles.readSummary}>
-                {t('notifications.readSummary', {
-                  read: notification.readCount || 0,
-                  total: notification.recipientCount,
-                })}
+          <Text style={styles.date}>{notification.date} · {notification.time}</Text>
+          {!!readSummaryText && (
+            <View style={styles.readSummaryRow}>
+              <Ionicons
+                name="checkmark-done-outline"
+                size={13}
+                color={colors.success}
+              />
+              <Text numberOfLines={1} style={styles.readSummary}>
+                {readSummaryText}
               </Text>
-            )}
-          </View>
+            </View>
+          )}
         </View>
       </View>
     </Pressable>
@@ -154,30 +177,30 @@ const createStyles = (colors) => StyleSheet.create({
     gap: spacing.xs,
     flexShrink: 0,
   },
-  senderBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
+  expiredCard: {
+    opacity: 0.85,
+  },
+  expiredBadge: {
     paddingHorizontal: spacing.xs,
     paddingVertical: 1,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.infoLight,
+    backgroundColor: colors.warningLight,
   },
-  senderText: {
+  expiredText: {
     ...typography.caption,
-    color: colors.primaryLight,
-    fontSize: 9,
+    color: colors.warning,
+    fontSize: 10,
   },
-  footerRow: {
+  readSummaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+    gap: 4,
+    marginTop: spacing.xs,
   },
   readSummary: {
     ...typography.caption,
     color: colors.success,
-    fontSize: 10,
+    flex: 1,
   },
   unreadBadge: {
     flexDirection: 'row',

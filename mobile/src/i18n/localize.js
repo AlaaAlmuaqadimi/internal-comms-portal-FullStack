@@ -27,8 +27,9 @@ const TEXT_MAP = {
   'مطبخ المكتب الفرعي': 'mock.kitchenBranch',
   'المبنى الفرعي - الطابق الأول': 'mock.kitchenBranchPath',
   'إعلان': 'notifications.typeAnnouncement',
-  'تعميم': 'notifications.typeCircular',
-  'مراسلة': 'notifications.typeMessage',
+  // Older items stored under the removed types display as announcements.
+  'تعميم': 'notifications.typeAnnouncement',
+  'مراسلة': 'notifications.typeAnnouncement',
   'تحديث نظام العمل عن بُعد': 'mock.notif1_title',
   'تم تحديث نظام العمل عن بُعد ليشمل ميزات جديدة تحسين تجربة المستخدم.': 'mock.notif1_summary',
   'تم تحديث نظام العمل عن بُعد ليشمل ميزات جديدة تحسين تجربة المستخدم. يرجى مراجعة الدليل الجديد للاستفادة من جميع الميزات المتاحة.': 'mock.notif1_body',

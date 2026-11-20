@@ -1,213 +1,275 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   FlatList,
   Platform,
   StyleSheet,
   Text,
-  View,
   Vibration,
+  View,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
-import { spacing, borderRadius, shadows } from '../constants/spacing';
-import { flipStyles } from '../i18n/rtlStyles';
-import { useLanguage } from '../context/LanguageContext';
-import { playTick } from '../services/sound';
+import { spacing, borderRadius } from '../constants/spacing';
 
-const ITEM_HEIGHT = 44;
-const VISIBLE_ITEMS = 3;
+const ROW_HEIGHT = 44;
+const VISIBLE_ROWS = 5;
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+// The active row is the only thing that changes while the wheel moves. Keeping
+// that in a memoised row means a flick repaints five labels, not the screen
+// that owns the wheel.
+const WheelRow = React.memo(({ label, active, height, styles }) => (
+  <View style={[styles.row, { height }]}>
+    <Text numberOfLines={1} style={[styles.label, active && styles.labelActive]}>
+      {label}
+    </Text>
+  </View>
+));
 
 /**
- * Vertical "ball roller" selector.
+ * Smooth, snapping vertical wheel.
  *
- * The list snaps to whole rows, the centred row is highlighted and scaled up,
- * and every time the selected row changes a short spinning tick is played.
+ * `onChange` fires only once, after the wheel settles. The parent is therefore
+ * never asked to re-render on every row that passes under the centre band.
+ * Programmatic `scrollToOffset` calls (presets, or a clamped value coming back
+ * from the parent) never echo an `onChange` because they do not start a drag.
  */
 const WheelPicker = ({
-  options = [],
-  value,
+  value = 0,
   onChange,
-  itemHeight = ITEM_HEIGHT,
-  visibleItems = VISIBLE_ITEMS,
-  enabled = true,
+  items = [],
+  itemHeight = ROW_HEIGHT,
+  visibleRows = VISIBLE_ROWS,
+  style,
 }) => {
   const { colors } = useTheme();
-  const { isRTL } = useLanguage();
-  const styles = useMemo(
-    () => flipStyles(createStyles(colors), isRTL),
-    [colors, isRTL]
-  );
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const listRef = useRef(null);
-  const indexRef = useRef(0);
-  const [index, setIndex] = useState(0);
+  const dragged = useRef(false);
+  const latestOffset = useRef(0);
+  const settleTimer = useRef(null);
+  const snapTimer = useRef(null);
 
-  const selectedIndex = useMemo(() => {
-    const found = options.findIndex((option) => option.key === value);
-    return found >= 0 ? found : 0;
-  }, [options, value]);
+  const maxIndex = Math.max(0, items.length - 1);
+  const selectedIndex = clamp(Math.round(value) || 0, 0, maxIndex);
+  const valueIndexRef = useRef(selectedIndex);
+  const highlightRef = useRef(selectedIndex);
+  const [highlightIndex, setHighlightIndex] = useState(selectedIndex);
 
-  // Keep the wheel in sync when the value is changed programmatically (for
-  // example when the create form is reset after publishing).
-  useEffect(() => {
-    if (selectedIndex === indexRef.current) return;
-    indexRef.current = selectedIndex;
-    setIndex(selectedIndex);
-    try {
-      listRef.current?.scrollToOffset({
-        offset: selectedIndex * itemHeight,
-        animated: false,
-      });
-    } catch {
-      // The list may not be laid out yet; the initial offset handles it.
-    }
-  }, [selectedIndex, itemHeight]);
-
-  const commitIndex = useCallback(
-    (next) => {
-      if (next === indexRef.current) return;
-      indexRef.current = next;
-      setIndex(next);
-      if (enabled) {
-        playTick();
-        if (Platform.OS === 'android') {
-          Vibration.vibrate(8);
-        }
+  const scrollToIndex = useCallback(
+    (index, animated = true) => {
+      const target = clamp(Math.round(index), 0, maxIndex);
+      try {
+        listRef.current?.scrollToOffset({
+          offset: target * itemHeight,
+          animated,
+        });
+      } catch {
+        // The list may not be mounted yet.
       }
-      const option = options[next];
-      if (option) onChange?.(option.key);
     },
-    [enabled, onChange, options]
+    [itemHeight, maxIndex]
   );
+
+  const indexFromOffset = useCallback(
+    (offsetY) => clamp(Math.round(offsetY / itemHeight), 0, maxIndex),
+    [itemHeight, maxIndex]
+  );
+
+  const applyHighlight = useCallback((index) => {
+    if (index === highlightRef.current) return;
+    highlightRef.current = index;
+    setHighlightIndex(index);
+  }, []);
+
+  // Keep the wheel on the parent's value. This also corrects the wheel after
+  // the parent clamps a value the user scrolled to (for example 0d 0h -> 1h).
+  useEffect(() => {
+    valueIndexRef.current = selectedIndex;
+    if (dragged.current) return;
+    applyHighlight(selectedIndex);
+    scrollToIndex(selectedIndex, true);
+  }, [applyHighlight, scrollToIndex, selectedIndex]);
+
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      if (snapTimer.current) clearTimeout(snapTimer.current);
+    },
+    []
+  );
+
+  // Called once, when the wheel has stopped. Vibration on Android only; on iOS
+  // Vibration.vibrate does nothing useful.
+  const commitSettled = useCallback(() => {
+    if (!dragged.current) return;
+    dragged.current = false;
+
+    if (settleTimer.current) {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+
+    const index = indexFromOffset(latestOffset.current);
+    applyHighlight(index);
+
+    if (index !== valueIndexRef.current) {
+      // One short tick per settled value change (Android only).
+      if (Platform.OS === 'android') Vibration.vibrate(8);
+      onChange?.(index);
+    }
+
+    // If the parent rejects the value (min/max), it does not change and the
+    // effect above never runs; snap back to the value it actually holds.
+    if (snapTimer.current) clearTimeout(snapTimer.current);
+    snapTimer.current = setTimeout(() => {
+      if (dragged.current) return;
+      scrollToIndex(valueIndexRef.current, true);
+    }, 80);
+  }, [applyHighlight, indexFromOffset, onChange, scrollToIndex]);
+
+  const handleScrollBeginDrag = useCallback(() => {
+    dragged.current = true;
+    if (settleTimer.current) {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+  }, []);
 
   const handleScroll = useCallback(
     (event) => {
-      const offset = event.nativeEvent.contentOffset?.y || 0;
-      const raw = Math.round(offset / itemHeight);
-      const next = Math.max(0, Math.min(options.length - 1, raw));
-      commitIndex(next);
+      const offsetY = event.nativeEvent.contentOffset.y;
+      latestOffset.current = offsetY;
+      applyHighlight(indexFromOffset(offsetY));
     },
-    [commitIndex, itemHeight, options.length]
+    [applyHighlight, indexFromOffset]
   );
 
-  const handleMomentumEnd = useCallback(
+  const handleScrollEndDrag = useCallback(
     (event) => {
-      const offset = event.nativeEvent.contentOffset?.y || 0;
-      const raw = Math.round(offset / itemHeight);
-      const next = Math.max(0, Math.min(options.length - 1, raw));
-      commitIndex(next);
-      try {
-        listRef.current?.scrollToOffset({
-          offset: next * itemHeight,
-          animated: true,
-        });
-      } catch {
-        // ignore
-      }
+      latestOffset.current = event.nativeEvent.contentOffset.y;
+      // Some platforms do not fire onMomentumScrollEnd when the drag ends
+      // without momentum, so settle shortly after the finger lifts. A real
+      // momentum start cancels this timer.
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      settleTimer.current = setTimeout(commitSettled, 120);
     },
-    [commitIndex, itemHeight, options.length]
+    [commitSettled]
   );
 
-  const verticalPadding = Math.floor(visibleItems / 2) * itemHeight;
-  const height = itemHeight * visibleItems;
+  const handleMomentumScrollBegin = useCallback(() => {
+    if (settleTimer.current) {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+  }, []);
 
-  const renderItem = ({ item, index: itemIndex }) => {
-    const distance = Math.abs(itemIndex - index);
-    const opacity = distance === 0 ? 1 : distance === 1 ? 0.42 : 0.18;
-    const isActive = distance === 0;
+  const handleMomentumScrollEnd = useCallback(
+    (event) => {
+      latestOffset.current = event.nativeEvent.contentOffset.y;
+      commitSettled();
+    },
+    [commitSettled]
+  );
 
-    return (
-      <View style={[styles.item, { height: itemHeight }]}>
-        <Text
-          numberOfLines={1}
-          style={[
-            styles.itemText,
-            isActive && styles.itemTextActive,
-            { opacity },
-          ]}
-        >
-          {item.label}
-        </Text>
-      </View>
-    );
-  };
+  const renderItem = useCallback(
+    ({ item, index }) => (
+      <WheelRow
+        label={item}
+        active={index === highlightIndex}
+        height={itemHeight}
+        styles={styles}
+      />
+    ),
+    [highlightIndex, itemHeight, styles]
+  );
 
   return (
-    <View style={[styles.wrapper, { height }]}>
+    <View style={[styles.wrapper, { height: itemHeight * visibleRows }, style]}>
+      {/* Highlighted centre band (2 rows of padding above it). */}
       <View
-        style={[styles.highlight, { height: itemHeight, marginTop: -itemHeight / 2 }]}
         pointerEvents="none"
+        style={[styles.centerBand, { top: itemHeight * 2, height: itemHeight }]}
       />
-
       <FlatList
         ref={listRef}
-        data={options}
-        keyExtractor={(item) => item.key}
+        data={items}
+        keyExtractor={(item, index) => `${index}:${item}`}
         renderItem={renderItem}
+        extraData={highlightIndex}
+        getItemLayout={(_, index) => ({
+          length: itemHeight,
+          offset: itemHeight * index,
+          index,
+        })}
+        initialScrollIndex={selectedIndex}
+        onScrollToIndexFailed={({ index }) => scrollToIndex(index, false)}
+        snapToInterval={itemHeight}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        disableIntervalMomentum
         showsVerticalScrollIndicator={false}
         bounces={false}
-        snapToInterval={itemHeight}
-        decelerationRate="fast"
+        nestedScrollEnabled
         scrollEventThrottle={16}
+        removeClippedSubviews={false}
+        initialNumToRender={Math.max(items.length, 1)}
+        maxToRenderPerBatch={Math.max(items.length, 1)}
+        windowSize={Math.max(items.length, 1)}
+        onScrollBeginDrag={handleScrollBeginDrag}
         onScroll={handleScroll}
-        onMomentumScrollEnd={handleMomentumEnd}
-        contentContainerStyle={{ paddingVertical: verticalPadding }}
-        style={{ height }}
-        initialScrollIndex={selectedIndex}
-        getItemLayout={(_, itemIndex) => ({
-          length: itemHeight,
-          offset: itemHeight * itemIndex,
-          index: itemIndex,
-        })}
-        onScrollToIndexFailed={() => {
-          try {
-            listRef.current?.scrollToOffset({
-              offset: selectedIndex * itemHeight,
-              animated: false,
-            });
-          } catch {
-            // ignore
-          }
-        }}
+        onScrollEndDrag={handleScrollEndDrag}
+        onMomentumScrollBegin={handleMomentumScrollBegin}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
+        contentContainerStyle={{ paddingVertical: itemHeight * 2 }}
       />
     </View>
   );
 };
 
-const createStyles = (colors) => StyleSheet.create({
-  wrapper: {
-    width: '100%',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    overflow: 'hidden',
-    justifyContent: 'center',
-  },
-  highlight: {
-    position: 'absolute',
-    left: spacing.sm,
-    right: spacing.sm,
-    top: '50%',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.primaryLight,
-    backgroundColor: colors.infoLight,
-  },
-  item: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  itemText: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  itemTextActive: {
-    ...typography.h4,
-    color: colors.primaryLight,
-    fontFamily: 'Cairo_700Bold',
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    wrapper: {
+      minWidth: 64,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
+    },
+    centerBand: {
+      position: 'absolute',
+      left: spacing.xs,
+      right: spacing.xs,
+      borderRadius: borderRadius.sm,
+      borderWidth: 1,
+      borderColor: colors.primaryLight,
+      backgroundColor: colors.infoLight,
+    },
+    row: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xs,
+    },
+    label: {
+      ...typography.body,
+      color: colors.textLight,
+      textAlign: 'center',
+      fontSize: 16,
+    },
+    labelActive: {
+      ...typography.bodyBold,
+      color: colors.primaryLight,
+      fontSize: 18,
+    },
+  });
 
 export default WheelPicker;
