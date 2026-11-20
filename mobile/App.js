@@ -5,6 +5,8 @@ import { AuthProvider } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { LanguageProvider } from './src/context/LanguageContext';
 import { NotificationsProvider } from './src/context/NotificationsContext';
+import { CallProvider } from './src/context/CallContext';
+import CallOverlay from './src/components/calls/CallOverlay';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useFonts, Cairo_400Regular, Cairo_700Bold, Cairo_800ExtraBold } from '@expo-google-fonts/cairo';
 import { View, ActivityIndicator, Text, TextInput } from 'react-native';
@@ -44,8 +46,11 @@ export default function App() {
         <LanguageProvider>
           <AuthProvider>
             <NotificationsProvider>
-              <ThemedStatusBar />
-              <AppNavigator />
+              <CallProvider>
+                <ThemedStatusBar />
+                <AppNavigator />
+                <CallOverlay />
+              </CallProvider>
             </NotificationsProvider>
           </AuthProvider>
         </LanguageProvider>

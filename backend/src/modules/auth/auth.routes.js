@@ -9,13 +9,13 @@ import {
 } from './auth.schemas.js';
 import { validate } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/authenticate.js';
-import { loginRateLimiter } from '../../middleware/rateLimit.js';
+import { loginRateLimiter, refreshRateLimiter } from '../../middleware/rateLimit.js';
 
 const router = Router();
 
 router.post('/login', loginRateLimiter, validate(loginSchema), login);
 router.post('/register', loginRateLimiter, validate(registerSchema), register);
-router.post('/refresh', loginRateLimiter, validate(refreshSchema), refresh);
+router.post('/refresh', refreshRateLimiter, validate(refreshSchema), refresh);
 router.post('/logout', validate(logoutSchema), logout);
 router.get('/me', authenticate, me);
 router.put('/update', authenticate, validate(updateProfileSchema), updateProfile);

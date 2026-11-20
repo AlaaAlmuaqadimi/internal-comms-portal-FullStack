@@ -20,7 +20,9 @@
     "test:employees": "node scripts/employee-directory-test.js",
     "test:calls": "node scripts/call-policy-test.js",
     "test:calls:db": "node scripts/call-service-test.js",
-    "seed:calls": "node scripts/seed-call-demo-users.js"
+    "seed:calls": "node scripts/seed-call-demo-users.js",
+    "test:calls:signaling": "node scripts/call-signaling-test.js",
+    "test:calls:signaling:db": "node scripts/call-signaling-db-test.js"
   },
   "dependencies": {
     "argon2": "^0.41.1",
@@ -32,6 +34,10 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "mysql2": "^3.11.5",
+    "socket.io": "^4.8.4",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
   }
 }
