@@ -21,6 +21,8 @@ import { createCallTimers } from './callTimers.js';
 import { createRateWindow } from './rateWindow.js';
 import { buildIceServers, hasTurn } from './iceServers.js';
 import { SIGNAL_KINDS, canSendSignal, sanitizeSignal } from './relay.js';
+import { createCallPushNotifier } from '../../push/callPush.js';
+import { sendToEmployee } from '../../push/push.service.js';
 
 export const SIGNALING_NAMESPACE = '/calls';
 export const SIGNALING_PATH = '/api/calls/socket';
@@ -81,8 +83,9 @@ function callIdFrom(payload) {
  * @param {object} views  Output of `callService.buildParticipantViews`
  * @param {object} [options]
  * @param {string} [options.exceptSocketId] Socket that already got the result in its ack
+ * @param {Date|string|null} [options.ringExpiresAt] Ring deadline, for the push TTL
  */
-function fanOut(views, { exceptSocketId = null } = {}) {
+function fanOut(views, { exceptSocketId = null, ringExpiresAt = null } = {}) {
   if (!isActive() || !views) return;
   const { namespace, timers } = state;
   const event = STATUS_EVENTS[views.status];
@@ -117,6 +120,11 @@ function fanOut(views, { exceptSocketId = null } = {}) {
       toCaller.emit(event, views.caller);
       toCallee.emit(event, views.callee);
   }
+
+  // Push in the background: it must never delay or break the socket fan-out.
+  Promise.resolve()
+    .then(() => state?.notifyPush?.(views, { ringExpiresAt }))
+    .catch((err) => console.error('[push] call push failed:', err?.message || err));
 }
 
 async function publishLoadedCall(callId, options) {
@@ -127,7 +135,7 @@ async function publishLoadedCall(callId, options) {
   if (views.status === 'ringing' && loaded.call.ringExpiresAt) {
     state.timers.armRing(callId, new Date(loaded.call.ringExpiresAt));
   }
-  fanOut(views, options);
+  fanOut(views, { ...options, ringExpiresAt: loaded.call.ringExpiresAt ?? null });
   return views;
 }
 
@@ -391,6 +399,13 @@ export async function attachSignaling(httpServer) {
     timers: createCallTimers({ onRingExpired, onGraceExpired }),
     inviteRate: createRateWindow(env.callInviteRateLimit),
     signalRate: createRateWindow(SIGNAL_RATE),
+    // Phase D: wake the callee's phones when the app is closed. A no-op while
+    // PUSH_ENABLED is false.
+    notifyPush: createCallPushNotifier({
+      sendToEmployee,
+      ringTimeoutSeconds: env.callSignaling.ringTimeoutSeconds,
+      showCallerName: env.push.showCallerName,
+    }),
   };
 
   namespace.use(authenticateSocket);

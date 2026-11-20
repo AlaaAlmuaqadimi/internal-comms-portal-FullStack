@@ -22,7 +22,8 @@
     "test:calls:db": "node scripts/call-service-test.js",
     "seed:calls": "node scripts/seed-call-demo-users.js",
     "test:calls:signaling": "node scripts/call-signaling-test.js",
-    "test:calls:signaling:db": "node scripts/call-signaling-db-test.js"
+    "test:calls:signaling:db": "node scripts/call-signaling-db-test.js",
+    "test:push": "node scripts/push-test.js"
   },
   "dependencies": {
     "argon2": "^0.41.1",

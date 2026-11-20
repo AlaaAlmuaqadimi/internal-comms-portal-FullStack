@@ -22,3 +22,7 @@ Thumbs.db
 all_backend.txt
 phase-b-patches/
 *.patch
+
+# Firebase service account for FCM pushes - secret, server only
+backend/secrets/
+*firebase-adminsdk*.json
