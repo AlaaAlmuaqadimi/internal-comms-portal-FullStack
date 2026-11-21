@@ -38,6 +38,7 @@ import {
 import { createSystemCallBridge, loadCallModule } from '../calls/systemCalls';
 import { api } from '../services/api';
 import { configurePushTokens, registerPushToken } from '../services/pushTokens';
+import { setupDeviceNotifications } from '../services/deviceNotifications';
 import { createSignalingClient, SIGNALING_STATUS } from '../services/signaling';
 import { playSound } from '../services/sound';
 import { createCallSession, isAudioSupported, isSpeakerSupported } from '../calls/callSession';
@@ -365,6 +366,7 @@ export const CallProvider = ({ children }) => {
     const bridge = bridgeRef.current;
     if (!bridge || !isAuthenticated || !user?.employeeId) return undefined;
     askCallPermissions();
+    setupDeviceNotifications(); // missed-call channel + show while the app is open
     bridge.registerPush();
     const current = bridge.getPushToken();
     if (current) registerPushToken(current);
