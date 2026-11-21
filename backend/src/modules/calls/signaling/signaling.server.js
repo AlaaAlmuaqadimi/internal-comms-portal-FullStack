@@ -398,7 +398,8 @@ export async function attachSignaling(httpServer) {
     serveClient: false,
     maxHttpBufferSize: 64 * 1024,
     cors: {
-      origin: env.corsOrigins.length > 0 ? env.corsOrigins : true,
+      // Same rule as the REST API: production allows only CORS_ORIGINS.
+      origin: env.corsOrigins.length > 0 ? env.corsOrigins : !env.isProduction,
       credentials: true,
     },
   });

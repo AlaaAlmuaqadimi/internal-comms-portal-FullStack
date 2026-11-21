@@ -17,18 +17,6 @@ export async function login(req, res, next) {
   }
 }
 
-export async function register(req, res, next) {
-  try {
-    const result = await authService.register({
-      ...req.body,
-      ...requestContext(req),
-    });
-    res.status(201).json({ success: true, ...result });
-  } catch (err) {
-    next(err);
-  }
-}
-
 export async function refresh(req, res, next) {
   try {
     const result = await authService.rotateRefreshToken({
