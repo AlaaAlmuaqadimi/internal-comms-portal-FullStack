@@ -50,6 +50,17 @@ rings an old call. The phone must still check `expiresAt` and ask the server
 Both need the bearer token. At most 5 phones per employee are kept (newest
 first). Tokens that FCM reports as `UNREGISTERED` are deleted automatically.
 
+### Missed calls in the notification shade
+
+When a ring that was pushed ends as `missed`, the callee's Android phones get,
+after the `callEnded` push, an FCM **notification** message (Android shows it
+by itself, even with the app closed): title "مكالمة فائتة", generic body
+unless `PUSH_SHOW_CALLER_NAME=true` (then the callee-side name, redaction
+kept), channel `missed-calls` (created by the app in
+`mobile/src/services/deviceNotifications.js`), tag `missed-<callId>` so a call
+appears once, TTL 24 h. iPhones are skipped: this needs a regular APNs alert
+token, not the VoIP one.
+
 ### iPhone (APNs VoIP)
 
 iPhones register an `APNS_VOIP` token (`platform: ios`, stored with provider

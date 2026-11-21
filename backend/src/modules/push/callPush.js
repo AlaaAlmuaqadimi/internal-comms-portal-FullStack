@@ -26,6 +26,8 @@ import crypto from 'node:crypto';
 export const PUSH_TYPES = Object.freeze({
   INCOMING_CALL: 'incomingCall', // expo-callkit-telecom's messageTypes
   CALL_ENDED: 'callEnded',
+  // Ours: the module passes unknown types on to expo-notifications.
+  MISSED_CALL: 'missedCall',
 });
 
 /** Our call status -> the module's CallEndedReason. */
@@ -101,6 +103,31 @@ export function callEndedData(views, { eventId }) {
       serverCallId: String(views.callId),
       reason: END_REASONS[views.status] || 'unknown',
     }),
+  };
+}
+
+// Android notification channel for missed calls; the app creates it with
+// this id (mobile/src/services/deviceNotifications.js).
+export const MISSED_CALL_CHANNEL = 'missed-calls';
+// A phone that was off still shows the missed call when it comes back.
+export const MISSED_CALL_TTL_SECONDS = 24 * 60 * 60;
+
+/**
+ * Missed-call entry for the phone's notification shade (Android). Generic
+ * unless PUSH_SHOW_CALLER_NAME is on; then the callee-side name (redaction
+ * kept), never the caller-side view.
+ */
+export function missedCallPush(views, { showCallerName = false } = {}) {
+  const caller = views.callee?.caller || {};
+  const name = showCallerName && caller.name ? String(caller.name) : '';
+  return {
+    data: { messageType: PUSH_TYPES.MISSED_CALL, callId: String(views.callId) },
+    notification: {
+      title: 'مكالمة فائتة',
+      body: name ? `فاتتك مكالمة من ${name}` : 'فاتتك مكالمة داخلية. افتح التطبيق للتفاصيل.',
+      channelId: MISSED_CALL_CHANNEL,
+      tag: `missed-${views.callId}`,
+    },
   };
 }
 
@@ -180,6 +207,15 @@ export function createCallPushNotifier({
         options.excludeTokens = [answeringToken];
       }
       await sendToEmployee(employeeId, callEndedData(views, { eventId: newEventId() }), options);
+      if (views.status === 'missed') {
+        // The ring screen just vanished: leave a trace in the shade (Android;
+        // iPhone needs a separate alert token, not the VoIP one).
+        const missed = missedCallPush(views, { showCallerName });
+        await sendToEmployee(employeeId, missed.data, {
+          ttlSeconds: MISSED_CALL_TTL_SECONDS,
+          notification: missed.notification,
+        });
+      }
     }
   };
 }

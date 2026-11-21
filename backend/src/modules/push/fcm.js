@@ -125,18 +125,26 @@ export function createFcmClient({ serviceAccount, fetchImpl = globalThis.fetch, 
   }
 
   /**
-   * Sends one data-only, high-priority message.
+   * Sends one high-priority message: data only (call pushes, handled by the
+   * app's native code), or with a `notification` that Android shows in the
+   * notification shade by itself, even when the app is closed.
    *
+   * @param {{token: string, data: object, ttlSeconds?: number,
+   *   notification?: {title: string, body: string, channelId?: string, tag?: string}}} msg
    * @returns {Promise<{ok: true} | {ok: false, unregistered: boolean, status: number}>}
    */
-  async function send({ token, data, ttlSeconds = 60 }) {
-    const message = {
-      message: {
-        token,
-        data: toDataPayload(data),
-        android: { priority: 'HIGH', ttl: `${Math.max(0, Math.floor(ttlSeconds))}s` },
-      },
-    };
+  async function send({ token, data, ttlSeconds = 60, notification = null }) {
+    const android = { priority: 'HIGH', ttl: `${Math.max(0, Math.floor(ttlSeconds))}s` };
+    const message = { token, data: toDataPayload(data), android };
+    if (notification?.title) {
+      message.notification = { title: String(notification.title), body: String(notification.body || '') };
+      android.notification = {
+        ...(notification.channelId ? { channel_id: String(notification.channelId) } : {}),
+        // Same tag replaces instead of stacking (one entry per call).
+        ...(notification.tag ? { tag: String(notification.tag) } : {}),
+      };
+    }
+    const payload = { message };
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       // eslint-disable-next-line no-await-in-loop
@@ -145,7 +153,7 @@ export function createFcmClient({ serviceAccount, fetchImpl = globalThis.fetch, 
       const res = await fetchImpl(sendUrl, {
         method: 'POST',
         headers: { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(message),
+        body: JSON.stringify(payload),
       });
       if (res.ok) return { ok: true };
       if (res.status === 401 && attempt === 0) continue; // stale access token

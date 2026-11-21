@@ -322,7 +322,7 @@ check('CallContext: system UI wiring (no InCallManager, no double ring, token on
   assert.match(source, /bridge\.end\(call\.id, endedReason\)/);
   assert.match(source, /pendingAnswerRef\.current = callId/);
   // Ask for the microphone while on screen: a locked phone cannot show the dialog.
-  assert.match(source, /askCallPermissions\(\);\s*bridge\.registerPush\(\)/);
+  assert.match(source, /askCallPermissions\(\);[\s\S]{0,120}bridge\.registerPush\(\)/);
   const overlay = fs.readFileSync(path.join(here, '../src/components/calls/CallOverlay.js'), 'utf8');
   assert.match(overlay, /!\(systemCalls && state\.phase === PHASES\.INCOMING\)/);
   const session = fs.readFileSync(path.join(here, '../src/calls/callSession.js'), 'utf8');
@@ -340,6 +340,14 @@ check('CallContext: system UI wiring (no InCallManager, no double ring, token on
   assert.match(receiver, /"onCallEnded"/);
   assert.match(receiver, /declineUrl/);
   assert.match(receiver, /goAsync\(\)/);
+  // Missed calls: channel id shared with the server, set up after sign-in.
+  assert.match(source, /setupDeviceNotifications\(\);/);
+  const notes = fs.readFileSync(path.join(here, '../src/services/deviceNotifications.js'), 'utf8');
+  assert.match(notes, /MISSED_CALL_CHANNEL = 'missed-calls'/);
+  const serverPush = path.join(here, '../../backend/src/modules/push/callPush.js');
+  if (fs.existsSync(serverPush)) {
+    assert.match(fs.readFileSync(serverPush, 'utf8'), /MISSED_CALL_CHANNEL = 'missed-calls'/);
+  }
   const auth = fs.readFileSync(path.join(here, '../src/context/AuthContext.js'), 'utf8');
   assert.ok(auth.indexOf('await unregisterPushToken()') < auth.indexOf('await api.auth.logout()'), 'token removed before the server logout');
 });

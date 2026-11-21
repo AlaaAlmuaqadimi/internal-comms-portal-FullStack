@@ -126,7 +126,11 @@ export async function unregisterPushToken(user, token) {
  * iPhones). Deletes tokens the provider reports as gone. Never throws: a push
  * failure must not break a call.
  */
-export async function sendToEmployee(employeeId, data, { ttlSeconds = 60, excludeTokens = [], apns = null } = {}) {
+export async function sendToEmployee(
+  employeeId,
+  data,
+  { ttlSeconds = 60, excludeTokens = [], apns = null, notification = null } = {}
+) {
   const fcm = loadFcm();
   const voip = apns ? loadApns() : null;
   if ((!fcm && !voip) || !employeeId) return { sent: 0, failed: 0, removed: 0 };
@@ -138,7 +142,7 @@ export async function sendToEmployee(employeeId, data, { ttlSeconds = 60, exclud
     const excluded = new Set(excludeTokens.filter(Boolean));
     const sendOne = (row) => {
       if (row.provider === 'apns_voip') return voip ? voip.send({ token: row.token, payload: apns, ttlSeconds }) : null;
-      return fcm ? fcm.send({ token: row.token, data, ttlSeconds }) : null;
+      return fcm ? fcm.send({ token: row.token, data, ttlSeconds, notification }) : null;
     };
     const rows = [];
     const sends = [];

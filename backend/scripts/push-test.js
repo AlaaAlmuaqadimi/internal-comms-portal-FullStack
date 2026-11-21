@@ -22,6 +22,8 @@ import {
 import {
   END_REASONS,
   GENERIC_CALLER_NAME,
+  MISSED_CALL_CHANNEL,
+  MISSED_CALL_TTL_SECONDS,
   PUSH_TYPES,
   callEndedData,
   createCallPushNotifier,
@@ -283,7 +285,7 @@ check('declined / cancelled / missed / ended: every callee phone gets callEnded'
     const { notify, sent } = setupNotifier();
     await notify(ringingViews());
     await notify(ringingViews({ status }));
-    assert.equal(sent.length, 2, status);
+    assert.equal(sent.length, status === 'missed' ? 3 : 2, status); // missed also leaves a notification
     assert.equal(sent[1].employeeId, 'emp-callee');
     assert.equal(sent[1].data.messageType, PUSH_TYPES.CALL_ENDED);
     assert.deepEqual(JSON.parse(sent[1].data.callEnded), {
@@ -293,8 +295,9 @@ check('declined / cancelled / missed / ended: every callee phone gets callEnded'
     });
     assert.equal(sent[1].opts.excludeTokens, undefined, `${status}: no phone excluded`);
     // only once
+    const before = sent.length;
     await notify(ringingViews({ status: 'ended' }));
-    assert.equal(sent.length, 2, `${status}: no second stop`);
+    assert.equal(sent.length, before, `${status}: no second stop`);
   }
 });
 
@@ -555,6 +558,56 @@ check('iPhones: ring pushes only; stop pushes never go to APNs (a VoIP push must
   assert.match(service, /ios: 'apns_voip'/);
   const migration = fs.readFileSync(path.join(here, '../../database/migrations/V022__push_tokens_apns.sql'), 'utf8');
   assert.match(migration, /ENUM\('fcm','apns_voip'\)/);
+});
+
+// ---- missed-call notification -------------------------------------------------
+
+check('missed call: one shade notification for the callee, generic text by default', async () => {
+  const { notify, sent } = setupNotifier();
+  await notify(ringingViews());
+  await notify(ringingViews({ status: 'missed' }));
+  const missed = sent[2];
+  assert.equal(missed.employeeId, 'emp-callee');
+  assert.deepEqual(missed.data, { messageType: PUSH_TYPES.MISSED_CALL, callId: 'call-1' });
+  assert.equal(missed.opts.ttlSeconds, MISSED_CALL_TTL_SECONDS);
+  assert.equal(missed.opts.apns, undefined, 'never a VoIP push');
+  assert.equal(missed.opts.notification.channelId, MISSED_CALL_CHANNEL);
+  assert.equal(missed.opts.notification.tag, 'missed-call-1');
+  assert.equal(missed.opts.notification.title, 'مكالمة فائتة');
+  assert.equal(JSON.stringify(missed).includes('علي'), false, 'no name by default');
+
+  const named = setupNotifier({ showCallerName: true });
+  await named.notify(ringingViews());
+  await named.notify(ringingViews({ status: 'missed' }));
+  // The callee-side name (redaction kept), never the caller-side view.
+  assert.match(named.sent[2].opts.notification.body, /علي/);
+  assert.equal(named.sent[2].opts.notification.body.includes('المتصل'), false);
+
+  for (const status of ['rejected', 'cancelled', 'ended', 'accepted']) {
+    const other = setupNotifier();
+    await other.notify(ringingViews());
+    await other.notify(ringingViews({ status }), { answeringToken: 'answering-phone-token-123456' });
+    assert.equal(other.sent.some((s) => s.data.messageType === PUSH_TYPES.MISSED_CALL), false, status);
+  }
+});
+
+check('FCM: a notification message carries channel and tag; call pushes stay data-only', async () => {
+  const fake = fakeFetch();
+  const client = createFcmClient({ serviceAccount: SERVICE_ACCOUNT, fetchImpl: fake.fetchImpl, now: () => NOW });
+  await client.send({ token: 'device-token', data: { a: '1' }, ttlSeconds: 60 });
+  await client.send({
+    token: 'device-token',
+    data: { messageType: 'missedCall' },
+    ttlSeconds: 86400,
+    notification: { title: 'مكالمة فائتة', body: 'نص', channelId: 'missed-calls', tag: 'missed-x' },
+  });
+  const [plain, withNote] = fake.calls
+    .filter((c) => c.url.includes('messages:send'))
+    .map((c) => JSON.parse(c.init.body).message);
+  assert.equal(plain.notification, undefined);
+  assert.equal(plain.android.notification, undefined);
+  assert.deepEqual(withNote.notification, { title: 'مكالمة فائتة', body: 'نص' });
+  assert.deepEqual(withNote.android, { priority: 'HIGH', ttl: '86400s', notification: { channel_id: 'missed-calls', tag: 'missed-x' } });
 });
 
 check('the service-account folder and Apple .p8 keys are git-ignored', () => {
