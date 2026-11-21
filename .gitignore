@@ -26,6 +26,8 @@ phase-b-patches/
 # Firebase service account for FCM pushes - secret, server only
 backend/secrets/
 *firebase-adminsdk*.json
+# Apple push key (APNs .p8) - secret, server only
+*.p8
 
 # Firebase app config files (mobile). Not secret, but kept out of the public repo;
 # EAS builds get them as file environment variables.

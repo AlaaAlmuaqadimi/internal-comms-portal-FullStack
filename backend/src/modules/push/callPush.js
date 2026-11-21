@@ -53,7 +53,7 @@ const MAX_TTL_SECONDS = 120;
  * redacted leadership caller, so it is a fixed value. The real caller is
  * fetched from our server (call:sync) once the app runs.
  */
-export function incomingCallEvent(views, { expiresAtMs, showCallerName = false, eventId, startedAtMs }) {
+export function incomingCallEvent(views, { expiresAtMs, showCallerName = false, eventId, startedAtMs, decline = null }) {
   const caller = views.callee?.caller || {};
   const displayName = showCallerName && caller.name ? String(caller.name) : GENERIC_CALLER_NAME;
   return {
@@ -67,16 +67,29 @@ export function incomingCallEvent(views, { expiresAtMs, showCallerName = false, 
       relayOnly: Boolean(views.relayOnly),
       redacted: Boolean(views.callee?.redacted),
       ...(showCallerName && caller.nameEn ? { callerNameEn: String(caller.nameEn) } : {}),
+      // Lets the app's native receiver decline while no JS runs (app closed).
+      ...(decline?.url && decline?.token
+        ? { declineUrl: String(decline.url), declineToken: String(decline.token) }
+        : {}),
     },
   };
 }
 
-/** Data for the "your phone is ringing" push, all values strings. */
+/** FCM data for the "your phone is ringing" push, all values strings. */
 export function incomingCallData(views, options) {
-  return {
-    messageType: PUSH_TYPES.INCOMING_CALL,
-    incomingCall: JSON.stringify(incomingCallEvent(views, options)),
-  };
+  return incomingCallFcmData(incomingCallEvent(views, options));
+}
+
+function incomingCallFcmData(event) {
+  return { messageType: PUSH_TYPES.INCOMING_CALL, incomingCall: JSON.stringify(event) };
+}
+
+/**
+ * APNs VoIP payload for the same ring: the event as an object under
+ * `incomingCall` (iOS rejects the FCM JSON-string form).
+ */
+export function incomingCallApnsPayload(event) {
+  return { incomingCall: event };
 }
 
 /** Dismisses a ringing call on the phone (unique eventId per push). */
@@ -93,11 +106,15 @@ export function callEndedData(views, { eventId }) {
 
 /**
  * @param {object} deps
- * @param {(employeeId: string, data: object, opts: {ttlSeconds: number}) => Promise<unknown>} deps.sendToEmployee
+ * @param {(employeeId: string, data: object, opts: {ttlSeconds: number, apns?: object, excludeTokens?: string[]}) => Promise<unknown>} deps.sendToEmployee
+ *   `data` goes to Android (FCM); `opts.apns`, when present, to iPhones (APNs
+ *   VoIP). Stop pushes carry no `apns`: a VoIP push must always ring.
  * @param {number} deps.ringTimeoutSeconds
  * @param {boolean} [deps.showCallerName]
  * @param {() => number} [deps.now]
  * @param {() => string} [deps.newEventId]  UUID per ring push (dedup on the phone)
+ * @param {(ring: {callId: string, employeeId: string, expiresAtMs: number}) => ({url: string, token: string}|null)} [deps.declineLink]
+ *   Optional decline link for the ring push (see declineToken.js).
  * @returns {(views: object, opts?: {ringExpiresAt?: Date|string|number|null, answeringToken?: string|null}) => Promise<void>}
  */
 export function createCallPushNotifier({
@@ -106,6 +123,7 @@ export function createCallPushNotifier({
   showCallerName = false,
   now = () => Date.now(),
   newEventId = () => crypto.randomUUID(),
+  declineLink = null,
 }) {
   // Calls we sent a ring push for, so only those get a stop push. Bounded.
   const rung = new Map(); // callId -> calleeEmployeeId
@@ -126,13 +144,27 @@ export function createCallPushNotifier({
       const ttlSeconds = Math.min(MAX_TTL_SECONDS, Math.max(0, Math.ceil((expiresAtMs - now()) / 1000)));
       if (ttlSeconds <= 0) return; // already expired: never ring late
       remember(views.callId, views.calleeEmployeeId);
-      const data = incomingCallData(views, {
+      let decline = null;
+      try {
+        decline = declineLink?.({
+          callId: String(views.callId),
+          employeeId: String(views.calleeEmployeeId),
+          expiresAtMs,
+        }) || null;
+      } catch {
+        decline = null; // the ring matters more than the link
+      }
+      const event = incomingCallEvent(views, {
         expiresAtMs,
         showCallerName,
         eventId: newEventId(),
         startedAtMs: now(),
+        decline,
       });
-      await sendToEmployee(views.calleeEmployeeId, data, { ttlSeconds });
+      await sendToEmployee(views.calleeEmployeeId, incomingCallFcmData(event), {
+        ttlSeconds,
+        apns: incomingCallApnsPayload(event),
+      });
       return;
     }
 

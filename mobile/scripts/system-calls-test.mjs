@@ -327,6 +327,19 @@ check('CallContext: system UI wiring (no InCallManager, no double ring, token on
   assert.match(overlay, /!\(systemCalls && state\.phase === PHASES\.INCOMING\)/);
   const session = fs.readFileSync(path.join(here, '../src/calls/callSession.js'), 'utf8');
   assert.match(session, /AppState\.currentState !== 'active'\) return false/);
+  // Declines reach the server even when the socket is down.
+  assert.match(source, /api\.calls\.decline\(callId\)\.catch/);
+  assert.match(source, /api\.calls\.decline\(call\.id\)\.catch/);
+  // Closed app: the native receiver posts the push's decline link.
+  const app = JSON.parse(fs.readFileSync(path.join(here, '../app.json'), 'utf8'));
+  const plugins = app.expo.plugins;
+  const callkit = plugins.find((p) => Array.isArray(p) && p[0] === 'expo-callkit-telecom');
+  assert.equal(callkit[1].androidEventReceiver, '.CallEndedReceiver');
+  assert.ok(plugins.includes('./plugins/withCallEndedReceiver'));
+  const receiver = fs.readFileSync(path.join(here, '../plugins/CallEndedReceiver.kt'), 'utf8');
+  assert.match(receiver, /"onCallEnded"/);
+  assert.match(receiver, /declineUrl/);
+  assert.match(receiver, /goAsync\(\)/);
   const auth = fs.readFileSync(path.join(here, '../src/context/AuthContext.js'), 'utf8');
   assert.ok(auth.indexOf('await unregisterPushToken()') < auth.indexOf('await api.auth.logout()'), 'token removed before the server logout');
 });

@@ -23,6 +23,7 @@ import { buildIceServers, hasTurn } from './iceServers.js';
 import { SIGNAL_KINDS, canSendSignal, sanitizeSignal } from './relay.js';
 import { createCallPushNotifier } from '../../push/callPush.js';
 import { sendToEmployee } from '../../push/push.service.js';
+import { buildDeclineLink } from '../../push/pushDecline.service.js';
 
 export const SIGNALING_NAMESPACE = '/calls';
 export const SIGNALING_PATH = '/api/calls/socket';
@@ -417,6 +418,7 @@ export async function attachSignaling(httpServer) {
       sendToEmployee,
       ringTimeoutSeconds: env.callSignaling.ringTimeoutSeconds,
       showCallerName: env.push.showCallerName,
+      declineLink: buildDeclineLink,
     }),
   };
 

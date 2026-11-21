@@ -92,9 +92,11 @@
               "answer": "Answer",
               "decline": "Decline"
             }
-          }
+          },
+          "androidEventReceiver": ".CallEndedReceiver"
         }
-      ]
+      ],
+      "./plugins/withCallEndedReceiver"
     ],
     "extra": {
       "eas": {

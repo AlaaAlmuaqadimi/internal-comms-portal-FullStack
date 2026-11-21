@@ -72,6 +72,24 @@ export const callInviteRateLimiter = rateLimit({
   },
 });
 
+/**
+ * Decline links from ring pushes (Phase D). Unauthenticated, so keyed by IP;
+ * a real phone sends one per declined call.
+ */
+export const pushDeclineRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many requests. Please try again later.',
+      code: 'RATE_LIMITED',
+    });
+  },
+});
+
 /** Per-user limiter for signalling tickets (Phase B). */
 export const signalingTicketRateLimiter = rateLimit({
   windowMs: env.callSignaling.ticketRateLimit.windowMs,
