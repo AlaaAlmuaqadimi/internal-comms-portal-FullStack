@@ -20,9 +20,10 @@ web-build/
 # Metro
 .metro-health-check*
 
-# Build
-android/
-ios/
+# Build (only the generated native folders at the app root; local Expo
+# modules in modules/*/android are source code and must be committed)
+/android/
+/ios/
 
 # Debug
 npm-debug.log*

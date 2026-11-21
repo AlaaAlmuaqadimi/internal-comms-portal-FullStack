@@ -96,7 +96,15 @@
           "androidEventReceiver": ".CallEndedReceiver"
         }
       ],
-      "./plugins/withCallEndedReceiver"
+      "./plugins/withCallEndedReceiver",
+      "./plugins/withCallLockScreen",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#14283f"
+        }
+      ]
     ],
     "extra": {
       "eas": {

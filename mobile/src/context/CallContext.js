@@ -39,6 +39,7 @@ import { createSystemCallBridge, loadCallModule } from '../calls/systemCalls';
 import { api } from '../services/api';
 import { configurePushTokens, registerPushToken } from '../services/pushTokens';
 import { setupDeviceNotifications } from '../services/deviceNotifications';
+import { setShowOverLock } from '../../modules/call-lock-screen';
 import { createSignalingClient, SIGNALING_STATUS } from '../services/signaling';
 import { playSound } from '../services/sound';
 import { createCallSession, isAudioSupported, isSpeakerSupported } from '../calls/callSession';
@@ -418,6 +419,13 @@ export const CallProvider = ({ children }) => {
 
   // With the native call UI the system rings (also over the lock screen).
   useRingtone(state.phase === PHASES.INCOMING && !SYSTEM_CALLS);
+
+  // A live call shows over the lock screen (answering a locked phone needs no
+  // PIN); the moment it ends the app drops back behind the lock screen.
+  const liveOnScreen = state.phase === PHASES.CONNECTING || state.phase === PHASES.ACTIVE;
+  useEffect(() => {
+    if (SYSTEM_CALLS) setShowOverLock(liveOnScreen);
+  }, [liveOnScreen]);
 
   const requireClient = useCallback(() => {
     const client = clientRef.current;

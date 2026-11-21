@@ -340,6 +340,17 @@ check('CallContext: system UI wiring (no InCallManager, no double ring, token on
   assert.match(receiver, /"onCallEnded"/);
   assert.match(receiver, /declineUrl/);
   assert.match(receiver, /goAsync\(\)/);
+  // Lock screen: only a live call shows over it, never the rest of the app.
+  assert.match(source, /state\.phase === PHASES\.CONNECTING \|\| state\.phase === PHASES\.ACTIVE/);
+  assert.match(source, /setShowOverLock\(liveOnScreen\)/);
+  const lockPlugin = fs.readFileSync(path.join(here, '../plugins/withCallLockScreen.js'), 'utf8');
+  assert.match(lockPlugin, /requestDismissKeyguard|KEYGUARD_SERVICE/);
+  assert.ok(plugins.includes('./plugins/withCallLockScreen'));
+  const lockModule = fs.readFileSync(
+    path.join(here, '../modules/call-lock-screen/android/src/main/java/CallLockScreenModule.kt'),
+    'utf8'
+  );
+  assert.match(lockModule, /setShowWhenLocked\(on\)/);
   // Missed calls: channel id shared with the server, set up after sign-in.
   assert.match(source, /setupDeviceNotifications\(\);/);
   const notes = fs.readFileSync(path.join(here, '../src/services/deviceNotifications.js'), 'utf8');

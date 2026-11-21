@@ -1,0 +1,7 @@
+{
+  "name": "call-lock-screen",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Expo module: show the live call over the lock screen (Android).",
+  "main": "index.js"
+}
