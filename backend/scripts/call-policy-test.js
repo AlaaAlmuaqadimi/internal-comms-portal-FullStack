@@ -436,15 +436,106 @@ check('callAuth.service.js stays pure (no database import)', () => {
   assert.equal(/employee_contacts/.test(source), false);
 });
 
-check('call authorization does not use employee_contacts or a manager column', () => {
+check('call authorization does not use employee_contacts; unit heads come only from org_units.head_employee_id', () => {
+  const read = (file) =>
+    fs.readFileSync(path.join(here, '..', 'src', 'modules', 'calls', file), 'utf8');
   for (const file of ['callAuth.service.js', 'call.service.js']) {
-    const source = fs.readFileSync(
-      path.join(here, '..', 'src', 'modules', 'calls', file),
-      'utf8'
-    );
-    assert.equal(/employee_contacts/.test(source), false, `${file} uses employee_contacts`);
-    assert.equal(/head_employee_id|headEmployeeId|manager_id|managerId/.test(source), false);
+    assert.equal(/employee_contacts/.test(read(file)), false, `${file} uses employee_contacts`);
+    assert.equal(/manager_id|managerId/.test(read(file)), false, `${file} uses a manager column`);
   }
+  // The pure policy reads the participant flag, never the database column.
+  assert.equal(/head_employee_id/.test(read('callAuth.service.js')), false);
+  // The flag is loaded for the head of the employee's OWN, active unit only.
+  assert.match(read('call.service.js'), /hu\.head_employee_id = e\.id AND hu\.id = e\.org_unit_id/);
+});
+
+// ---- unit heads (V023) --------------------------------------------------------
+
+const itHead = participant({
+  employeeId: '00000000-0000-0000-0000-000000000010',
+  name: 'مدير التقنية',
+  unitName: 'إدارة تقنية المعلومات',
+  orgUnitKind: 'directorate',
+  isUnitHead: true,
+});
+const sectionHead = participant({
+  employeeId: '00000000-0000-0000-0000-000000000011',
+  orgUnitKind: 'section',
+  isUnitHead: true,
+});
+const officeHead = participant({
+  employeeId: '00000000-0000-0000-0000-000000000012',
+  orgUnitKind: 'office',
+  isUnitHead: 1,
+});
+
+check('a unit head (directorate, office or section) may call the Director and the Deputy', () => {
+  for (const head of [itHead, sectionHead, officeHead]) {
+    assert.equal(canCall(head, director), true, `${head.orgUnitKind} head -> director`);
+    assert.equal(canCall(head, deputy), true, `${head.orgUnitKind} head -> deputy`);
+    assert.equal(canCall(head, employeeA), true, `${head.orgUnitKind} head -> employee`);
+  }
+});
+
+check('being in a directorate is not enough: only the named head may call leadership', () => {
+  const staffOfDirectorate = participant({ orgUnitKind: 'directorate', isUnitHead: false });
+  assert.equal(canCall(staffOfDirectorate, director), false);
+  assert.equal(canCall(participant({ orgUnitKind: 'directorate' }), deputy), false);
+});
+
+check('an inactive unit head is still denied', () => {
+  const decision = evaluateCallPermission({ ...itHead, isActive: false }, director);
+  assert.equal(decision.allowed, false);
+  assert.equal(decision.code, CALL_DENIAL_CODES.CALLER_INACTIVE);
+});
+
+check('anyone may call a unit head, as before', () => {
+  assert.equal(canCall(employeeA, itHead), true);
+  assert.equal(canCall(director, itHead), true);
+});
+
+check('a call with leadership on either side is relay-only; a unit head calling the Director is not redacted', () => {
+  const view = buildCallView({
+    call: {
+      id: 'c-head', callerEmployeeId: itHead.employeeId, calleeEmployeeId: director.employeeId,
+      status: 'ringing',
+      metadata: { callerOrgUnitKind: 'directorate', calleeOrgUnitKind: 'root', relayOnly: true },
+    },
+    viewerEmployeeId: director.employeeId,
+    caller: itHead,
+    callee: director,
+  });
+  assert.equal(view.relayOnly, true);
+  assert.equal(view.iceTransportPolicy, 'relay');
+  assert.equal(view.redacted, false);
+  assert.equal(view.caller.name, 'مدير التقنية');
+  // An older row without the flag still protects a leadership callee.
+  const legacy = buildCallView({
+    call: { id: 'c-old', callerEmployeeId: itHead.employeeId, calleeEmployeeId: director.employeeId,
+      status: 'ended', metadata: { callerOrgUnitKind: 'directorate', calleeOrgUnitKind: 'root' } },
+    viewerEmployeeId: itHead.employeeId,
+    caller: itHead,
+    callee: director,
+  });
+  assert.equal(legacy.relayOnly, true);
+});
+
+check('V023 adds one unique, foreign-keyed head per unit, guarded for replays', () => {
+  const sql = fs.readFileSync(
+    path.join(repoRoot, 'database', 'migrations', 'V023__org_unit_heads.sql'),
+    'utf8'
+  );
+  assert.match(sql, /ADD COLUMN head_employee_id/);
+  assert.match(sql, /UNIQUE KEY uq_org_units_head \(head_employee_id\)/);
+  assert.match(sql, /REFERENCES employees \(id\)\s+ON DELETE SET NULL/);
+  assert.equal((sql.match(/FROM information_schema\./g) || []).length, 3);
+});
+
+check('unit-head rules: only directorates, offices and sections; replacing needs confirmation', () => {
+  const src = fs.readFileSync(path.join(here, '..', 'src', 'modules', 'org', 'unitHead.service.js'), 'utf8');
+  assert.match(src, /HEADED_UNIT_KINDS = Object\.freeze\(\['directorate', 'office', 'section'\]\)/);
+  assert.match(src, /previous && !replace/);
+  assert.match(src, /org_unit_id = \? AND is_active = 1/);
 });
 
 check('V018 creates app_settings and seeds both redaction labels', () => {

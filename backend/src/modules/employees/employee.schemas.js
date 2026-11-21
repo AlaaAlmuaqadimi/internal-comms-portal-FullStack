@@ -54,6 +54,9 @@ export const updateEmployeeSchema = z
     isActive: z
       .boolean({ invalid_type_error: 'Account status must be true or false.' })
       .optional(),
+    // Head of their unit (directorate, office or section). Omitted = unchanged.
+    isUnitHead: z.boolean().optional(),
+    replaceUnitHead: z.boolean().optional().default(false),
   })
   .transform((data) => ({
     ...data,

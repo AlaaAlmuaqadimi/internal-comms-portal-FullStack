@@ -162,7 +162,8 @@ export function buildCallView({ call, viewerEmployeeId, caller, callee, labels }
   );
 
   const redacted = Boolean(viewerIsCallee && callerIsLeadership && !calleeIsLeadership);
-  const relayOnly = callerIsLeadership;
+  // Recorded at invite; older calls fall back to "leadership on either side".
+  const relayOnly = Boolean(metadata.relayOnly ?? (callerIsLeadership || calleeIsLeadership));
 
   let viewCaller = normalizedCaller;
   if (redacted) {

@@ -3,6 +3,7 @@ import { pool, withTransaction } from '../../db/pool.js';
 import { AppError, ErrorCodes } from '../../lib/errors.js';
 import { hashPassword } from '../../lib/password.js';
 import { findAvailableUsername } from '../../lib/username.js';
+import { applyHeadFlag } from '../org/unitHead.service.js';
 
 const EMPLOYEE_COLUMNS = `
   e.id,
@@ -30,7 +31,11 @@ const EMPLOYEE_COLUMNS = `
     FROM user_roles ur
     JOIN roles r ON r.id = ur.role_id
     WHERE ur.user_id = u.id AND r.code = 'admin'
-  ) AS is_admin
+  ) AS is_admin,
+  EXISTS (
+    SELECT 1 FROM org_units hu
+    WHERE hu.head_employee_id = e.id AND hu.deleted_at IS NULL
+  ) AS is_unit_head
 `;
 
 const EMPLOYEE_JOINS = `
@@ -68,6 +73,7 @@ function mapEmployee(row) {
     hasAccount: !!row.user_id,
     roleCode: isAdmin ? 'admin' : 'employee',
     isAdmin,
+    isUnitHead: Number(row.is_unit_head) === 1,
   };
 }
 
@@ -388,6 +394,15 @@ export async function updateEmployee(employeeId, input, actor, ctx = {}) {
          VALUES (?, ?, ?, ?, ?)`,
         [crypto.randomUUID(), userId, role.id, preservedScope, actor.id]
       );
+
+      // Moving unit or deactivating drops a head role; the flag sets/clears it.
+      await applyHeadFlag(conn, {
+        employeeId,
+        unitId: input.orgUnitId,
+        isUnitHead: input.isUnitHead,
+        replace: Boolean(input.replaceUnitHead),
+        isActive: nextIsActive,
+      });
 
       await writeAudit(conn, {
         actorUserId: actor.id,

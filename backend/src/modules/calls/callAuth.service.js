@@ -9,7 +9,10 @@
  *   - any active employee may call any other active employee;
  *   - the Director (org unit kind `root`) and the Deputy (kind `deputy`) may
  *     call anyone, including each other;
- *   - non-leadership employees may never call the Director or Deputy;
+ *   - unit heads (the head of a directorate, office or section, named
+ *     explicitly by an admin, passed in as `isUnitHead`) may call the
+ *     Director and the Deputy;
+ *   - other employees may never call the Director or Deputy;
  *   - inactive, deleted and unknown targets are denied;
  *   - self-calls are denied.
  *
@@ -44,6 +47,11 @@ function participantKind(participant) {
     participant?.org_unit?.kind ??
     null
   );
+}
+
+function isUnitHead(participant) {
+  const value = participant?.isUnitHead ?? participant?.is_unit_head;
+  return value === true || value === 1 || value === '1';
 }
 
 function participantId(participant) {
@@ -123,6 +131,11 @@ export function evaluateCallPermission(callerOrInput, maybeTarget) {
   // Leadership may call anyone. Keep this before the target check so a
   // leadership caller can reach both ordinary employees and other leaders.
   if (isLeadershipParticipant(caller)) {
+    return allow();
+  }
+
+  // A unit head may reach the Director and the Deputy.
+  if (isLeadershipParticipant(target) && isUnitHead(caller)) {
     return allow();
   }
 

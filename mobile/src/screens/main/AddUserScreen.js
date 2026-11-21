@@ -24,6 +24,7 @@ import CustomButton from '../../components/CustomButton';
 import SelectField from '../../components/SelectField';
 import { flipStyles } from '../../i18n/rtlStyles';
 import { localizeText } from '../../i18n/localize';
+import UnitHeadToggle, { canHaveHead, otherHeadName } from '../../components/UnitHeadToggle';
 import {
   FIELD_ORDER,
   ROLE_VALUES,
@@ -60,6 +61,7 @@ const AddUserScreen = ({ navigation }) => {
     extension: '',
     roleCode: '',
     orgUnitId: '',
+    isUnitHead: false,
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -381,7 +383,12 @@ const AddUserScreen = ({ navigation }) => {
   };
 
   const selectOrgUnit = (unitId) => {
-    setFormData((prev) => ({ ...prev, orgUnitId: unitId }));
+    setFormData((prev) => ({
+      ...prev,
+      orgUnitId: unitId,
+      // A new unit means a new decision about heading it.
+      isUnitHead: prev.orgUnitId === unitId ? prev.isUnitHead : false,
+    }));
     clearError('orgUnitId');
     clearError('general');
     closeOrgPicker();
@@ -412,6 +419,11 @@ const AddUserScreen = ({ navigation }) => {
   const applyServerError = (error) => {
     if (!(error instanceof ApiError)) {
       setErrors({ general: t('addUser.error') });
+      return;
+    }
+
+    if (typeof error.code === 'string' && error.code.startsWith('UNIT_HEAD_')) {
+      setErrors({ general: error.details?.[0]?.message || error.message });
       return;
     }
 
@@ -484,6 +496,8 @@ const AddUserScreen = ({ navigation }) => {
         extension: formData.extension.trim(),
         roleCode: formData.roleCode,
         orgUnitId: formData.orgUnitId,
+        isUnitHead: canHaveHead(selectedOrgUnit) && formData.isUnitHead,
+        replaceUnitHead: Boolean(otherHeadName(selectedOrgUnit, null, language)),
       });
       setSavedUsername(created?.username || formData.username.trim());
     } catch (error) {
@@ -762,6 +776,15 @@ const AddUserScreen = ({ navigation }) => {
                             {selectedOrgPathLabel}
                           </Text>
                         ) : null}
+
+                        <UnitHeadToggle
+                          unit={selectedOrgUnit}
+                          value={formData.isUnitHead}
+                          onChange={(isUnitHead) => {
+                            setFormData((prev) => ({ ...prev, isUnitHead }));
+                            clearError('general');
+                          }}
+                        />
                       </View>
                     </>
                   )}

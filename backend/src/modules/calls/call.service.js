@@ -17,7 +17,12 @@ const PARTICIPANT_SELECT = `
   SELECT e.id AS employee_id, e.full_name_ar, e.full_name_en, e.avatar_url,
          e.is_active, e.deleted_at,
          ou.id AS org_unit_id, ou.name_ar AS org_unit_name_ar,
-         ou.name_en AS org_unit_name_en, ou.kind AS org_unit_kind
+         ou.name_en AS org_unit_name_en, ou.kind AS org_unit_kind,
+         EXISTS (
+           SELECT 1 FROM org_units hu
+            WHERE hu.head_employee_id = e.id AND hu.id = e.org_unit_id
+              AND hu.deleted_at IS NULL AND hu.is_active = 1
+         ) AS is_unit_head
     FROM employees e
     JOIN org_units ou ON ou.id = e.org_unit_id
    WHERE e.id = ?
@@ -76,6 +81,7 @@ function mapParticipant(row, prefix = '') {
     orgUnitKind: read('org_unit_kind') ?? null,
     isActive: Number(read('is_active')) === 1,
     deletedAt: read('deleted_at') ?? null,
+    isUnitHead: Number(read('is_unit_head')) === 1,
   };
 }
 
@@ -294,7 +300,10 @@ export async function inviteCall({
           calleeOrgUnitKind: target.orgUnitKind,
           callerLeadership: callerIsLeadership,
           calleeLeadership: calleeIsLeadership,
-          relayOnly: callerIsLeadership,
+          callerUnitHead: Boolean(caller.isUnitHead),
+          // TURN only whenever leadership is on the call (a unit head calling
+          // the Director must not learn the Director's device address).
+          relayOnly: callerIsLeadership || calleeIsLeadership,
           redaction: redacted ? 'leadership' : null,
         }),
       ]
