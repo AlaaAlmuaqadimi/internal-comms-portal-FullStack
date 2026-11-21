@@ -50,6 +50,48 @@ rings an old call. The phone must still check `expiresAt` and ask the server
 Both need the bearer token. At most 5 phones per employee are kept (newest
 first). Tokens that FCM reports as `UNREGISTERED` are deleted automatically.
 
+### iPhone (APNs VoIP)
+
+iPhones register an `APNS_VOIP` token (`platform: ios`, stored with provider
+`apns_voip`, migration V022). Ring pushes go to them through Apple as PushKit
+VoIP pushes (`src/modules/push/apns.js`, node:http2, ES256 provider token):
+
+- topic `<APNS_BUNDLE_ID>.voip`, `apns-push-type: voip`, priority 10,
+  expiration = ring deadline;
+- payload `{ "incomingCall": { ...same event as Android, as an object } }`;
+- **stop pushes are never sent to iPhones**: Apple requires every VoIP push to
+  show a CallKit call, so a "stop ringing" VoIP push would ring instead. On
+  iPhone the app is woken by the ring push, so it stops on the socket event or
+  at the ring timeout, and a decline reaches the server from the app itself.
+- 410 / `Unregistered` deletes the token; `BadDeviceToken` and
+  `DeviceTokenNotForTopic` keep it (usually sandbox/production or bundle id
+  set wrong on the server).
+
+Setup (after the Apple Developer account exists): create a key with "Apple
+Push Notifications service (APNs)", put the `.p8` in `backend/secrets/`
+(git-ignored, `*.p8` too), set `APNS_KEY_ID`, `APNS_TEAM_ID`,
+`APNS_BUNDLE_ID`; `APNS_PRODUCTION=false` for development builds, `true` for
+TestFlight / App Store. Android and iPhone work independently: either can be
+configured without the other.
+
+### Declining on a closed app
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| `POST` | `/api/push/decline` | `{ callId, token }` | no sign-in; rate limited per IP (30/min) |
+
+With the app closed no JavaScript runs, so a decline on the phone's call
+screen cannot use the socket. Each ring push carries `metadata.declineUrl`
+and `metadata.declineToken` (base URL: `PUSH_PUBLIC_API_URL`, or in development
+this machine's LAN IP found automatically; production must set it); the app's native
+receiver (`mobile/plugins/CallEndedReceiver.kt`) posts them here and the call
+is declined as if the app had sent `call:reject`.
+
+The token is an HMAC (key derived from the JWT signing key) over the call id,
+the callee's employee id and the ring deadline (+15 s). It declines only that
+ringing call for that callee; an ended ring returns `declined: false`, a bad
+token or unknown call returns 403.
+
 ## Implementation
 
 - `src/modules/push/fcm.js`: FCM HTTP v1 client without firebase-admin
@@ -58,6 +100,9 @@ first). Tokens that FCM reports as `UNREGISTERED` are deleted automatically.
   late rings, `call_stop` only for calls that rang.
 - `src/modules/push/push.service.js`: `push_tokens` table and sending; never
   throws, never logs tokens or credentials.
+- `src/modules/push/apns.js`: APNs VoIP client for iPhones.
+- `src/modules/push/declineToken.js` + `pushDecline.service.js`: decline
+  links in ring pushes and `POST /api/push/decline`.
 - Hooked into the signalling fan-out (`signaling.server.js`), in the
   background, after the socket events.
 

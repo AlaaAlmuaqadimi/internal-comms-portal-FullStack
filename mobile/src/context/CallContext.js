@@ -162,6 +162,11 @@ export const CallProvider = ({ children }) => {
   const pendingEndRef = useRef(null);
   const actionsRef = useRef({});
 
+  useEffect(() => {
+    logCall('provider mount');
+    return () => logCall('provider unmount');
+  }, []);
+
   const closeSession = useCallback(() => {
     sessionRef.current?.close();
     sessionRef.current = null;
@@ -227,7 +232,9 @@ export const CallProvider = ({ children }) => {
     clientRef.current = client;
     client.start();
 
+    logCall('signaling start');
     return () => {
+      logCall('signaling stop', stateRef.current.phase);
       closeSession();
       client.stop();
       clientRef.current = null;
@@ -238,6 +245,7 @@ export const CallProvider = ({ children }) => {
   // Back in the foreground: reconnect if needed, otherwise reconcile.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
+      if (stateRef.current.phase !== PHASES.IDLE) logCall('app state', next, stateRef.current.phase);
       if (next !== 'active') return;
       const client = clientRef.current;
       if (!client) return;
@@ -331,7 +339,11 @@ export const CallProvider = ({ children }) => {
         const { phase, call } = stateRef.current;
         logCall('system end', phase, call?.id === callId ? 'current' : 'pending');
         if (call?.id !== callId) {
+          // Declined before this app had the call (it was in the background
+          // and not yet synced): tell the server over REST right away, so the
+          // caller does not ring on. Harmless if the ring already ended.
           pendingEndRef.current = callId;
+          api.calls.decline(callId).catch(() => {});
           return;
         }
         if (phase === PHASES.INCOMING) actionsRef.current.reject?.();
@@ -460,7 +472,10 @@ export const CallProvider = ({ children }) => {
       const reply = await requireClient().emit('call:reject', { callId: call.id });
       dispatch({ type: 'LOCAL_ENDED', call: reply.call });
     } catch {
-      dispatch({ type: 'LOCAL_ENDED', reason: 'rejected' });
+      // The socket is often down in the background: same action over REST,
+      // so the caller stops ringing now instead of at the ring timeout.
+      const viaRest = await api.calls.decline(call.id).catch(() => null);
+      dispatch({ type: 'LOCAL_ENDED', ...(viaRest ? { call: viaRest } : { reason: 'rejected' }) });
     }
   }, [requireClient]);
 
@@ -475,6 +490,12 @@ export const CallProvider = ({ children }) => {
       dispatch({ type: 'LOCAL_ENDED', call: reply.call });
     } catch (err) {
       logCall('hang up not confirmed', event, clientRef.current?.getStatus?.(), err?.message);
+      const rest = phase === PHASES.OUTGOING ? api.calls.cancel : api.calls.end;
+      const viaRest = await rest(call.id).catch(() => null);
+      if (viaRest) {
+        dispatch({ type: 'LOCAL_ENDED', call: viaRest });
+        return;
+      }
       // Best effort: whichever of cancel/end applies, so nothing stays open.
       clientRef.current?.emit('call:end', { callId: call.id }).catch(() => {});
       clientRef.current?.emit('call:cancel', { callId: call.id }).catch(() => {});

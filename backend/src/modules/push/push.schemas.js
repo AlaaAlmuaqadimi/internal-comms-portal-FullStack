@@ -16,6 +16,14 @@ export const registerPushTokenSchema = z
   })
   .strict();
 
+// Posted by the app's native receiver when a call is declined on a closed app.
+export const pushDeclineSchema = z
+  .object({
+    callId: z.string().uuid(),
+    token: z.string().min(20).max(100),
+  })
+  .strict();
+
 export const unregisterPushTokenSchema = z
   .object({
     token: pushToken,

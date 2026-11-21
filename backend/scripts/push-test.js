@@ -27,6 +27,15 @@ import {
   createCallPushNotifier,
   incomingCallData,
 } from '../src/modules/push/callPush.js';
+import { createDeclineSigner, deriveDeclineKey } from '../src/modules/push/declineToken.js';
+import { EventEmitter } from 'node:events';
+import {
+  buildProviderToken,
+  createApnsClient,
+  isUnregisteredResponse,
+  parseApnsKey,
+} from '../src/modules/push/apns.js';
+import { pickLanAddress } from '../src/modules/push/lanAddress.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.resolve(here, '..');
@@ -223,7 +232,10 @@ check('ringing: the callee gets an incomingCall push in expo-callkit-telecom for
     caller: { id: 'internal-comms', displayName: GENERIC_CALLER_NAME },
     metadata: { expiresAt: new Date(NOW + 45_000).toISOString(), relayOnly: false, redacted: false },
   });
-  assert.deepEqual(sent[0].opts, { ttlSeconds: 45 });
+  assert.equal(sent[0].opts.ttlSeconds, 45);
+  assert.equal(sent[0].opts.excludeTokens, undefined);
+  // iPhones get the very same event, as an object (the FCM string form fails on iOS).
+  assert.deepEqual(sent[0].opts.apns, { incomingCall: JSON.parse(sent[0].data.incomingCall) });
   assert.equal(sent[0].data.incomingCall.includes('emp-'), false, 'no employee ids');
 });
 
@@ -360,9 +372,195 @@ check('push code never logs tokens or credentials', () => {
   }
 });
 
-check('the service-account folder is git-ignored', () => {
+// ---- declineToken.js ----------------------------------------------------------
+
+check('decline token: valid only for its call, its callee and until the ring ends', () => {
+  let clock = NOW;
+  const key = deriveDeclineKey('server-secret');
+  const signer = createDeclineSigner({ key, now: () => clock });
+  const token = signer.sign({ callId: 'call-1', employeeId: 'emp-callee', expiresAtMs: NOW + 45_000 });
+  assert.match(token, /^\d+\.[A-Za-z0-9_-]{43}$/);
+  assert.equal(signer.verify({ callId: 'call-1', employeeId: 'emp-callee', token }), true);
+  assert.equal(signer.verify({ callId: 'call-2', employeeId: 'emp-callee', token }), false, 'other call');
+  assert.equal(signer.verify({ callId: 'call-1', employeeId: 'emp-other', token }), false, 'other callee');
+  const [expiry, sig] = token.split('.');
+  assert.equal(signer.verify({ callId: 'call-1', employeeId: 'emp-callee', token: `${Number(expiry) + 60_000}.${sig}` }), false, 'expiry is signed');
+  const flipped = sig[0] === 'A' ? `B${sig.slice(1)}` : `A${sig.slice(1)}`;
+  assert.equal(signer.verify({ callId: 'call-1', employeeId: 'emp-callee', token: `${expiry}.${flipped}` }), false);
+  assert.equal(signer.verify({ callId: 'call-1', employeeId: 'emp-callee', token: 'junk' }), false);
+  const other = createDeclineSigner({ key: deriveDeclineKey('another-secret'), now: () => clock });
+  assert.equal(other.verify({ callId: 'call-1', employeeId: 'emp-callee', token }), false, 'other key');
+  clock = NOW + 45_000 + 60_000;
+  assert.equal(signer.verify({ callId: 'call-1', employeeId: 'emp-callee', token }), false, 'expired');
+});
+
+check('ring push carries the decline link when configured, never otherwise', async () => {
+  const seen = [];
+  const { notify, sent } = setupNotifier({
+    declineLink: (ring) => {
+      seen.push(ring);
+      return { url: 'http://192.168.1.10:4000/api/push/decline', token: 'tok-123' };
+    },
+  });
+  await notify(ringingViews(), { ringExpiresAt: new Date(NOW + 45_000) });
+  assert.deepEqual(seen, [{ callId: 'call-1', employeeId: 'emp-callee', expiresAtMs: NOW + 45_000 }]);
+  const event = JSON.parse(sent[0].data.incomingCall);
+  assert.equal(event.metadata.declineUrl, 'http://192.168.1.10:4000/api/push/decline');
+  assert.equal(event.metadata.declineToken, 'tok-123');
+
+  const broken = setupNotifier({
+    declineLink: () => {
+      throw new Error('boom');
+    },
+  });
+  await broken.notify(ringingViews());
+  assert.equal(broken.sent.length, 1, 'a failing link never blocks the ring');
+  assert.equal('declineUrl' in JSON.parse(broken.sent[0].data.incomingCall).metadata, false);
+});
+
+check('decline link address: Wi-Fi LAN IP first, never loopback or public', () => {
+  assert.equal(
+    pickLanAddress({
+      lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }],
+      'vEthernet (WSL)': [{ family: 'IPv4', address: '172.20.1.1', internal: false }],
+      'Wi-Fi': [
+        { family: 'IPv6', address: 'fe80::1', internal: false },
+        { family: 'IPv4', address: '192.168.50.177', internal: false },
+      ],
+    }),
+    '192.168.50.177'
+  );
+  assert.equal(pickLanAddress({ eth0: [{ family: 4, address: '10.0.0.5', internal: false }] }), '10.0.0.5');
+  assert.equal(pickLanAddress({ eth0: [{ family: 'IPv4', address: '8.8.8.8', internal: false }] }), null);
+  assert.equal(pickLanAddress({}), null);
+});
+
+// ---- apns.js (iPhone) -----------------------------------------------------
+
+const ecKeys = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+const EC_PEM = ecKeys.privateKey.export({ type: 'pkcs8', format: 'pem' });
+const APNS_TOKEN = 'a'.repeat(64);
+
+function fakeHttp2(responses) {
+  const requests = [];
+  let connects = 0;
+  const connect = (origin) => {
+    connects += 1;
+    const session = new EventEmitter();
+    session.closed = false;
+    session.destroyed = false;
+    session.request = (headers) => {
+      const stream = new EventEmitter();
+      stream.setEncoding = () => {};
+      stream.close = () => {};
+      stream.end = (body) => {
+        requests.push({ origin, headers, body: JSON.parse(body) });
+        const [status, reason] = responses.shift() || [200, ''];
+        setImmediate(() => {
+          stream.emit('response', { ':status': status });
+          if (reason) stream.emit('data', JSON.stringify({ reason }));
+          stream.emit('end');
+        });
+      };
+      return stream;
+    };
+    return session;
+  };
+  return { connect, requests, connects: () => connects };
+}
+
+check('APNs key: ids and an EC .p8 key are required; errors never include the key', () => {
+  const ok = parseApnsKey({ keyPem: EC_PEM, keyId: 'ABC123DEFG', teamId: 'TEAM123456' });
+  assert.equal(ok.keyId, 'ABC123DEFG');
+  assert.throws(() => parseApnsKey({ keyPem: EC_PEM, keyId: 'short', teamId: 'TEAM123456' }), /APNS_KEY_ID/);
+  assert.throws(() => parseApnsKey({ keyPem: EC_PEM, keyId: 'ABC123DEFG', teamId: '' }), /APNS_TEAM_ID/);
+  assert.throws(() => parseApnsKey({ keyPem: PRIVATE_PEM, keyId: 'ABC123DEFG', teamId: 'TEAM123456' }), /EC/);
+  assert.throws(
+    () => parseApnsKey({ keyPem: 'not a key', keyId: 'ABC123DEFG', teamId: 'TEAM123456' }),
+    (err) => /\.p8/.test(err.message) && !err.message.includes('not a key')
+  );
+});
+
+check('APNs provider token: ES256 JWT with kid and team, verifiable with the public key', () => {
+  const credentials = parseApnsKey({ keyPem: EC_PEM, keyId: 'ABC123DEFG', teamId: 'TEAM123456' });
+  const jwt = buildProviderToken(credentials, NOW);
+  const [h, c, s] = jwt.split('.');
+  assert.deepEqual(JSON.parse(Buffer.from(h, 'base64url')), { alg: 'ES256', kid: 'ABC123DEFG' });
+  assert.deepEqual(JSON.parse(Buffer.from(c, 'base64url')), { iss: 'TEAM123456', iat: Math.floor(NOW / 1000) });
+  const valid = crypto.verify('sha256', Buffer.from(`${h}.${c}`), { key: ecKeys.publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(s, 'base64url'));
+  assert.equal(valid, true);
+});
+
+check('APNs send: VoIP push to <bundle>.voip, sandbox by default, payload as JSON', async () => {
+  const fake = fakeHttp2([[200, '']]);
+  const credentials = parseApnsKey({ keyPem: EC_PEM, keyId: 'ABC123DEFG', teamId: 'TEAM123456' });
+  const client = createApnsClient({ credentials, bundleId: 'ly.call.comms', connect: fake.connect, now: () => NOW });
+  const payload = { incomingCall: { eventId: 'e1', serverCallId: 'call-1', caller: { id: 'internal-comms' } } };
+  const res = await client.send({ token: APNS_TOKEN, payload, ttlSeconds: 45 });
+  assert.deepEqual(res, { ok: true, unregistered: false, status: 200, reason: '' });
+  const [req] = fake.requests;
+  assert.equal(req.origin, 'https://api.sandbox.push.apple.com');
+  assert.equal(req.headers[':path'], `/3/device/${APNS_TOKEN}`);
+  assert.equal(req.headers['apns-topic'], 'ly.call.comms.voip');
+  assert.equal(req.headers['apns-push-type'], 'voip');
+  assert.equal(req.headers['apns-priority'], '10');
+  assert.equal(req.headers['apns-expiration'], String(Math.floor(NOW / 1000) + 45));
+  assert.match(req.headers.authorization, /^bearer [\w-]+\.[\w-]+\.[\w-]+$/);
+  assert.deepEqual(req.body, payload);
+
+  const prod = createApnsClient({ credentials, bundleId: 'ly.call.comms', production: true, connect: fakeHttp2([]).connect });
+  assert.equal(prod.origin, 'https://api.push.apple.com');
+});
+
+check('APNs: one connection reused; expired provider token renewed and retried once', async () => {
+  let clock = NOW;
+  const fake = fakeHttp2([[200, ''], [403, 'ExpiredProviderToken'], [200, '']]);
+  const credentials = parseApnsKey({ keyPem: EC_PEM, keyId: 'ABC123DEFG', teamId: 'TEAM123456' });
+  const client = createApnsClient({ credentials, bundleId: 'ly.call.comms', connect: fake.connect, now: () => clock });
+  await client.send({ token: APNS_TOKEN, payload: {} });
+  clock += 1000;
+  const res = await client.send({ token: APNS_TOKEN, payload: {} });
+  assert.equal(res.ok, true);
+  assert.equal(fake.requests.length, 3);
+  assert.equal(fake.connects(), 1, 'HTTP/2 connection reused');
+  assert.equal(fake.requests[0].headers.authorization, fake.requests[1].headers.authorization, 'token cached');
+  assert.notEqual(fake.requests[1].headers.authorization, fake.requests[2].headers.authorization, 'token renewed');
+});
+
+check('APNs: an uninstalled app (410) is unregistered; config errors keep the token', async () => {
+  assert.equal(isUnregisteredResponse(410, 'Unregistered'), true);
+  assert.equal(isUnregisteredResponse(400, 'BadDeviceToken'), false);
+  assert.equal(isUnregisteredResponse(400, 'DeviceTokenNotForTopic'), false);
+  assert.equal(isUnregisteredResponse(500, 'InternalServerError'), false);
+  const fake = fakeHttp2([[410, 'Unregistered']]);
+  const credentials = parseApnsKey({ keyPem: EC_PEM, keyId: 'ABC123DEFG', teamId: 'TEAM123456' });
+  const client = createApnsClient({ credentials, bundleId: 'ly.call.comms', connect: fake.connect, now: () => NOW });
+  const gone = await client.send({ token: APNS_TOKEN, payload: {} });
+  assert.deepEqual([gone.ok, gone.unregistered], [false, true]);
+  const junk = await client.send({ token: 'not-hex', payload: {} });
+  assert.equal(junk.ok, false);
+  assert.equal(fake.requests.length, 1, 'a malformed token is never sent');
+});
+
+check('iPhones: ring pushes only; stop pushes never go to APNs (a VoIP push must ring)', async () => {
+  const { notify, sent } = setupNotifier();
+  await notify(ringingViews(), { ringExpiresAt: new Date(NOW + 45_000) });
+  await notify({ ...ringingViews(), status: 'cancelled' });
+  assert.equal(sent.length, 2);
+  assert.ok(sent[0].opts.apns, 'ring has an APNs payload');
+  assert.equal(sent[1].opts.apns, undefined, 'stop push has none');
+  const service = fs.readFileSync(path.join(here, '../src/modules/push/push.service.js'), 'utf8');
+  assert.match(service, /row\.provider === 'apns_voip'\) return voip \?/);
+  assert.match(service, /const voip = apns \? loadApns\(\) : null/);
+  assert.match(service, /ios: 'apns_voip'/);
+  const migration = fs.readFileSync(path.join(here, '../../database/migrations/V022__push_tokens_apns.sql'), 'utf8');
+  assert.match(migration, /ENUM\('fcm','apns_voip'\)/);
+});
+
+check('the service-account folder and Apple .p8 keys are git-ignored', () => {
   const gitignore = fs.readFileSync(path.join(repoRoot, '.gitignore'), 'utf8');
-  assert.match(gitignore, /^backend\/secrets\/$/m);
+  assert.match(gitignore, /^backend\/secrets\/\r?$/m);
+  assert.match(gitignore, /^\*\.p8\r?$/m);
 });
 
 for (const [name, fn] of tests) {

@@ -91,6 +91,18 @@ const schema = z.object({
   FCM_SERVICE_ACCOUNT_FILE: z.string().default('./secrets/firebase-service-account.json'),
   // Put the caller's (possibly redacted) name in the push. Off: Google sees only the call id.
   PUSH_SHOW_CALLER_NAME: z.string().optional().default('false'),
+  // Address the PHONES use to reach this server, for the one-call decline link
+  // in ring pushes. Empty in development: this machine's LAN IP is used
+  // automatically. Production: set the public https address.
+  PUSH_PUBLIC_API_URL: z.string().default(''),
+  // iPhone rings (APNs VoIP). Off until the key id, team id and .p8 key file
+  // from the Apple Developer account are set. The .p8 file is a secret.
+  APNS_KEY_FILE: z.string().default('./secrets/apns-key.p8'),
+  APNS_KEY_ID: z.string().default(''),
+  APNS_TEAM_ID: z.string().default(''),
+  APNS_BUNDLE_ID: z.string().default('ly.call.comms'),
+  // false: Apple's sandbox (development builds); true: App Store / TestFlight.
+  APNS_PRODUCTION: z.string().optional().default('false'),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -184,6 +196,14 @@ export const env = {
     enabled: String(raw.PUSH_ENABLED).trim().toLowerCase() === 'true',
     serviceAccountFile: raw.FCM_SERVICE_ACCOUNT_FILE,
     showCallerName: String(raw.PUSH_SHOW_CALLER_NAME).trim().toLowerCase() === 'true',
+    publicApiUrl: String(raw.PUSH_PUBLIC_API_URL || '').trim().replace(/\/+$/, ''),
+    apns: {
+      keyFile: raw.APNS_KEY_FILE,
+      keyId: String(raw.APNS_KEY_ID || '').trim(),
+      teamId: String(raw.APNS_TEAM_ID || '').trim(),
+      bundleId: String(raw.APNS_BUNDLE_ID || '').trim(),
+      production: String(raw.APNS_PRODUCTION).trim().toLowerCase() === 'true',
+    },
   },
 };
 
