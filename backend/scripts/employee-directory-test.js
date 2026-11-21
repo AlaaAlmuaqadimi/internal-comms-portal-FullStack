@@ -26,6 +26,7 @@ const letters = 'abcdefghijklmnopqrstuvwxyz';
 const suffix = Array.from({ length: 8 }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
 
 const created = [];
+const tempUnits = [];
 let passed = 0;
 
 function check(name, fn) {
@@ -603,6 +604,88 @@ async function main() {
     assert.equal(reactivated.isActive, true);
   });
 
+  // --- unit heads (V023) ----------------------------------------------------
+  const [[parentDirectorate]] = await pool.query(
+    "SELECT id FROM org_units WHERE kind = 'directorate' AND deleted_at IS NULL LIMIT 1"
+  );
+  const headUnitId = crypto.randomUUID();
+  await pool.execute(
+    `INSERT INTO org_units (id, parent_id, code, name_ar, name_en, kind, sort_order, is_active)
+     VALUES (?, ?, ?, ?, ?, 'section', 999, 1)`,
+    [headUnitId, parentDirectorate.id, `test-${suffix}`, `قسم اختبار ${suffix}`, `Test section ${suffix}`]
+  );
+  tempUnits.push(headUnitId);
+
+  const makeMember = async (tag, isUnitHead) =>
+    users.createUser(
+      createUserSchema.parse({
+        password: PASSWORD,
+        fullNameAr: `رئيس ${tag} ${suffix}`.slice(0, 100),
+        fullNameEn: `Head ${tag} ${suffix}`,
+        email: `head.${tag}.${suffix}@example.com`,
+        jobTitleAr: 'رئيس قسم',
+        extension: await nextExtension(),
+        roleCode: 'employee',
+        orgUnitId: headUnitId,
+        isUnitHead,
+      }),
+      actor
+    );
+
+  const headA = await makeMember('a', true);
+  created.push(headA.employeeId);
+  const [[unitAfterA]] = await pool.execute('SELECT head_employee_id FROM org_units WHERE id = ?', [headUnitId]);
+  check('creating an employee as unit head names them head of that unit', () => {
+    assert.equal(headA.isUnitHead, true);
+    assert.equal(unitAfterA.head_employee_id, headA.employeeId);
+  });
+
+  await assert.rejects(
+    () => makeMember('dup', true),
+    (err) => err.code === 'UNIT_HEAD_EXISTS' && err.status === 409
+  );
+  check('a second head needs confirmation (409 UNIT_HEAD_EXISTS)', () => {});
+
+  const headB = await makeMember('b', false);
+  created.push(headB.employeeId);
+  const replaced = await employees.updateEmployee(
+    headB.employeeId,
+    updateEmployeeSchema.parse(
+      updatePayload({
+        fullNameEn: `Head b ${suffix}`,
+        email: `head.b.${suffix}@example.com`,
+        extension: await nextExtension(),
+        orgUnitId: headUnitId,
+        isUnitHead: true,
+        replaceUnitHead: true,
+      })
+    ),
+    actor
+  );
+  const formerHead = await employees.getEmployee(headA.employeeId);
+  check('confirmed replacement moves the head role to the new person', () => {
+    assert.equal(replaced.isUnitHead, true);
+    assert.equal(formerHead.isUnitHead, false);
+  });
+
+  const moved = await employees.updateEmployee(
+    headB.employeeId,
+    updateEmployeeSchema.parse(
+      updatePayload({
+        fullNameEn: `Head b ${suffix}`,
+        email: `head.b.${suffix}@example.com`,
+        extension: await nextExtension(),
+        orgUnitId: org.id,
+      })
+    ),
+    actor
+  );
+  const [[unitAfterMove]] = await pool.execute('SELECT head_employee_id FROM org_units WHERE id = ?', [headUnitId]);
+  check('moving the head to another unit frees the unit', () => {
+    assert.equal(moved.isUnitHead, false);
+    assert.equal(unitAfterMove.head_employee_id, null);
+  });
+
   // --- not found -----------------------------------------------------------
   await assert.rejects(
     () => employees.getEmployee(crypto.randomUUID()),
@@ -620,6 +703,9 @@ try {
   for (const employeeId of created) {
     await pool.execute('DELETE FROM users WHERE employee_id = ?', [employeeId]).catch(() => {});
     await pool.execute('DELETE FROM employees WHERE id = ?', [employeeId]).catch(() => {});
+  }
+  for (const unitId of tempUnits) {
+    await pool.execute('DELETE FROM org_units WHERE id = ?', [unitId]).catch(() => {});
   }
   console.log(`\n[test:employees] ${passed} checks passed`);
   await pool.end();

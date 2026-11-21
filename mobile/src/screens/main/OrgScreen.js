@@ -414,6 +414,12 @@ const OrgScreen = () => {
               {textFor(node)}
             </Text>
             <Text style={styles.nodeKind}>{kindLabel(node.kind)}</Text>
+            {node.headEmployeeId ? (
+              <Text style={styles.nodeKind} numberOfLines={1}>
+                {(language === 'ar' ? 'المدير: ' : 'Head: ')
+                  + ((language === 'ar' ? node.headNameAr : node.headNameEn) || node.headNameAr || node.headNameEn || '')}
+              </Text>
+            ) : null}
           </View>
 
           {canManage && (

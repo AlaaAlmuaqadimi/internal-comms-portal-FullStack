@@ -35,8 +35,10 @@ const RAW_UNIT_SELECT = `
 const UNIT_SELECT = `
   SELECT u.id, u.parent_id, u.code, u.name_ar, u.name_en, u.kind,
          u.sort_order, u.is_active, u.metadata, u.created_at, u.updated_at,
-         COALESCE(ec.employee_count, 0) AS employee_count
+         COALESCE(ec.employee_count, 0) AS employee_count,
+         u.head_employee_id, he.full_name_ar AS head_name_ar, he.full_name_en AS head_name_en
   FROM org_units u
+  LEFT JOIN employees he ON he.id = u.head_employee_id AND he.deleted_at IS NULL
   LEFT JOIN (
     SELECT org_unit_id, COUNT(*) AS employee_count
     FROM employees
@@ -71,6 +73,9 @@ function toUnit(row) {
     isActive: row.is_active === 1 || row.is_active === true || row.is_active === '1',
     metadata: parseMetadata(row.metadata),
     employeeCount: Number(row.employee_count || 0),
+    headEmployeeId: row.head_employee_id ?? null,
+    headNameAr: row.head_name_ar ?? null,
+    headNameEn: row.head_name_en ?? null,
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
   };

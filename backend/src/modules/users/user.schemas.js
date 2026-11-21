@@ -94,6 +94,10 @@ export const createUserSchema = z
     roleCode,
     scopeOrgUnitId: z.string().uuid().optional().nullable(),
     language: z.enum(['ar', 'en']).optional().default('ar'),
+    // Head of the chosen unit (directorate, office or section): may call the
+    // Director and the Deputy. `replaceUnitHead` confirms replacing a current head.
+    isUnitHead: z.boolean().optional().default(false),
+    replaceUnitHead: z.boolean().optional().default(false),
   })
   .transform((data) => ({
     ...data,

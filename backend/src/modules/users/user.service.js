@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { withTransaction, pool } from '../../db/pool.js';
 import { AppError, ErrorCodes } from '../../lib/errors.js';
+import { setUnitHead } from '../org/unitHead.service.js';
 import { hashPassword } from '../../lib/password.js';
 import { isOrgUnitWithinScope } from '../../db/scope.js';
 import { findAvailableUsername, usernameIsTaken } from '../../lib/username.js';
@@ -229,6 +230,14 @@ export async function createUser(input, actor, ctx = {}) {
       [userId, input.language || 'ar']
     );
 
+    if (input.isUnitHead) {
+      await setUnitHead(conn, {
+        unitId: input.orgUnitId,
+        employeeId,
+        replace: Boolean(input.replaceUnitHead),
+      });
+    }
+
     await writeAudit(conn, {
       actorUserId: actor.id,
       action: 'user.create',
@@ -246,6 +255,7 @@ export async function createUser(input, actor, ctx = {}) {
       extension: input.extension,
       roleCode: role.code,
       scopeOrgUnitId: input.scopeOrgUnitId,
+      isUnitHead: Boolean(input.isUnitHead),
     };
   });
 }

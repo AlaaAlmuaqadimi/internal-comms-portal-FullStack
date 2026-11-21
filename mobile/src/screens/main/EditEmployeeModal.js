@@ -25,6 +25,7 @@ import { api, ApiError } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
+import UnitHeadToggle, { canHaveHead, otherHeadName } from '../../components/UnitHeadToggle';
 import {
   EDIT_FIELD_ORDER,
   validateEmployeeForm,
@@ -75,6 +76,7 @@ const EditEmployeeModal = ({
     extension: '',
     roleCode: '',
     orgUnitId: '',
+    isUnitHead: false,
     isActive: true,
   });
   const [errors, setErrors] = useState({});
@@ -120,6 +122,7 @@ const EditEmployeeModal = ({
       extension: employee.extension || '',
       roleCode: employee.roleCode || 'employee',
       orgUnitId: employee.orgUnitId || '',
+      isUnitHead: employee.isUnitHead === true,
       isActive: employee.isActive !== false,
     });
     setErrors({});
@@ -236,6 +239,8 @@ const EditEmployeeModal = ({
     return findPath(orgTree, []) || [];
   }, [orgTree, formData.orgUnitId]);
 
+  const selectedOrgUnit = selectedOrgPath[selectedOrgPath.length - 1] || null;
+
   const selectedOrgUnitName = useMemo(() => {
     const unit = selectedOrgPath[selectedOrgPath.length - 1];
     return unit
@@ -271,6 +276,11 @@ const EditEmployeeModal = ({
   const applyServerError = (error) => {
     if (!(error instanceof ApiError)) {
       setErrors({ general: t('editEmployee.error') });
+      return;
+    }
+
+    if (typeof error.code === 'string' && error.code.startsWith('UNIT_HEAD_')) {
+      setErrors({ general: error.details?.[0]?.message || error.message });
       return;
     }
 
@@ -336,6 +346,8 @@ const EditEmployeeModal = ({
         roleCode: formData.roleCode,
         orgUnitId: formData.orgUnitId,
         isActive: formData.isActive,
+        isUnitHead: canHaveHead(selectedOrgUnit) && formData.isUnitHead,
+        replaceUnitHead: Boolean(otherHeadName(selectedOrgUnit, employee.id, language)),
       };
       if (formData.password) payload.password = formData.password;
 
@@ -602,6 +614,16 @@ const EditEmployeeModal = ({
                       {selectedOrgPathLabel}
                     </Text>
                   ) : null}
+
+                  <UnitHeadToggle
+                    unit={selectedOrgUnit}
+                    value={formData.isUnitHead}
+                    employeeId={employee?.id}
+                    onChange={(isUnitHead) => {
+                      setFormData((prev) => ({ ...prev, isUnitHead }));
+                      clearError('general');
+                    }}
+                  />
                 </View>
               </View>
 
@@ -691,7 +713,11 @@ const EditEmployeeModal = ({
           units={orgTree}
           selectedId={formData.orgUnitId}
           onSelect={(unitId) => {
-            setFormData((prev) => ({ ...prev, orgUnitId: unitId }));
+            setFormData((prev) => ({
+              ...prev,
+              orgUnitId: unitId,
+              isUnitHead: prev.orgUnitId === unitId ? prev.isUnitHead : false,
+            }));
             clearError('orgUnitId');
             clearError('general');
           }}
