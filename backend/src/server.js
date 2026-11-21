@@ -1,9 +1,12 @@
 import { createApp } from './app.js';
-import { env, assertAuthKeysConfigured } from './config/env.js';
+import { env, assertAuthKeysConfigured, productionConfigWarnings } from './config/env.js';
 import { closePool } from './db/pool.js';
 import { attachSignaling, closeSignaling } from './modules/calls/signaling/signaling.server.js';
 
 assertAuthKeysConfigured();
+for (const warning of productionConfigWarnings()) {
+  console.warn(`[config] ${warning}`);
+}
 
 const app = createApp();
 const server = app.listen(env.port, () => {

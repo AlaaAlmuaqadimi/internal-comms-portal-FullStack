@@ -15,7 +15,6 @@ import { spacing } from '../constants/spacing';
 
 // Auth Screens
 import LoginScreen from '../screens/auth/LoginScreen';
-import RegisterScreen from '../screens/auth/RegisterScreen';
 
 // Main Screens
 import DirectoryScreen from '../screens/main/DirectoryScreen';
@@ -41,7 +40,6 @@ const AuthStack = () => {
       }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
     </Stack.Navigator>
   );
 };
@@ -129,7 +127,6 @@ const MainStack = () => {
     >
       <Stack.Screen name="MainTabs" component={MainTabs} />
       <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
       {/* AddUser is only mounted for the admin role; the server enforces the
           same rule on POST /api/users. */}
       {isAdmin && (

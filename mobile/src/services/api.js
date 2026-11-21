@@ -245,20 +245,6 @@ export const api = {
       return data.user;
     },
 
-    register: async (userData) => {
-      const { data } = await request('/api/auth/register', {
-        method: 'POST',
-        auth: false,
-        body: JSON.stringify(userData),
-      });
-      return {
-        success: true,
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        user: data.user,
-      };
-    },
-
     logout: async () => {
       try {
         await request('/api/auth/logout', {

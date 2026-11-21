@@ -201,19 +201,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (userData) => {
-    try {
-      const result = await api.auth.register(userData);
-      await persistSession(result.accessToken, result.refreshToken, result.user);
-      setUser(result.user);
-      setIsAuthenticated(true);
-      await applyServerPreferences(result.user);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error.message || 'حدث خطأ أثناء إنشاء الحساب', code: error.code, status: error.status };
-    }
-  };
-
   // Authenticated user creation. Throws on failure so the form can show the
   // server error; the caller must already hold users.manage.
   const createUser = async (userData) => {
@@ -306,7 +293,6 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthenticated,
     login,
-    register,
     createUser,
     logout,
     updateUser,

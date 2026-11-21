@@ -6,6 +6,12 @@ import { env } from './config/env.js';
 import routes from './routes/index.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 
+/** Allowed browser origins: the configured list, else none in production. */
+export function corsOrigin() {
+  if (env.corsOrigins.length > 0) return env.corsOrigins;
+  return !env.isProduction;
+}
+
 export function createApp() {
   const app = express();
 
@@ -15,14 +21,13 @@ export function createApp() {
   }
 
   app.use(helmet());
-  app.use(
-    cors({
-      origin: env.corsOrigins.length > 0 ? env.corsOrigins : true,
-      credentials: true,
-    })
-  );
-  // Profile avatars are sent as base64 data URLs, so allow a larger body.
-  app.use(express.json({ limit: '8mb' }));
+  // The mobile app sends no Origin header, so CORS only matters for browsers.
+  // Production allows only CORS_ORIGINS (none by default); development any.
+  app.use(cors({ origin: corsOrigin(), credentials: true }));
+  // Profile avatars are sent as base64 data URLs: only the profile update
+  // gets a large body; everything else stays small (less memory per request).
+  app.use('/api/auth/update', express.json({ limit: '8mb' }));
+  app.use(express.json({ limit: '200kb' }));
   if (env.nodeEnv !== 'test') {
     app.use(morgan(env.logFormat));
   }

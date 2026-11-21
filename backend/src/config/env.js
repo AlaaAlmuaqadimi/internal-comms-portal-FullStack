@@ -207,6 +207,29 @@ export const env = {
   },
 };
 
+/**
+ * Settings that are fine on a developer PC but unsafe on a real server.
+ * Logged at start-up in production (they do not stop the server).
+ */
+export function productionConfigWarnings(config = env) {
+  if (!config.isProduction) return [];
+  const warnings = [];
+  if (['root', 'admin'].includes(String(config.db.user).toLowerCase())) {
+    warnings.push('DB_USER is an admin account; use a dedicated least-privilege app user (see database/security/).');
+  }
+  if (!config.db.password) warnings.push('DB_PASSWORD is empty.');
+  if (config.push.enabled && config.push.publicApiUrl && !config.push.publicApiUrl.startsWith('https://')) {
+    warnings.push('PUSH_PUBLIC_API_URL must be an https:// address in production.');
+  }
+  if (config.push.enabled && !config.push.publicApiUrl) {
+    warnings.push('PUSH_PUBLIC_API_URL is empty: declining on a closed app will not reach the server.');
+  }
+  if (config.callSignaling.enabled && config.callSignaling.ice.turnUrls.length === 0) {
+    warnings.push('No TURN server: calls between different networks (and leadership calls) will fail.');
+  }
+  return warnings;
+}
+
 export function assertAuthKeysConfigured() {
   if (!env.jwt.privateKey || !env.jwt.publicKey) {
     throw new Error(
