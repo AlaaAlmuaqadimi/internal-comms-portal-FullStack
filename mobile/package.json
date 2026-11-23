@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "expo/AppEntry.js",
   "scripts": {
-    "start": "expo start --dev-client",
-    "start:go": "expo start --go",
+    "start": "node scripts/start-dev.mjs --dev-client",
+    "start:go": "node scripts/start-dev.mjs --go",
     "start:tunnel": "node scripts/patch-expo-tunnel-scheme.mjs && expo start --dev-client --tunnel",
     "start:go:tunnel": "node scripts/patch-expo-tunnel-scheme.mjs && expo start --go --tunnel",
     "start:go:tunnel:ngrok": "node scripts/patch-expo-tunnel-scheme.mjs && expo start --go --tunnel ngrok",
@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@config-plugins/react-native-webrtc": "^15.0.2",
-    "@expo-google-fonts/cairo": "^0.4.2",
+    "@expo-google-fonts/ibm-plex-sans-arabic": "^0.4.2",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-picker/picker": "2.11.4",

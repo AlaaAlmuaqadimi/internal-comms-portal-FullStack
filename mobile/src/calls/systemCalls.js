@@ -61,6 +61,8 @@ export function moduleEndReason(reason) {
 
 const CALL_OPTIONS = Object.freeze({ hasVideo: false, supportsHolding: false, supportsDTMF: false });
 const CALLER_ID = 'internal-comms'; // opaque and fixed: never identifies a person
+// How long the OS may take to report back a mute change we asked for.
+const MUTE_ECHO_WINDOW_MS = 3000;
 
 /**
  * @param {object} deps
@@ -69,6 +71,7 @@ const CALLER_ID = 'internal-comms'; // opaque and fixed: never identifies a pers
  * @param {(callId: string) => void} deps.onEnd     User declined / ended in the system UI, or the OS ended it
  * @param {(muted: boolean) => void} [deps.onMuted] Mute toggled in the system UI
  * @param {() => string} [deps.newEventId]
+ * @param {() => number} [deps.now]
  * @returns {object|null} null when the module is not available
  */
 export function createSystemCallBridge({
@@ -77,6 +80,7 @@ export function createSystemCallBridge({
   onEnd,
   onMuted,
   newEventId = randomEventId,
+  now = Date.now,
 }) {
   if (!calls) return null;
 
@@ -87,12 +91,10 @@ export function createSystemCallBridge({
   const answeredInApp = new Set(); // callIds answered from our own screen
   const endedByUs = new Set(); // sessionIds we ended (ignore their end event)
   const mutedBySession = new Map();
-  // Mute values we sent to the OS and whose echo has not come back yet
-  // (sessionId -> [{ value, at }]). Telecom answers each setMuted with a
-  // mute event; replaying those late echoes would flip the button back when
-  // the user taps quickly.
-  const pendingMuteEchoes = new Map();
-  const MUTE_ECHO_MS = 2000;
+  // sessionId -> [{ value, at }]: mute changes we asked the OS for. The OS
+  // reports every change back, ours included; those echoes must not reach the
+  // app, or the late echo of a quick earlier tap flips the button back.
+  const pendingMute = new Map();
   const subscriptions = [];
   let speakerOn = null;
 
@@ -116,7 +118,7 @@ export function createSystemCallBridge({
     outgoingSessions.delete(sessionId);
     answerRequests.delete(sessionId);
     mutedBySession.delete(sessionId);
-    pendingMuteEchoes.delete(sessionId);
+    pendingMute.delete(sessionId);
     endedByUs.delete(sessionId);
   }
 
@@ -180,17 +182,16 @@ export function createSystemCallBridge({
     on('addSetMutedActionListener', (event) => {
       if (!event?.id) return;
       const value = Boolean(event.isMuted);
-      const now = Date.now();
-      const pending = (pendingMuteEchoes.get(event.id) || []).filter(
-        (entry) => now - entry.at < MUTE_ECHO_MS
+      const queue = (pendingMute.get(event.id) || []).filter(
+        (request) => now() - request.at < MUTE_ECHO_WINDOW_MS
       );
-      if (pending.length && pending[0].value === value) {
-        // Our own request coming back: the app already shows it.
-        pending.shift();
-        pendingMuteEchoes.set(event.id, pending);
+      if (queue.length > 0 && queue[0].value === value) {
+        queue.shift(); // the echo of our own request: the app already shows it
+        pendingMute.set(event.id, queue);
         return;
       }
-      pendingMuteEchoes.delete(event.id);
+      // A real change made in the system call screen.
+      pendingMute.delete(event.id);
       mutedBySession.set(event.id, value);
       onMuted?.(value);
     });
@@ -269,12 +270,13 @@ export function createSystemCallBridge({
 
     setMuted(callId, muted) {
       const sessionId = sessionByCall.get(callId);
-      if (!sessionId || mutedBySession.get(sessionId) === Boolean(muted)) return;
-      mutedBySession.set(sessionId, Boolean(muted));
-      const pending = pendingMuteEchoes.get(sessionId) || [];
-      pending.push({ value: Boolean(muted), at: Date.now() });
-      pendingMuteEchoes.set(sessionId, pending);
-      quiet(calls.setMuted(sessionId, Boolean(muted)));
+      const value = Boolean(muted);
+      if (!sessionId || mutedBySession.get(sessionId) === value) return;
+      mutedBySession.set(sessionId, value);
+      const queue = pendingMute.get(sessionId) || [];
+      queue.push({ value, at: now() });
+      pendingMute.set(sessionId, queue);
+      quiet(calls.setMuted(sessionId, value));
     },
 
     setSpeaker(on) {

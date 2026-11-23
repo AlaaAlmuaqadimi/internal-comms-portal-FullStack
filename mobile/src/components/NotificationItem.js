@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
+import { Text } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
-import { spacing, borderRadius } from '../constants/spacing';
+import { spacing, borderRadius, shadows } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
 import { localizeText } from '../i18n/localize';
 import { flipStyles } from '../i18n/rtlStyles';
+import { notificationText } from '../utils/notificationText';
 
 // Compact time for the sender's "last read" line; the details window has the
 // full receipt list.
@@ -22,6 +24,15 @@ const formatReadTime = (timestamp) => {
   return `${y}-${m}-${d} ${hh}:${mm}`;
 };
 
+const ICONS = {
+  alert: 'alert-circle',
+  info: 'information-circle',
+};
+
+/**
+ * One inbox row: icon, title, two lines of text and the time. Unread items get
+ * a blue dot and a light tint instead of a heavy border.
+ */
 const NotificationItem = ({
   notification,
   onPress,
@@ -53,26 +64,18 @@ const NotificationItem = ({
       : t('notifications.receiptsInlineNoTime', { read: readCount, total });
   }, [isSender, readCount, recipientCount, notification.lastReadAt, t]);
 
-  const getIconName = () => {
-    switch (notification.icon) {
-      case 'alert':
-        return 'alert-circle';
-      case 'info':
-        return 'information-circle';
-      default:
-        return 'megaphone';
-    }
-  };
-
-  const iconColor = colors.primaryLight;
-
-  // Only announcements exist; older items of the removed types are shown as
-  // announcements too.
-  const typeLabel = t('notifications.typeAnnouncement');
+  const when = [notification.date, notification.time].filter(Boolean).join(' · ');
+  // A one-line message is both title and summary on the server: show it once.
+  const { heading, text } = notificationText(
+    localizeText(notification.title),
+    localizeText(notification.summary)
+  );
 
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isUnread }}
       style={({ pressed }) => [
         styles.container,
         isUnread && styles.unread,
@@ -81,51 +84,57 @@ const NotificationItem = ({
         style,
       ]}
     >
-      <View style={styles.content}>
-        <View style={[styles.iconContainer, { backgroundColor: `${iconColor}15` }]}>
-          <Ionicons name={getIconName()} size={24} color={iconColor} />
+      <View style={[styles.iconContainer, isUnread && styles.iconContainerUnread]}>
+        <Ionicons
+          name={ICONS[notification.icon] || 'megaphone'}
+          size={20}
+          color={isUnread ? colors.textWhite : colors.primaryLight}
+        />
+      </View>
+
+      <View style={styles.textContainer}>
+        <View style={styles.header}>
+          <Text
+            style={[styles.title, isUnread && styles.titleUnread]}
+            numberOfLines={text ? 1 : 2}
+          >
+            {heading}
+          </Text>
+          {isUnread && <View style={styles.unreadDot} accessibilityLabel={t('common.unread')} />}
         </View>
-        <View style={styles.textContainer}>
-          <View style={styles.header}>
-            <Text style={styles.type}>{typeLabel}</Text>
-            <View style={styles.status}>
-              {expired && (
-                <View style={styles.expiredBadge}>
-                  <Text style={styles.expiredText}>
-                    {t('notifications.expired')}
-                  </Text>
-                </View>
-              )}
-              {isUnread && (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadText}>{t('common.unread')}</Text>
-                </View>
-              )}
-              {notReadYet && (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadText}>
-                    {t('notifications.notReadYet')}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-          <Text style={styles.title}>{localizeText(notification.title)}</Text>
-          <Text style={styles.summary} numberOfLines={2}>{localizeText(notification.summary)}</Text>
-          <Text style={styles.date}>{notification.date} · {notification.time}</Text>
-          {!!readSummaryText && (
-            <View style={styles.readSummaryRow}>
-              <Ionicons
-                name="checkmark-done-outline"
-                size={13}
-                color={colors.success}
-              />
-              <Text numberOfLines={1} style={styles.readSummary}>
-                {readSummaryText}
+
+        {!!text && (
+          <Text style={styles.summary} numberOfLines={2}>
+            {text}
+          </Text>
+        )}
+
+        <View style={styles.footer}>
+          <Text style={styles.date} numberOfLines={1}>
+            {when}
+          </Text>
+          {expired && (
+            <View style={[styles.chip, styles.chipWarning]}>
+              <Text style={[styles.chipText, styles.chipTextWarning]}>
+                {t('notifications.expired')}
               </Text>
             </View>
           )}
+          {notReadYet && (
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>{t('notifications.notReadYet')}</Text>
+            </View>
+          )}
         </View>
+
+        {!!readSummaryText && (
+          <View style={styles.readSummaryRow}>
+            <Ionicons name="checkmark-done-outline" size={13} color={colors.success} />
+            <Text numberOfLines={1} style={styles.readSummary}>
+              {readSummaryText}
+            </Text>
+          </View>
+        )}
       </View>
     </Pressable>
   );
@@ -133,63 +142,90 @@ const NotificationItem = ({
 
 const createStyles = (colors) => StyleSheet.create({
   container: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
+    padding: spacing.md,
     marginBottom: spacing.sm,
+    ...shadows.sm,
   },
   unread: {
-    borderColor: colors.primaryLight,
-    borderWidth: 2,
+    backgroundColor: colors.selectedSurface,
   },
   pressed: {
-    opacity: 0.8,
+    opacity: 0.85,
+    transform: [{ scale: 0.99 }],
   },
-  content: {
-  flexDirection: 'row',
-  gap: spacing.md,
-  padding: spacing.md,
+  expiredCard: {
+    opacity: 0.75,
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.md,
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+  },
+  iconContainerUnread: {
+    backgroundColor: colors.primaryLight,
   },
   textContainer: {
     flex: 1,
+    minWidth: 0,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
+    gap: spacing.xs,
   },
-  type: {
-    ...typography.bodySmallBold,
-    color: colors.primaryLight,
+  title: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    flex: 1,
   },
-  status: {
+  titleUnread: {
+    ...typography.bodyBold,
+  },
+  unreadDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.primaryLight,
+  },
+  summary: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  footer: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: spacing.xs,
-    flexShrink: 0,
+    marginTop: spacing.xs,
   },
-  expiredCard: {
-    opacity: 0.85,
+  date: {
+    ...typography.caption,
+    color: colors.textLight,
   },
-  expiredBadge: {
-    paddingHorizontal: spacing.xs,
+  chip: {
+    paddingHorizontal: spacing.sm,
     paddingVertical: 1,
     borderRadius: borderRadius.full,
+    backgroundColor: colors.background,
+  },
+  chipWarning: {
     backgroundColor: colors.warningLight,
   },
-  expiredText: {
-    ...typography.caption,
+  chipText: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  chipTextWarning: {
     color: colors.warning,
-    fontSize: 10,
   },
   readSummaryRow: {
     flexDirection: 'row',
@@ -201,30 +237,6 @@ const createStyles = (colors) => StyleSheet.create({
     ...typography.caption,
     color: colors.success,
     flex: 1,
-  },
-  unreadBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  unreadText: {
-    ...typography.caption,
-    color: colors.primaryLight,
-    marginLeft: 4,
-  },
-  title: {
-    ...typography.bodyBold,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  summary: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: spacing.xs,
-  },
-  date: {
-    ...typography.caption,
-    color: colors.textLight,
   },
 });
 

@@ -245,6 +245,26 @@ export const api = {
       return data.user;
     },
 
+    // Changes the signed-in user's own password. The server signs out the
+    // account's other devices and returns a new token pair for this one, which
+    // is saved like a refreshed session so this phone stays signed in.
+    changePassword: async (currentPassword, newPassword) => {
+      const { data } = await request('/api/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      if (data?.accessToken && data?.refreshToken) {
+        const tokens = { accessToken: data.accessToken, refreshToken: data.refreshToken };
+        setAuthTokens(tokens);
+        try {
+          await onTokensRefreshed?.(tokens);
+        } catch {
+          // Saving failed: the in-memory session still works until the app closes.
+        }
+      }
+      return { success: true };
+    },
+
     logout: async () => {
       try {
         await request('/api/auth/logout', {

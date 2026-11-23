@@ -73,6 +73,9 @@ async function askCallPermissions() {
 }
 
 function logCall(...args) {
+  // Development builds only: release builds keep call diagnostics off the
+  // device log, which other apps and adb can read.
+  if (typeof __DEV__ !== 'undefined' && !__DEV__) return;
   // eslint-disable-next-line no-console
   console.log('[call]', ...args);
 }
@@ -85,6 +88,9 @@ const RING_REPEAT_MS = 3000;
 const RING_VIBRATION = [0, 800, 1200];
 
 const CallContext = createContext(null);
+// Mute and speaker live in their own context: toggling them re-renders only
+// the call controls, not every screen that reads the call state.
+const CallAudioContext = createContext(null);
 // startCall alone, with a value that never changes: screens that only start
 // calls (the Directory) must not re-render on every mute / speaker / state
 // change of a live call.
@@ -94,6 +100,15 @@ export const useCall = () => {
   const context = useContext(CallContext);
   if (!context) {
     throw new Error('useCall must be used inside CallProvider');
+  }
+  return context;
+};
+
+/** { muted, setMuted, speaker, setSpeaker, audioEnabled, speakerEnabled } */
+export const useCallAudio = () => {
+  const context = useContext(CallAudioContext);
+  if (!context) {
+    throw new Error('useCallAudio must be used inside CallProvider');
   }
   return context;
 };
@@ -148,6 +163,8 @@ export const CallProvider = ({ children }) => {
   const [status, setStatus] = useState(SIGNALING_STATUS.OFFLINE);
   const [muted, setMuted] = useState(false);
   const [speaker, setSpeaker] = useState(false);
+  // The call shrunk into the bar at the top of the app (WhatsApp style).
+  const [minimized, setMinimized] = useState(false);
   const [lastEndedAt, setLastEndedAt] = useState(0);
   // { callId, status, code } from the audio session; see calls/securityCode.js.
   const [securityCode, setSecurityCode] = useState(null);
@@ -304,6 +321,11 @@ export const CallProvider = ({ children }) => {
     session.start();
   }, [state.phase, state.call]);
 
+  // Every new call opens full screen; the bar goes away when the call is over.
+  useEffect(() => {
+    if (state.phase === PHASES.IDLE || state.phase === PHASES.INCOMING) setMinimized(false);
+  }, [state.phase]);
+
   // The audio session lives only while the call is connecting or active.
   useEffect(() => {
     if (state.phase !== PHASES.CONNECTING && state.phase !== PHASES.ACTIVE) {
@@ -417,8 +439,7 @@ export const CallProvider = ({ children }) => {
 
   // Diagnostics: phase changes only (no names, ids or call details).
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log('[call] phase', state.phase, state.endedReason || '', state.call?.direction || '');
+    logCall('phase', state.phase, state.endedReason || '', state.call?.direction || '');
   }, [state.phase, state.endedReason, state.call?.direction]);
 
   // With the native call UI the system rings (also over the lock screen).
@@ -526,10 +547,8 @@ export const CallProvider = ({ children }) => {
       // The phone's own call UI rings and answers; the app shows the call
       // only once it is answered.
       systemCalls: SYSTEM_CALLS,
-      muted,
-      setMuted,
-      speaker,
-      setSpeaker,
+      minimized,
+      setMinimized,
       lastEndedAt,
       securityCode: securityCode && securityCode.callId === state.call?.id ? securityCode : null,
       startCall,
@@ -537,12 +556,26 @@ export const CallProvider = ({ children }) => {
       reject,
       hangUp,
     }),
-    [state, status, muted, speaker, lastEndedAt, securityCode, startCall, accept, reject, hangUp]
+    [state, status, minimized, lastEndedAt, securityCode, startCall, accept, reject, hangUp]
+  );
+
+  const audioValue = useMemo(
+    () => ({
+      muted,
+      setMuted,
+      speaker,
+      setSpeaker,
+      audioEnabled: AUDIO_ENABLED,
+      speakerEnabled: SPEAKER_ENABLED,
+    }),
+    [muted, speaker]
   );
 
   return (
     <CallContext.Provider value={value}>
-      <StartCallContext.Provider value={stableStartCall}>{children}</StartCallContext.Provider>
+      <CallAudioContext.Provider value={audioValue}>
+        <StartCallContext.Provider value={stableStartCall}>{children}</StartCallContext.Provider>
+      </CallAudioContext.Provider>
     </CallContext.Provider>
   );
 };

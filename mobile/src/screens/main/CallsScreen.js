@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   Pressable,
   RefreshControl,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from '../../components/AppText';
+import SafeAreaView from '../../components/SafeAreaView';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
@@ -17,12 +17,13 @@ import SearchBar from '../../components/SearchBar';
 import Loading from '../../components/Loading';
 import EmptyState from '../../components/EmptyState';
 import UserAvatar from '../../components/UserAvatar';
-import CustomButton from '../../components/CustomButton';
 import { api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { FadeInView, ScaleInView } from '../../components/Motion';
+import { listItemDelay } from '../../constants/motion';
 import { useCall, useStartCall } from '../../context/CallContext';
 
 // The API returns the call view built by `callView.service.js`. The history
@@ -36,20 +37,32 @@ function typeOf(call) {
   return call?.direction === 'outgoing' ? 'outgoing' : 'incoming';
 }
 
+/** "0:42", "12:05", or "1:02:05" for calls of an hour or more. */
 function formatDuration(seconds) {
-  const total = Number.isFinite(Number(seconds)) ? Math.max(0, Number(seconds)) : 0;
-  const minutes = Math.floor(total / 60);
-  const rest = total % 60;
-  return `${minutes}:${String(rest).padStart(2, '0')}`;
+  const total = Number.isFinite(Number(seconds)) ? Math.max(0, Math.round(Number(seconds))) : 0;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const rest = String(total % 60).padStart(2, '0');
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, '0')}:${rest}` : `${minutes}:${rest}`;
 }
 
-function formatWhen(iso, locale) {
+const DAY_MS = 24 * 60 * 60 * 1000;
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+/** Short, phone-style time: "3:00 ص" today, "أمس 3:00 ص", else "23 نوفمبر". */
+function formatWhen(iso, locale, t) {
   const date = iso ? new Date(iso) : null;
-  if (!date || Number.isNaN(date.getTime())) return { date: '', time: '' };
-  return {
-    date: date.toLocaleDateString(locale),
-    time: date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }),
-  };
+  if (!date || Number.isNaN(date.getTime())) return '';
+  const time = date.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+  const now = new Date();
+  const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY_MS);
+  if (days === 0) return time;
+  if (days === 1) return `${t('calls.yesterday')} ${time}`;
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return date.toLocaleDateString(
+    locale,
+    sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }
+  );
 }
 
 const CallsScreen = ({ navigation }) => {
@@ -137,111 +150,77 @@ const CallsScreen = ({ navigation }) => {
     setSelectedType('all');
   };
 
-  const getTypeColor = (type) => {
-    switch (type) {
-      case 'incoming':
-        return colors.primaryLight;
-      case 'outgoing':
-        return colors.success;
-      case 'missed':
-        return colors.danger;
-      default:
-        return colors.textSecondary;
-    }
+  const typeStyle = {
+    incoming: { icon: 'arrow-down', color: colors.primaryLight, label: t('calls.typeIncoming') },
+    outgoing: { icon: 'arrow-up', color: colors.success, label: t('calls.typeOutgoing') },
+    missed: { icon: 'arrow-down', color: colors.danger, label: t('calls.typeMissed') },
   };
 
-  const getTypeIcon = (type) => {
-    switch (type) {
-      case 'incoming':
-        return 'arrow-down';
-      case 'outgoing':
-        return 'arrow-up';
-      default:
-        return 'call';
-    }
-  };
-
-  // أحجام متجاوبة
-  const avatarSize = isSmallScreen ? 'small' : isLargeScreen ? 'large' : 'medium';
-  const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.lg : spacing.md;
   const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
   const dateLocale = isRTL ? 'ar-LY' : 'en-GB';
 
-  const renderCall = ({ item }) => {
+  // One compact row per call, like a phone's call log: who, how and when,
+  // and a call-back button.
+  const renderCall = ({ item, index }) => {
     const person = counterpartOf(item) || {};
     const type = typeOf(item);
-    const { date, time } = formatWhen(item.initiatedAt, dateLocale);
-    const typeLabel =
-      type === 'missed'
-        ? t('calls.typeMissed')
-        : type === 'outgoing'
-        ? t('calls.typeOutgoing')
-        : t('calls.typeIncoming');
+    const { icon, color, label } = typeStyle[type];
+    const name = localizeText(person.name || '');
+    const when = formatWhen(item.initiatedAt, dateLocale, t);
+    const meta = [label, when].filter(Boolean).join(' · ');
+    // Every call shows its duration; calls nobody answered read 0:00.
+    const answered = item.durationSeconds > 0 || Boolean(item.answeredAt);
+    const duration = formatDuration(item.durationSeconds);
     const canCall = item.canCallBack !== false && Boolean(person.employeeId);
 
     return (
-      <View
-        style={[
-          styles.callCard,
-          { padding: cardPadding },
-          type === 'missed' && styles.callCardMissed,
-        ]}
-      >
-        <View style={styles.callHeader}>
-          <UserAvatar
-            person={{ name: person.name, avatarUrl: person.avatarUrl }}
-            size={avatarSize}
-          />
-          <View style={styles.callInfo}>
-            <Text style={[styles.callName, isSmallScreen && styles.callNameSmall]}>
-              {localizeText(person.name || '')}
-            </Text>
-            {!!person.unitName && (
-              <Text style={[styles.callUnit, isSmallScreen && styles.callUnitSmall]}>
-                {localizeText(person.unitName)}
-              </Text>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.callDetails}>
-          <View style={styles.callType}>
-            <Ionicons
-              name={getTypeIcon(type)}
-              size={isSmallScreen ? 14 : 16}
-              color={getTypeColor(type)}
-            />
-            <Text
-              style={[
-                styles.callTypeText,
-                { color: getTypeColor(type) },
-                isSmallScreen && styles.callTypeTextSmall,
-              ]}
-            >
-              {typeLabel}
-            </Text>
-          </View>
-          <Text style={[styles.callDate, isSmallScreen && styles.callDateSmall]}>
-            {date}
-            {time ? ` · ${time}` : ''}
+      <FadeInView delay={listItemDelay(index)} style={styles.row}>
+        <UserAvatar person={{ name: person.name, avatarUrl: person.avatarUrl }} size="medium" />
+        <View style={styles.rowText}>
+          <Text
+            style={[styles.rowName, type === 'missed' && styles.rowNameMissed]}
+            numberOfLines={1}
+          >
+            {name}
           </Text>
-          {item.durationSeconds > 0 && (
-            <Text style={[styles.callDuration, isSmallScreen && styles.callDurationSmall]}>
-              {t('calls.duration', { duration: formatDuration(item.durationSeconds) })}
+          {/* How, when, and how long: "↑ صادرة · 3:00 ص · ⏱ 1:23" */}
+          <View style={styles.rowMeta}>
+            <Ionicons name={icon} size={13} color={color} />
+            <Text style={styles.rowMetaText} numberOfLines={1}>
+              {meta}
             </Text>
-          )}
+            <Text style={styles.rowMetaText}>·</Text>
+            <View
+              style={styles.durationInline}
+              accessible
+              accessibilityLabel={t('calls.duration', { duration })}
+            >
+              <Ionicons
+                name="time-outline"
+                size={13}
+                color={answered ? colors.textSecondary : colors.textLight}
+              />
+              <Text style={[styles.durationText, !answered && styles.durationTextMuted]}>
+                {duration}
+              </Text>
+            </View>
+          </View>
         </View>
-
-        <View style={styles.callActions}>
-          <CustomButton
-            title={t('calls.callButton')}
-            onPress={() => handleCallPress(item)}
-            icon="call"
-            size="small"
-            disabled={!canCall}
-          />
-        </View>
-      </View>
+        <Pressable
+          onPress={() => handleCallPress(item)}
+          disabled={!canCall}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t('calls.callBack', { name })}
+          style={({ pressed }) => [
+            styles.callBackButton,
+            pressed && styles.callBackButtonPressed,
+            !canCall && styles.callBackButtonDisabled,
+          ]}
+        >
+          <Ionicons name="call" size={18} color={colors.primaryLight} />
+        </Pressable>
+      </FadeInView>
     );
   };
 
@@ -250,29 +229,22 @@ const CallsScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} animated>
       {/* الهيدر */}
-      <View style={[styles.header, { padding: headerPadding }]}>
+      <View style={[styles.header, { paddingHorizontal: headerPadding }]}>
         <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
-          <View>
-            <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
-              {t('calls.title')}
-            </Text>
-            <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
-              {t('calls.subtitle')}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.countBadge}>
-          <Text style={[styles.countText, isSmallScreen && styles.countTextSmall]}>
-            {filteredCalls.length}
+          <Text
+            style={[styles.title, isSmallScreen && styles.titleSmall]}
+            accessibilityRole="header"
+          >
+            {t('calls.title')}
           </Text>
         </View>
       </View>
 
       {/* البحث والتصفية */}
-      <View style={[styles.filtersContainer, { padding: headerPadding }]}>
+      <View style={[styles.filtersContainer, { paddingHorizontal: headerPadding }]}>
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -294,6 +266,8 @@ const CallsScreen = ({ navigation }) => {
                 selectedType === filter.key && styles.filterChipActive,
               ]}
               onPress={() => setSelectedType(filter.key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: selectedType === filter.key }}
             >
               <Text
                 style={[
@@ -328,6 +302,7 @@ const CallsScreen = ({ navigation }) => {
         />
       ) : (
         <FlatList
+          keyboardDismissMode="on-drag"
           data={filteredCalls}
           renderItem={renderCall}
           keyExtractor={(item) => item.id}
@@ -350,25 +325,23 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    // Blends into the page: a modern large-title header without a divider.
+    backgroundColor: colors.background,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
   },
   headerTitle: {
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-  gap: spacing.md,
-  flex: 1,
-},
-titleBorder: {
-  width: 4,
-  height: 50,
-  backgroundColor: colors.accent,
-  borderRadius: 2,
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  titleBorder: {
+    // A short brand accent beside the title.
+    width: 4,
+    height: 22,
+    backgroundColor: colors.accent,
+    borderRadius: 2,
+  },
   title: {
     ...typography.h2,
     color: colors.text,
@@ -376,34 +349,9 @@ titleBorder: {
   titleSmall: {
     fontSize: 18,
   },
-  subtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    lineHeight: 18,
-  },
-  subtitleSmall: {
-    fontSize: 11,
-  },
-  countBadge: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  countText: {
-    ...typography.h4,
-    color: colors.primaryLight,
-  },
-  countTextSmall: {
-    fontSize: 16,
-  },
   filtersContainer: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
+    paddingBottom: spacing.sm,
   },
   filterRow: {
     flexDirection: 'row',
@@ -413,10 +361,10 @@ titleBorder: {
   },
   filterChip: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs + 2,
     borderRadius: borderRadius.full,
     borderWidth: 1,
-    borderColor: colors.borderDark,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
   },
   filterChipActive: {
@@ -434,82 +382,73 @@ titleBorder: {
     color: colors.textWhite,
   },
   listContent: {
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
   },
   listContentLandscape: {
     paddingHorizontal: '15%',
   },
-  callCard: {
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
     ...shadows.sm,
   },
-  callCardMissed: {
-    borderColor: '#b65b41',
-    borderWidth: 2,
-  },
-  callHeader: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: spacing.md,
-  marginBottom: spacing.sm,
-  },
-  callInfo: {
+  rowText: {
     flex: 1,
   },
-  callName: {
-    ...typography.h4,
+  rowName: {
+    ...typography.bodyBold,
     color: colors.text,
   },
-  callNameSmall: {
-    fontSize: 14,
+  rowNameMissed: {
+    color: colors.danger,
   },
-  callUnit: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
+  rowMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     marginTop: 2,
   },
-  callUnitSmall: {
-    fontSize: 11,
-  },
-  callDetails: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  callType: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: spacing.xs,
-  marginBottom: spacing.xs,
-},
-callTypeText: {
-  ...typography.bodySmallBold,
-},
-  callTypeTextSmall: {
-    fontSize: 11,
-  },
-  callDate: {
+  rowMetaText: {
     ...typography.caption,
     color: colors.textSecondary,
-    marginBottom: 2,
+    flexShrink: 1,
   },
-  callDateSmall: {
-    fontSize: 10,
+  durationInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    flexShrink: 0,
   },
-  callDuration: {
+  durationText: {
     ...typography.caption,
     color: colors.textSecondary,
+    // Digits keep a steady width so durations line up row to row.
+    fontVariant: ['tabular-nums'],
   },
-  callDurationSmall: {
-    fontSize: 10,
+  durationTextMuted: {
+    color: colors.textLight,
   },
-  callActions: {
-    alignItems: 'flex-start',
+  callBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+  },
+  callBackButtonPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.94 }],
+  },
+  callBackButtonDisabled: {
+    opacity: 0.35,
   },
 });
 

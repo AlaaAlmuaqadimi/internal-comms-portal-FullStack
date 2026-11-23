@@ -9,10 +9,10 @@ import {
   FlatList,
   Platform,
   StyleSheet,
-  Text,
   Vibration,
   View,
 } from 'react-native';
+import { Text } from './AppText';
 import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';

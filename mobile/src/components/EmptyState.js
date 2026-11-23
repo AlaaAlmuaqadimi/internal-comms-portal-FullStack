@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { FadeInView } from './Motion';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 import CustomButton from './CustomButton';
@@ -18,7 +20,7 @@ const EmptyState = ({
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <View style={[styles.container, style]}>
+    <FadeInView style={[styles.container, style]}>
       <View style={styles.iconContainer}>
         <Ionicons name={icon} size={48} color={colors.primaryLight} />
       </View>
@@ -32,7 +34,7 @@ const EmptyState = ({
           style={styles.button}
         />
       )}
-    </View>
+    </FadeInView>
   );
 };
 

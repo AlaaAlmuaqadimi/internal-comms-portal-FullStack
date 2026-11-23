@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -11,17 +10,22 @@ import {
   Modal,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from '../../components/AppText';
+import SafeAreaView from '../../components/SafeAreaView';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { api, ApiError } from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
-import { typography } from '../../constants/typography';
+import { typography, fonts } from '../../constants/typography';
 import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
 import CustomButton from '../../components/CustomButton';
 import SelectField from '../../components/SelectField';
+import ScreenHeader from '../../components/ScreenHeader';
+import FormSection from '../../components/FormSection';
+import PickerField from '../../components/PickerField';
+import FormAlert from '../../components/FormAlert';
 import { flipStyles } from '../../i18n/rtlStyles';
 import { localizeText } from '../../i18n/localize';
 import UnitHeadToggle, { canHaveHead, otherHeadName } from '../../components/UnitHeadToggle';
@@ -47,7 +51,6 @@ const AddUserScreen = ({ navigation }) => {
     [colors, isRTL]
   );
 
-  const isSmallScreen = width < 375;
   const isLandscape = width > height;
 
   const [formData, setFormData] = useState({
@@ -517,29 +520,39 @@ const AddUserScreen = ({ navigation }) => {
   const renderSuccess = () => (
     <View style={styles.successCard}>
       <View style={styles.successIcon}>
-        <Ionicons name="checkmark-circle" size={48} color={colors.success} />
+        <Ionicons name="checkmark" size={36} color={colors.success} />
       </View>
       <Text style={styles.successTitle}>{t('addUser.success')}</Text>
-      <View style={styles.successRow}>
-        <Text style={styles.successLabel}>{t('addUser.username')}</Text>
-        <Text style={styles.successValue}>{savedUsername}</Text>
+      <Text style={styles.successLabel}>{t('addUser.username')}</Text>
+      <View style={styles.successChip}>
+        <Ionicons name="at" size={16} color={colors.primaryLight} />
+        <Text style={styles.successValue} selectable>
+          {savedUsername}
+        </Text>
       </View>
       <CustomButton
         title={t('common.close')}
         onPress={() => navigation.goBack()}
         variant="primary"
+        size="large"
         style={styles.successButton}
       />
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+      <ScreenHeader
+        title={t('addUser.title')}
+        subtitle={t('addUser.subtitle')}
+        onBack={() => navigation.goBack()}
+      />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
         <ScrollView
+          keyboardDismissMode="on-drag"
           ref={scrollRef}
           contentContainerStyle={[styles.scrollContent, isLandscape && styles.scrollContentLandscape]}
           keyboardShouldPersistTaps="handled"
@@ -548,49 +561,23 @@ const AddUserScreen = ({ navigation }) => {
           }}
           scrollEventThrottle={16}
         >
-          <View style={styles.header}>
-            <Pressable onPress={() => navigation.goBack()} style={styles.backButton} hitSlop={10}>
-              <Ionicons
-                name={isRTL ? 'arrow-forward' : 'arrow-back'}
-                size={24}
-                color={colors.textWhite}
-              />
-            </Pressable>
-            <View style={styles.headerText}>
-              <Text style={styles.headerTitle}>{t('addUser.title')}</Text>
-              <Text style={styles.headerSubtitle}>{t('addUser.subtitle')}</Text>
-            </View>
-          </View>
-
           <View style={styles.content}>
             {savedUsername ? (
               renderSuccess()
             ) : (
-              <View style={styles.form}>
-                {errors.general && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{errors.general}</Text>
-                  </View>
-                )}
+              <View>
+                <FormAlert message={errors.general} />
 
-                {optionsError && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{optionsError}</Text>
-                    <CustomButton
-                      title={t('common.retry', { defaultValue: 'Retry' })}
-                      onPress={loadOptions}
-                      variant="outline"
-                      size="small"
-                      style={styles.retryButton}
-                    />
-                  </View>
-                )}
+                <FormAlert message={optionsError}>
+                  <CustomButton
+                    title={t('common.retry', { defaultValue: 'Retry' })}
+                    onPress={loadOptions}
+                    variant="outline"
+                    size="small"
+                  />
+                </FormAlert>
 
-                <View style={styles.section}>
-                  <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
-                    {t('addUser.accountInfo')}
-                  </Text>
-
+                <FormSection delay={0} icon="person-outline" title={t('addUser.personalInfo')}>
                   <View ref={fieldRef('fullNameAr')} collapsable={false}>
                     <CustomInput
                       label={t('addUser.fullName')}
@@ -618,7 +605,9 @@ const AddUserScreen = ({ navigation }) => {
                       icon="text"
                     />
                   </View>
+                </FormSection>
 
+                <FormSection delay={70} icon="key-outline" title={t('addUser.loginInfo')}>
                   <View ref={fieldRef('username')} collapsable={false}>
                     <CustomInput
                       label={t('addUser.username')}
@@ -678,12 +667,9 @@ const AddUserScreen = ({ navigation }) => {
                       icon="mail"
                     />
                   </View>
-                </View>
+                </FormSection>
 
-                <View style={styles.section}>
-                  <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
-                    {t('addUser.orgInfo')}
-                  </Text>
+                <FormSection delay={140} icon="briefcase-outline" title={t('addUser.orgInfo')}>
 
                   <View ref={fieldRef('jobTitleAr')} collapsable={false}>
                     <CustomInput
@@ -737,45 +723,17 @@ const AddUserScreen = ({ navigation }) => {
                         />
                       </View>
 
-                      <View ref={fieldRef('orgUnitId')} collapsable={false} style={styles.orgUnitField}>
-                        <Text style={styles.orgUnitLabel}>
-                          {t('addUser.orgUnit')}
-                          <Text style={styles.orgUnitRequired}> *</Text>
-                        </Text>
-
-                        <Pressable
+                      <View ref={fieldRef('orgUnitId')} collapsable={false}>
+                        <PickerField
+                          label={t('addUser.orgUnit')}
+                          required
+                          value={selectedOrgUnitName}
+                          placeholder={t('addUser.orgUnitPlaceholder')}
                           onPress={openOrgPicker}
-                          accessibilityRole="button"
-                          accessibilityState={{ expanded: orgModalVisible }}
-                          style={[
-                            styles.orgUnitTrigger,
-                            errors.orgUnitId && styles.orgUnitTriggerError,
-                          ]}
-                        >
-                          <Text
-                            numberOfLines={2}
-                            style={[
-                              styles.orgUnitValue,
-                              { textAlign: align },
-                              !selectedOrgUnitName && styles.orgUnitPlaceholder,
-                            ]}
-                          >
-                            {selectedOrgUnitName || t('addUser.orgUnitPlaceholder')}
-                          </Text>
-                          <Ionicons
-                            name="chevron-down"
-                            size={18}
-                            color={colors.textSecondary}
-                          />
-                        </Pressable>
-
-                        {errors.orgUnitId ? (
-                          <Text style={styles.orgUnitError}>{errors.orgUnitId}</Text>
-                        ) : selectedOrgPathLabel ? (
-                          <Text style={[styles.orgUnitHint, { textAlign: align }]}>
-                            {selectedOrgPathLabel}
-                          </Text>
-                        ) : null}
+                          error={errors.orgUnitId}
+                          hint={selectedOrgPathLabel}
+                          expanded={orgModalVisible}
+                        />
 
                         <UnitHeadToggle
                           unit={selectedOrgUnit}
@@ -788,21 +746,24 @@ const AddUserScreen = ({ navigation }) => {
                       </View>
                     </>
                   )}
-                </View>
-
-                <CustomButton
-                  title={t('addUser.submit')}
-                  onPress={handleSubmit}
-                  loading={loading}
-                  disabled={optionsLoading || !!optionsError || loading}
-                  icon="person-add"
-                  style={styles.submitButton}
-                  iconPosition="left"
-                />
+                </FormSection>
               </View>
             )}
           </View>
         </ScrollView>
+
+        {savedUsername ? null : (
+          <View style={styles.footer}>
+            <CustomButton
+              title={t('addUser.submit')}
+              onPress={handleSubmit}
+              loading={loading}
+              disabled={optionsLoading || !!optionsError || loading}
+              icon="person-add"
+              size="large"
+            />
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       <Modal
@@ -852,6 +813,7 @@ const AddUserScreen = ({ navigation }) => {
               />
 
               <ScrollView
+                keyboardDismissMode="on-drag"
                 style={[
                   styles.orgTreeScroll,
                   { maxHeight: Math.max(160, Math.round(height * 0.55)) },
@@ -877,7 +839,8 @@ const AddUserScreen = ({ navigation }) => {
                         key={row.id}
                         style={[
                           styles.orgRow,
-                          { paddingStart: spacing.sm + row.depth * spacing.md },
+                          // Nested units are indented from the start side: the right in Arabic.
+                          { [isRTL ? 'paddingRight' : 'paddingLeft']: spacing.sm + row.depth * spacing.md },
                           isSelected && styles.orgRowSelected,
                         ]}
                       >
@@ -960,69 +923,18 @@ const createStyles = (colors) => StyleSheet.create({
   scrollContentLandscape: {
     paddingHorizontal: '15%',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surfaceDark,
-    borderBottomWidth: 4,
-    borderBottomColor: colors.accent,
-    padding: spacing.md,
-  },
-  backButton: {
-    padding: spacing.xs,
-  },
-  headerText: {
-    flex: 1,
-  },
-  headerTitle: {
-    ...typography.h3,
-    color: colors.textWhite,
-  },
-  headerSubtitle: {
-    ...typography.caption,
-    color: colors.textGold,
-    marginTop: 2,
-  },
   content: {
     flex: 1,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
   },
-  form: {
+  footer: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    ...shadows.sm,
-  },
-  errorContainer: {
-    backgroundColor: colors.dangerLight,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: '#e5b3a6',
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  errorText: {
-    ...typography.bodySmall,
-    color: colors.dangerStrong,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: spacing.sm,
-  },
-  section: {
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    ...typography.h4,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  sectionTitleSmall: {
-    fontSize: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   optionsLoading: {
     flexDirection: 'row',
@@ -1035,80 +947,47 @@ const createStyles = (colors) => StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
   },
-  orgUnitField: {
-    marginBottom: spacing.md,
-  },
-  orgUnitLabel: {
-    ...typography.bodyBold,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  orgUnitRequired: {
-    color: colors.dangerStrong,
-  },
-  orgUnitTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 44,
-  },
-  orgUnitTriggerError: {
-    borderColor: colors.dangerStrong,
-  },
-  orgUnitValue: {
-    ...typography.body,
-    color: colors.text,
-    flex: 1,
-    paddingVertical: spacing.xs,
-  },
-  orgUnitPlaceholder: {
-    color: colors.textLight,
-  },
-  orgUnitError: {
-    ...typography.caption,
-    color: colors.dangerStrong,
-    marginTop: spacing.xs,
-  },
-  orgUnitHint: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
   successCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
     alignItems: 'center',
-    marginBottom: spacing.lg,
-    ...shadows.sm,
+    marginTop: spacing.lg,
+    ...shadows.md,
   },
   successIcon: {
-    marginBottom: spacing.sm,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.successLight,
+    marginBottom: spacing.md,
   },
   successTitle: {
     ...typography.h3,
     color: colors.text,
     textAlign: 'center',
-    marginBottom: spacing.md,
-  },
-  successRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
     marginBottom: spacing.lg,
   },
   successLabel: {
-    ...typography.body,
+    ...typography.caption,
     color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  successChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primarySoft,
   },
   successValue: {
     ...typography.bodyBold,
@@ -1171,12 +1050,13 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
     paddingVertical: spacing.sm,
-    paddingEnd: spacing.sm,
+    paddingRight: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   orgRowSelected: {
-    backgroundColor: '#f5f9fc',
+    backgroundColor: colors.selectedSurface,
+    borderRadius: borderRadius.sm,
   },
   orgRowToggle: {
     width: 24,
@@ -1190,7 +1070,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   orgRowBody: {
     flex: 1,
-    marginStart: spacing.xs,
+    marginLeft: spacing.xs,
   },
   orgRowName: {
     ...typography.bodySmall,
@@ -1198,7 +1078,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   orgRowNameSelected: {
     color: colors.primaryLight,
-    fontFamily: 'Cairo_700Bold',
+    fontFamily: fonts.bold,
   },
   orgRowPath: {
     ...typography.caption,
@@ -1209,9 +1089,6 @@ const createStyles = (colors) => StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textLight,
     paddingVertical: spacing.xl,
-  },
-  submitButton: {
-    marginTop: spacing.sm,
   },
 });
 

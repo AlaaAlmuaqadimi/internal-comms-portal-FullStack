@@ -65,6 +65,7 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+    ...shadows.sm,
   },
   elevated: {
     backgroundColor: colors.surface,
@@ -76,7 +77,8 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.border,
   },
   pressed: {
-    opacity: 0.8,
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
   content: {
     padding: spacing.md,

@@ -7,31 +7,38 @@ import { LanguageProvider } from './src/context/LanguageContext';
 import { NotificationsProvider } from './src/context/NotificationsContext';
 import { CallProvider } from './src/context/CallContext';
 import CallOverlay from './src/components/calls/CallOverlay';
+import CallBanner, { CallBannerInsets } from './src/components/calls/CallBanner';
 import AppNavigator from './src/navigation/AppNavigator';
-import { useFonts, Cairo_400Regular, Cairo_700Bold, Cairo_800ExtraBold } from '@expo-google-fonts/cairo';
-import { View, ActivityIndicator, Text, TextInput } from 'react-native';
+import {
+  useFonts,
+  IBMPlexSansArabic_400Regular,
+  IBMPlexSansArabic_500Medium,
+  IBMPlexSansArabic_600SemiBold,
+  IBMPlexSansArabic_700Bold,
+} from '@expo-google-fonts/ibm-plex-sans-arabic';
+import { View, ActivityIndicator } from 'react-native';
 import { colors } from './src/constants/colors';
 
+// Light screens get dark status-bar icons, dark mode gets light ones.
 const ThemedStatusBar = () => {
-  const { colors } = useTheme();
-  return <StatusBar style="light" backgroundColor={colors.surfaceDark} />;
+  const { colors, isDarkMode } = useTheme();
+  return (
+    <StatusBar
+      style={isDarkMode ? 'light' : 'dark'}
+      backgroundColor={colors.surface}
+    />
+  );
 };
 
-const applyDefaultFont = () => {
-  const baseStyle = { fontFamily: 'Cairo_400Regular' };
-  Text.defaultProps = Text.defaultProps || {};
-  Text.defaultProps.style = [baseStyle, Text.defaultProps.style];
-  TextInput.defaultProps = TextInput.defaultProps || {};
-  TextInput.defaultProps.style = [baseStyle, TextInput.defaultProps.style];
-};
-
+// The app font is applied by src/components/AppText (React 19 ignores
+// Text.defaultProps), so loading the files is all that is needed here.
 export default function App() {
   const [fontsLoaded] = useFonts({
-    Cairo_400Regular,
-    Cairo_700Bold,
-    Cairo_800ExtraBold,
+    IBMPlexSansArabic_400Regular,
+    IBMPlexSansArabic_500Medium,
+    IBMPlexSansArabic_600SemiBold,
+    IBMPlexSansArabic_700Bold,
   });
-  if (fontsLoaded) applyDefaultFont();
   if (!fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
@@ -48,7 +55,16 @@ export default function App() {
             <NotificationsProvider>
               <CallProvider>
                 <ThemedStatusBar />
-                <AppNavigator />
+                {/* A minimized call shows as a bar above the screens and
+                    pushes them down, like WhatsApp. */}
+                <View style={{ flex: 1 }}>
+                  <CallBanner />
+                  <CallBannerInsets>
+                    <View style={{ flex: 1 }}>
+                      <AppNavigator />
+                    </View>
+                  </CallBannerInsets>
+                </View>
                 <CallOverlay />
               </CallProvider>
             </NotificationsProvider>

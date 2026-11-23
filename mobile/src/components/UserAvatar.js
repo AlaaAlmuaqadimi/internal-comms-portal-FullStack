@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet, Image } from 'react-native';
+import { Text } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { typography } from '../constants/typography';
+import { typography, fonts } from '../constants/typography';
 import { borderRadius } from '../constants/spacing';
 
 const UserAvatar = ({
@@ -92,7 +93,7 @@ const createStyles = (colors) => StyleSheet.create({
   initial: {
     ...typography.h3,
     color: colors.primaryLight,
-    fontFamily: 'Cairo_700Bold',
+    fontFamily: fonts.bold,
   },
 });
 

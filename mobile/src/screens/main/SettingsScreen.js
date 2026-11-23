@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   Pressable,
@@ -9,9 +8,9 @@ import {
   Modal as RNModal,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from '../../components/AppText';
+import SafeAreaView from '../../components/SafeAreaView';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
@@ -20,11 +19,19 @@ import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
 import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import UserAvatar from '../../components/UserAvatar';
+import SelectField from '../../components/SelectField';
+import { FadeInView } from '../../components/Motion';
 import CustomButton from '../../components/CustomButton';
 import CustomInput from '../../components/CustomInput';
 import SearchBar from '../../components/SearchBar';
 import Modal from '../../components/Modal';
+import ChangePasswordModal from '../../components/ChangePasswordModal';
 import { api, isBackendConfigured } from '../../services/api';
+import { mockData } from '../../utils/mockData';
+import { useLanguage } from '../../context/LanguageContext';
+import { localizeText } from '../../i18n/localize';
+import { flipStyles } from '../../i18n/rtlStyles';
+import { hasRole } from '../../utils/permissions';
 import {
   DEFAULT_NOTIFICATION_SOUND,
   NOTIFICATION_SOUNDS,
@@ -32,11 +39,6 @@ import {
   playNotificationSound,
   saveNotificationSound,
 } from '../../services/sound';
-import { mockData } from '../../utils/mockData';
-import { useLanguage } from '../../context/LanguageContext';
-import { localizeText } from '../../i18n/localize';
-import { flipStyles } from '../../i18n/rtlStyles';
-import { hasRole } from '../../utils/permissions';
 
 const USERNAME_RE = /^[a-zA-Z0-9._]+$/;
 // Avatars are stored inside the employee row and returned with the directory,
@@ -215,11 +217,11 @@ const OrgTrigger = ({ label, value, placeholder, onPress, disabled, styles, alig
   );
 };
 
-const SettingsScreen = ({ navigation }) => {
+const SettingsScreen = () => {
   const { width, height } = useWindowDimensions();
   const { user, logout, updateUser, refreshUser } = useAuth();
   const { t, language, setLanguage, isRTL, align } = useLanguage();
-  const { colors, themeMode, setThemeMode } = useTheme();
+  const { colors, themeMode, setThemeMode, isDarkMode } = useTheme();
   const styles = useMemo(
     () => flipStyles(createStyles(colors), isRTL),
     [colors, isRTL]
@@ -230,25 +232,20 @@ const SettingsScreen = ({ navigation }) => {
   const isLandscape = width > height;
   const isAdmin = hasRole(user, 'admin');
 
-  const [kitchens, setKitchens] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [orgTree, setOrgTree] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [contactsError, setContactsError] = useState(null);
-  const [kitchensAreReal, setKitchensAreReal] = useState(false);
   const [contactsAreReal, setContactsAreReal] = useState(false);
   const [orgIsReal, setOrgIsReal] = useState(false);
 
   const [selectedContacts, setSelectedContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedKitchen, setSelectedKitchen] = useState(null);
-  const [savingKitchenId, setSavingKitchenId] = useState(null);
+  const [notificationSound, setNotificationSound] = useState(DEFAULT_NOTIFICATION_SOUND);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [savingContacts, setSavingContacts] = useState(false);
   const [status, setStatus] = useState(null);
   const statusTimer = useRef(null);
-  const [notificationSound, setNotificationSound] = useState(
-    DEFAULT_NOTIFICATION_SOUND
-  );
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -298,6 +295,12 @@ const SettingsScreen = ({ navigation }) => {
   );
 
   useEffect(() => {
+    if (!user) return;
+    setSelectedContacts(Array.isArray(user.contacts) ? user.contacts : []);
+  }, [user]);
+
+  // The notification tone is a per-device preference (not saved on the server).
+  useEffect(() => {
     let cancelled = false;
     loadNotificationSound().then((sound) => {
       if (!cancelled) setNotificationSound(sound);
@@ -306,12 +309,6 @@ const SettingsScreen = ({ navigation }) => {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    setSelectedContacts(Array.isArray(user.contacts) ? user.contacts : []);
-    setSelectedKitchen(user.kitchenChoice || null);
-  }, [user]);
 
   // Keep the app language aligned with the language stored on the account.
   useEffect(() => {
@@ -325,24 +322,16 @@ const SettingsScreen = ({ navigation }) => {
     setDataLoading(true);
     setContactsError(null);
 
-    let nextKitchens = [];
     let nextContacts = [];
     let nextTree = [];
-    let kitchensReal = false;
     let contactsReal = false;
     let orgReal = false;
 
     if (isBackendConfigured()) {
-      const [kitchenResult, employeeResult, orgResult] = await Promise.allSettled([
-        api.kitchens.getAll(),
+      const [employeeResult, orgResult] = await Promise.allSettled([
         api.employees.getAll(),
         api.org.getTree(),
       ]);
-
-      if (kitchenResult.status === 'fulfilled' && Array.isArray(kitchenResult.value)) {
-        nextKitchens = kitchenResult.value;
-        kitchensReal = true;
-      }
 
       if (employeeResult.status === 'fulfilled' && Array.isArray(employeeResult.value)) {
         nextContacts = employeeResult.value.map(normalizeEmployee);
@@ -359,14 +348,11 @@ const SettingsScreen = ({ navigation }) => {
       }
     }
 
-    if (!kitchensReal) nextKitchens = mockData.kitchens;
     if (!contactsReal) nextContacts = mockData.availableContacts.map(normalizeMockContact);
     if (!orgReal) nextTree = [mockData.orgTree];
 
-    setKitchens(nextKitchens);
     setContacts(nextContacts);
     setOrgTree(nextTree);
-    setKitchensAreReal(kitchensReal);
     setContactsAreReal(contactsReal);
     setOrgIsReal(orgReal);
     setDataLoading(false);
@@ -457,15 +443,17 @@ const SettingsScreen = ({ navigation }) => {
     return rows;
   }, [orgIndex, expandedOrgIds, orgQuery]);
 
-  const selectedKitchenName = useMemo(() => {
-    const current = kitchens.find(
-      (kitchen) =>
-        kitchen.id === selectedKitchen || kitchen.code === selectedKitchen
-    );
-    return current
-      ? localizeText(current.name || current.nameAr || current.nameEn || '')
-      : '';
-  }, [kitchens, selectedKitchen, language]);
+  const soundOptions = useMemo(
+    () =>
+      NOTIFICATION_SOUNDS.map((option) => ({
+        value: option.key,
+        icon: option.icon,
+        label: t(option.labelKey),
+        description: t(option.descriptionKey),
+      })),
+    // `t` changes with the language.
+    [t]
+  );
 
   const filteredContacts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -815,26 +803,12 @@ const SettingsScreen = ({ navigation }) => {
     }
   };
 
-  const handleSelectKitchen = async (kitchen) => {
-    if (!kitchen || savingKitchenId) return;
-
-    const previous = selectedKitchen;
-    setSelectedKitchen(kitchen.id);
-    setSavingKitchenId(kitchen.id);
-
-    const result = await updateUser(
-      { kitchenChoice: kitchen.id },
-      { localOnly: !kitchensAreReal }
-    );
-
-    setSavingKitchenId(null);
-
-    if (result.success) {
-      showStatus('success', t('settings.kitchenSaved'));
-    } else {
-      setSelectedKitchen(previous);
-      showStatus('error', result.error || t('settings.kitchenSaveError'));
-    }
+  // Choosing a tone saves it at once and plays it, so the list doubles as a
+  // preview: the sheet stays open until the user closes it.
+  const handleSelectNotificationSound = (key) => {
+    setNotificationSound(key);
+    saveNotificationSound(key);
+    if (key !== 'silent') playNotificationSound(key);
   };
 
   const toggleContact = (contactId) => {
@@ -914,17 +888,6 @@ const SettingsScreen = ({ navigation }) => {
     }
   };
 
-  const handleSelectNotificationSound = async (key) => {
-    setNotificationSound(key);
-    await saveNotificationSound(key);
-
-    if (key !== 'silent') {
-      playNotificationSound(key);
-    }
-
-    showStatus('success', t('settings.notificationSoundSaved'));
-  };
-
   const openOrgPicker = (target) => {
     const currentId =
       target === 'contact' ? contactForm.orgUnitId : profileForm.orgUnitId;
@@ -1000,14 +963,11 @@ const SettingsScreen = ({ navigation }) => {
   const profileName = user?.name || user?.fullNameAr || user?.username || '—';
   const profileManagement = user?.management || user?.unitName;
   const profileOffice = user?.office || user?.unitName;
-  const profileOrgPath = user?.path || user?.unitName || user?.management;
+  const profileUnitLine =
+    profileOffice && profileManagement && profileOffice !== profileManagement
+      ? `${profileManagement} \u00b7 ${profileOffice}`
+      : profileManagement || profileOffice || '';
 
-  const avatarSize = isSmallScreen ? 'large' : 'xlarge';
-  const sectionPadding = isSmallScreen
-    ? spacing.sm
-    : isLargeScreen
-      ? spacing.xl
-      : spacing.md;
   const headerPadding = isSmallScreen
     ? spacing.sm
     : isLargeScreen
@@ -1018,511 +978,169 @@ const SettingsScreen = ({ navigation }) => {
     orgPickerTarget === 'contact' ? contactForm.orgUnitId : profileForm.orgUnitId;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} animated>
       <ScrollView
+        keyboardDismissMode="on-drag"
         contentContainerStyle={[
           styles.scrollContent,
           isLandscape && styles.scrollContentLandscape,
         ]}
       >
-        {/* الهيدر */}
-        <View style={[styles.header, { padding: headerPadding }]}>
+        {/* الهيدر: المظهر واللغة كأيقونات فقط */}
+        <View style={[styles.header, { paddingHorizontal: headerPadding }]}>
           <View style={styles.headerTitle}>
             <View style={styles.titleBorder} />
-            <View>
-              <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
-                {t('settings.title')}
-              </Text>
-              <Text
-                style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}
-              >
-                {t('settings.subtitle')}
-              </Text>
-            </View>
+            <Text
+              style={[styles.title, isSmallScreen && styles.titleSmall]}
+              accessibilityRole="header"
+              numberOfLines={1}
+            >
+              {t('settings.title')}
+            </Text>
+          </View>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={() => handleSelectTheme(isDarkMode ? 'light' : 'dark')}
+              hitSlop={6}
+              style={({ pressed }) => [styles.iconToggle, pressed && styles.iconTogglePressed]}
+              accessibilityRole="button"
+              accessibilityLabel={isDarkMode ? t('settings.lightMode') : t('settings.darkMode')}
+            >
+              <Ionicons name={isDarkMode ? 'sunny' : 'moon'} size={20} color={colors.primaryLight} />
+            </Pressable>
+            <Pressable
+              onPress={handleToggleLanguage}
+              hitSlop={6}
+              style={({ pressed }) => [styles.iconToggle, pressed && styles.iconTogglePressed]}
+              accessibilityRole="button"
+              accessibilityLabel={language === 'ar' ? t('settings.english') : t('settings.arabic')}
+            >
+              <Text style={styles.langToggleText}>{language === 'ar' ? 'EN' : '\u0639'}</Text>
+            </Pressable>
           </View>
         </View>
 
-        {/* حسابي */}
-        <View style={[styles.section, { padding: sectionPadding }]}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              isSmallScreen && styles.sectionTitleSmall,
-            ]}
-          >
-            {t('settings.myAccount')}
-          </Text>
-          <Text
-            style={[
-              styles.sectionDescription,
-              isSmallScreen && styles.sectionDescriptionSmall,
-            ]}
-          >
-            {t('settings.editProfileHint')}
-          </Text>
-
-          <View style={styles.profileCard}>
-            <View style={styles.profileBanner}>
-              <View style={styles.profileBannerOrb} />
-              <View style={styles.profileBannerOrbSmall} />
-            </View>
-
+        <View style={[styles.body, { paddingHorizontal: headerPadding }]}>
+          {/* حسابي */}
+          <FadeInView delay={0} style={[styles.card, styles.profileRow]}>
             <Pressable
               onPress={openProfileEditor}
               style={styles.profileAvatarWrap}
               accessibilityRole="button"
               accessibilityLabel={t('settings.editProfile')}
             >
-              <View style={styles.profileAvatarRing}>
-                <UserAvatar
-                  person={{
-                    ...user,
-                    avatarUrl: profileAvatar || null,
-                    avatar: profileAvatar || null,
-                  }}
-                  size={avatarSize}
-                  style={styles.profileAvatarImage}
-                />
-              </View>
+              <UserAvatar
+                person={{
+                  ...user,
+                  avatarUrl: profileAvatar || null,
+                  avatar: profileAvatar || null,
+                }}
+                size="large"
+              />
               <View style={styles.avatarEditBadge}>
-                <Ionicons name="camera" size={13} color={colors.textWhite} />
+                <Ionicons name="camera" size={12} color={colors.textWhite} />
               </View>
             </Pressable>
-
-            <Text style={styles.profileName} numberOfLines={2}>
-              {profileName}
-            </Text>
-
-            {!!user?.username && (
-              <View style={styles.profileUsernamePill}>
-                <Ionicons name="at" size={13} color={colors.primaryLight} />
-                <Text style={styles.profileUsername}>{user.username}</Text>
-              </View>
-            )}
-
-            <View style={styles.profileMeta}>
-              <View style={styles.profileMetaRow}>
-                <View style={styles.profileMetaIcon}>
-                  <Ionicons
-                    name="business-outline"
-                    size={16}
-                    color={colors.primaryLight}
-                  />
-                </View>
-                <View style={styles.profileMetaBody}>
-                  <Text style={styles.profileMetaLabel}>
-                    {t('settings.managementLabel')}
-                  </Text>
-                  <Text style={styles.profileMetaValue} numberOfLines={2}>
-                    {profileManagement || '—'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.profileMetaRow}>
-                <View style={styles.profileMetaIcon}>
-                  <Ionicons
-                    name="grid-outline"
-                    size={16}
-                    color={colors.primaryLight}
-                  />
-                </View>
-                <View style={styles.profileMetaBody}>
-                  <Text style={styles.profileMetaLabel}>
-                    {t('settings.officeLabel')}
-                  </Text>
-                  <Text style={styles.profileMetaValue} numberOfLines={2}>
-                    {profileOffice || '—'}
-                  </Text>
-                </View>
-              </View>
-
-              {!!profileOrgPath && (
-                <View style={styles.profilePathRow}>
-                  <Ionicons
-                    name="location-outline"
-                    size={14}
-                    color={colors.textLight}
-                  />
-                  <Text style={styles.profilePath} numberOfLines={2}>
-                    {profileOrgPath}
-                  </Text>
-                </View>
+            <View style={styles.profileText}>
+              <Text style={styles.profileNameText} numberOfLines={1}>
+                {profileName}
+              </Text>
+              {!!user?.username && (
+                <Text style={styles.profileUsernameText} numberOfLines={1}>
+                  @{user.username}
+                </Text>
+              )}
+              {!!profileUnitLine && (
+                <Text style={styles.profileUnitText} numberOfLines={1}>
+                  {profileUnitLine}
+                </Text>
               )}
             </View>
-
-            <CustomButton
-              title={t('settings.editProfile')}
+            <Pressable
               onPress={openProfileEditor}
-              icon="create-outline"
-              size="small"
-              style={styles.profileEditButton}
-            />
-          </View>
-        </View>
-
-        {/* مطبخ الخدمة */}
-        <View style={[styles.section, { padding: sectionPadding }]}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              isSmallScreen && styles.sectionTitleSmall,
-            ]}
-          >
-            {t('settings.kitchenTitle')}
-          </Text>
-          <Text
-            style={[
-              styles.sectionDescription,
-              isSmallScreen && styles.sectionDescriptionSmall,
-            ]}
-          >
-            {t('settings.kitchenDescription')}
-          </Text>
-
-          <View style={styles.currentKitchenRow}>
-            <Ionicons
-              name="restaurant-outline"
-              size={16}
-              color={colors.warning}
-            />
-            <Text style={[styles.currentKitchenLabel, { textAlign: align }]}>
-              {t('settings.currentKitchen')}
-            </Text>
-            <Text
-              style={[styles.currentKitchenValue, { textAlign: align }]}
-              numberOfLines={2}
+              hitSlop={6}
+              style={({ pressed }) => [styles.roundButton, pressed && styles.iconTogglePressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t('settings.editProfile')}
             >
-              {selectedKitchenName || t('settings.notSelected')}
-            </Text>
-          </View>
+              <Ionicons name="create-outline" size={18} color={colors.primaryLight} />
+            </Pressable>
+          </FadeInView>
 
-          {dataLoading ? (
-            <View style={styles.inlineLoading}>
-              <ActivityIndicator size="small" color={colors.primaryLight} />
-            </View>
-          ) : kitchens.length === 0 ? (
-            <Text style={[styles.emptyText, { textAlign: align }]}>
-              {t('common.noOptions')}
-            </Text>
-          ) : (
-            <View style={styles.kitchenOptions}>
-              {kitchens.map((kitchen) => {
-                const isSelected =
-                  selectedKitchen === kitchen.id ||
-                  selectedKitchen === kitchen.code;
-                const isSaving = savingKitchenId === kitchen.id;
-
-                return (
-                  <Pressable
-                    key={kitchen.id}
-                    style={[
-                      styles.kitchenOption,
-                      isSelected && styles.kitchenOptionSelected,
-                    ]}
-                    onPress={() => handleSelectKitchen(kitchen)}
-                    disabled={!!savingKitchenId}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: isSelected }}
-                  >
-                    <View style={styles.kitchenRadio}>
-                      {isSelected && <View style={styles.kitchenRadioSelected} />}
-                    </View>
-                    <View style={styles.kitchenInfo}>
-                      <Text
-                        style={[
-                          styles.kitchenName,
-                          isSmallScreen && styles.kitchenNameSmall,
-                        ]}
-                      >
-                        {localizeText(
-                          language === 'en'
-                            ? kitchen.nameEn || kitchen.name || kitchen.nameAr
-                            : kitchen.name || kitchen.nameAr || kitchen.nameEn
-                        )}
-                      </Text>
-                      {!!(kitchen.scope || kitchen.scopeEn || kitchen.path || kitchen.nameEn) && (
-                        <Text
-                          style={[
-                            styles.kitchenPath,
-                            { textAlign: align },
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {localizeText(
-                            language === 'en'
-                              ? kitchen.scopeEn ||
-                                  kitchen.scope ||
-                                  kitchen.path ||
-                                  kitchen.nameEn ||
-                                  ''
-                              : kitchen.scope ||
-                                  kitchen.path ||
-                                  kitchen.scopeEn ||
-                                  kitchen.nameEn ||
-                                  ''
-                          )}
-                        </Text>
-                      )}
-                    </View>
-                    {isSaving ? (
-                      <ActivityIndicator size="small" color={colors.warning} />
-                    ) : isSelected ? (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={20}
-                        color={colors.warning}
-                      />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-        </View>
-
-        {/* المظهر */}
-        <View style={[styles.section, { padding: sectionPadding }]}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              isSmallScreen && styles.sectionTitleSmall,
-            ]}
-          >
-            {t('settings.themeTitle')}
-          </Text>
-          <Text
-            style={[
-              styles.sectionDescription,
-              isSmallScreen && styles.sectionDescriptionSmall,
-            ]}
-          >
-            {t('settings.themeDescription')}
-          </Text>
-          <View style={styles.themeOptions}>
-            {[
-              { mode: 'light', icon: 'sunny-outline', label: 'settings.lightMode' },
-              { mode: 'dark', icon: 'moon-outline', label: 'settings.darkMode' },
-            ].map((option) => {
-              const isSelected = themeMode === option.mode;
-              return (
+          {/* نغمة الإشعارات */}
+          <FadeInView delay={70} style={[styles.card, styles.prefCard]}>
+            <SelectField
+              value={notificationSound}
+              options={soundOptions}
+              onSelect={handleSelectNotificationSound}
+              presentation="sheet"
+              sheetTitle={t('settings.notificationSoundTitle')}
+              closeOnSelect={false}
+              style={styles.prefSelect}
+              // One settings row: icon, title and the chosen tone.
+              renderTrigger={({ onPress, selected, disabled }) => (
                 <Pressable
-                  key={option.mode}
-                  style={[
-                    styles.themeOption,
-                    isSelected && styles.themeOptionSelected,
-                  ]}
-                  onPress={() => handleSelectTheme(option.mode)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: isSelected }}
+                  onPress={onPress}
+                  disabled={disabled}
+                  style={({ pressed }) => [styles.prefRow, pressed && styles.listRowPressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('settings.notificationSoundTitle')}
+                  accessibilityHint={selected?.label}
                 >
-                  <View style={styles.themeOptionIcon}>
+                  <View style={[styles.prefIcon, { backgroundColor: colors.primarySoft }]}>
                     <Ionicons
-                      name={option.icon}
-                      size={isSmallScreen ? 16 : 20}
+                      name={notificationSound === 'silent' ? 'volume-mute' : 'musical-notes'}
+                      size={20}
                       color={colors.primaryLight}
                     />
                   </View>
-                  <Text
-                    style={[
-                      styles.themeOptionLabel,
-                      isSmallScreen && styles.themeOptionLabelSmall,
-                    ]}
-                  >
-                    {t(option.label)}
-                  </Text>
-                  {isSelected && (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={isSmallScreen ? 18 : 20}
-                      color={colors.primaryLight}
-                    />
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* نغمة الإشعارات */}
-        <View style={[styles.section, { padding: sectionPadding }]}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              isSmallScreen && styles.sectionTitleSmall,
-            ]}
-          >
-            {t('settings.notificationSoundTitle')}
-          </Text>
-          <Text
-            style={[
-              styles.sectionDescription,
-              isSmallScreen && styles.sectionDescriptionSmall,
-            ]}
-          >
-            {t('settings.notificationSoundDescription')}
-          </Text>
-
-          <View style={styles.soundOptions}>
-            {NOTIFICATION_SOUNDS.map((option) => {
-              const isSelected = notificationSound === option.key;
-              return (
-                <Pressable
-                  key={option.key}
-                  style={[
-                    styles.soundOption,
-                    isSelected && styles.soundOptionSelected,
-                  ]}
-                  onPress={() => handleSelectNotificationSound(option.key)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: isSelected }}
-                >
-                  <View
-                    style={[
-                      styles.soundIcon,
-                      isSelected && styles.soundIconSelected,
-                    ]}
-                  >
-                    <Ionicons
-                      name={option.icon}
-                      size={isSmallScreen ? 16 : 18}
-                      color={isSelected ? colors.textWhite : colors.primaryLight}
-                    />
-                  </View>
-
-                  <View style={styles.soundInfo}>
-                    <Text
-                      style={[
-                        styles.soundLabel,
-                        isSmallScreen && styles.soundLabelSmall,
-                      ]}
-                    >
-                      {t(option.labelKey)}
-                    </Text>
-                    <Text
-                      style={styles.soundHint}
-                      numberOfLines={1}
-                    >
-                      {t(option.descriptionKey)}
+                  <View style={styles.prefText}>
+                    <Text style={styles.prefLabel}>{t('settings.notificationSoundTitle')}</Text>
+                    <Text style={styles.prefValue} numberOfLines={1}>
+                      {selected?.label}
                     </Text>
                   </View>
-
                   <Ionicons
-                    name={
-                      isSelected
-                        ? 'checkmark-circle'
-                        : option.key === 'silent'
-                          ? 'volume-mute-outline'
-                          : 'play-circle-outline'
-                    }
-                    size={isSmallScreen ? 18 : 20}
-                    color={isSelected ? colors.primaryLight : colors.textLight}
+                    name={isRTL ? 'chevron-back' : 'chevron-forward'}
+                    size={18}
+                    color={colors.textLight}
                   />
                 </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* اللغة */}
-        <View style={[styles.section, { padding: sectionPadding }]}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              isSmallScreen && styles.sectionTitleSmall,
-            ]}
-          >
-            {t('settings.languageTitle')}
-          </Text>
-          <Text
-            style={[
-              styles.sectionDescription,
-              isSmallScreen && styles.sectionDescriptionSmall,
-            ]}
-          >
-            {t('settings.languageDescription')}
-          </Text>
-          <Pressable
-            style={styles.languageRow}
-            onPress={handleToggleLanguage}
-            accessibilityRole="button"
-          >
-            <View style={styles.languageIcon}>
-              <Ionicons
-                name="language"
-                size={isSmallScreen ? 16 : 20}
-                color={colors.primaryLight}
-              />
-            </View>
-            <View style={styles.languageInfo}>
-              <Text
-                style={[
-                  styles.languageValue,
-                  isSmallScreen && styles.languageValueSmall,
-                ]}
-              >
-                {language === 'ar' ? t('settings.arabic') : t('settings.english')}
-              </Text>
-            </View>
-            <Ionicons
-              name={isRTL ? 'chevron-back' : 'chevron-forward'}
-              size={isSmallScreen ? 16 : 20}
-              color={colors.textLight}
+              )}
             />
-          </Pressable>
-        </View>
+          </FadeInView>
 
-        {/* إدارة المستخدمين - تظهر فقط لمدير النظام */}
-        {isAdmin && (
-          <View style={[styles.section, { padding: sectionPadding }]}>
-            <Text
-              style={[
-                styles.sectionTitle,
-                isSmallScreen && styles.sectionTitleSmall,
-              ]}
-            >
-              {t('addUser.title')}
-            </Text>
+          {/* إجراءات */}
+          <FadeInView delay={140} style={[styles.card, styles.listCard]}>
             <Pressable
-              style={styles.languageRow}
-              onPress={() => navigation.navigate('AddUser')}
+              onPress={() => setPasswordModalVisible(true)}
+              style={({ pressed }) => [styles.listRow, pressed && styles.listRowPressed]}
+              accessibilityRole="button"
             >
-              <View style={styles.languageIcon}>
-                <Ionicons
-                  name="person-add"
-                  size={isSmallScreen ? 16 : 20}
-                  color={colors.primaryLight}
-                />
+              <View style={[styles.cardIcon, { backgroundColor: colors.primarySoft }]}>
+                <Ionicons name="lock-closed-outline" size={18} color={colors.primaryLight} />
               </View>
-              <View style={styles.languageInfo}>
-                <Text
-                  style={[
-                    styles.languageValue,
-                    isSmallScreen && styles.languageValueSmall,
-                  ]}
-                >
-                  {t('addUser.entry')}
-                </Text>
-              </View>
+              <Text style={styles.listRowLabel}>{t('settings.changePassword')}</Text>
               <Ionicons
                 name={isRTL ? 'chevron-back' : 'chevron-forward'}
-                size={isSmallScreen ? 16 : 20}
+                size={18}
                 color={colors.textLight}
               />
             </Pressable>
-          </View>
-        )}
-
-        {/* تسجيل الخروج */}
-        <View style={[styles.section, { padding: sectionPadding }]}>
-          <CustomButton
-            title={t('settings.logout')}
-            onPress={logout}
-            variant="danger"
-            icon="log-out"
-            style={styles.logoutButton}
-            size="small"
-          />
+            <View style={styles.listDivider} />
+            <Pressable
+              onPress={logout}
+              style={({ pressed }) => [styles.listRow, pressed && styles.listRowPressed]}
+              accessibilityRole="button"
+            >
+              <View style={[styles.cardIcon, { backgroundColor: colors.dangerLight }]}>
+                <Ionicons name="log-out-outline" size={18} color={colors.danger} />
+              </View>
+              <Text style={[styles.listRowLabel, styles.listRowLabelDanger]}>
+                {t('settings.logout')}
+              </Text>
+            </Pressable>
+          </FadeInView>
         </View>
       </ScrollView>
 
@@ -1564,6 +1182,7 @@ const SettingsScreen = ({ navigation }) => {
         style={[styles.formModal, { maxHeight: height * 0.9 }]}
       >
         <ScrollView
+          keyboardDismissMode="on-drag"
           style={[styles.modalScroll, { maxHeight: height * 0.64 }]}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled
@@ -1609,18 +1228,33 @@ const SettingsScreen = ({ navigation }) => {
               icon="at-outline"
             />
 
-            <OrgTrigger
-              label={t('settings.orgPathLabel')}
-              value={profileForm.orgPath}
-              placeholder={t('settings.orgPlaceholder')}
-              onPress={() => openOrgPicker('profile')}
-              styles={styles}
-              align={align}
-            />
+            {/* Only an admin may move an account between units: the unit
+                decides who may call the Director and the Deputy. */}
+            {isAdmin ? (
+              <>
+                <OrgTrigger
+                  label={t('settings.orgPathLabel')}
+                  value={profileForm.orgPath}
+                  placeholder={t('settings.orgPlaceholder')}
+                  onPress={() => openOrgPicker('profile')}
+                  styles={styles}
+                  align={align}
+                />
 
-            <Text style={styles.orgHelper}>
-              {t('settings.orgAutoFillHint')}
-            </Text>
+                <Text style={styles.orgHelper}>
+                  {t('settings.orgAutoFillHint')}
+                </Text>
+              </>
+            ) : (
+              <CustomInput
+                label={t('settings.orgPathLabel')}
+                value={profileForm.orgPath}
+                placeholder={t('settings.orgPlaceholder')}
+                icon="git-network-outline"
+                disabled
+                hint={t('settings.orgAdminOnlyHint')}
+              />
+            )}
 
             <CustomInput
               label={t('settings.managementLabel')}
@@ -1707,6 +1341,7 @@ const SettingsScreen = ({ navigation }) => {
               />
 
               <ScrollView
+                keyboardDismissMode="on-drag"
                 style={[
                   styles.orgTreeScroll,
                   { maxHeight: Math.max(160, Math.round(height * 0.55)) },
@@ -1732,7 +1367,8 @@ const SettingsScreen = ({ navigation }) => {
                         key={row.id}
                         style={[
                           styles.orgRow,
-                          { paddingStart: spacing.sm + row.depth * spacing.md },
+                          // Nested units are indented from the start side: the right in Arabic.
+                          { [isRTL ? 'paddingRight' : 'paddingLeft']: spacing.sm + row.depth * spacing.md },
                           isSelected && styles.orgRowSelected,
                         ]}
                       >
@@ -1797,6 +1433,13 @@ const SettingsScreen = ({ navigation }) => {
           </KeyboardAvoidingView>
         </View>
       </RNModal>
+
+      {/* تغيير كلمة المرور */}
+      <ChangePasswordModal
+        visible={passwordModalVisible}
+        onClose={() => setPasswordModalVisible(false)}
+        onChanged={() => showStatus('success', t('settings.passwordChanged'))}
+      />
     </SafeAreaView>
   );
 };
@@ -1813,18 +1456,24 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: '15%',
   },
   header: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    // Blends into the page: a modern large-title header without a divider.
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
   },
   headerTitle: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 1,
   },
   titleBorder: {
+    // A short brand accent beside the title.
     width: 4,
-    height: 50,
+    height: 22,
     backgroundColor: colors.accent,
     borderRadius: 2,
   },
@@ -1835,14 +1484,138 @@ const createStyles = (colors) => StyleSheet.create({
   titleSmall: {
     fontSize: 18,
   },
-  subtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    lineHeight: 18,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  subtitleSmall: {
-    fontSize: 11,
+  iconToggle: {
+    width: 42,
+    height: 42,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.sm,
+  },
+  iconTogglePressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.94 }],
+  },
+  langToggleText: {
+    ...typography.bodyBold,
+    color: colors.primaryLight,
+    textAlign: 'center',
+  },
+  body: {
+    paddingBottom: spacing.xl,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.sm,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  profileText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileNameText: {
+    ...typography.h4,
+    color: colors.text,
+  },
+  profileUsernameText: {
+    ...typography.caption,
+    color: colors.primaryLight,
+    marginTop: 1,
+  },
+  profileUnitText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  roundButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+  },
+  cardIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prefSelect: {
+    marginBottom: 0,
+  },
+  prefCard: {
+    paddingVertical: spacing.xs,
+  },
+  prefRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: 64,
+  },
+  prefIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prefText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  prefLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  prefValue: {
+    ...typography.bodyBold,
+    color: colors.text,
+  },
+  listCard: {
+    paddingVertical: spacing.xs,
+  },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    minHeight: 52,
+  },
+  listRowPressed: {
+    opacity: 0.7,
+  },
+  listRowLabel: {
+    ...typography.bodyBold,
+    color: colors.text,
+    flex: 1,
+  },
+  listRowLabelDanger: {
+    color: colors.danger,
+  },
+  listDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginLeft: 42,
   },
   statusBanner: {
     position: 'absolute',
@@ -1878,155 +1651,9 @@ const createStyles = (colors) => StyleSheet.create({
   statusTextError: {
     color: colors.danger,
   },
-  section: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    margin: spacing.sm,
-    ...shadows.sm,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  sectionTitleSmall: {
-    fontSize: 16,
-  },
-  sectionDescription: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-    lineHeight: 18,
-  },
-  sectionDescriptionSmall: {
-    fontSize: 11,
-  },
-  profileCard: {
-    alignItems: 'center',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    overflow: 'hidden',
-    paddingBottom: spacing.md,
-  },
-  profileBanner: {
-    width: '100%',
-    height: 96,
-    backgroundColor: colors.surfaceDark,
-    marginBottom: -52,
-  },
-  profileBannerOrb: {
-    position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    top: -56,
-    right: -30,
-  },
-  profileBannerOrbSmall: {
-    position: 'absolute',
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(196,165,106,0.18)',
-    bottom: -18,
-    left: 18,
-  },
   profileAvatarWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  profileAvatarRing: {
-    padding: 4,
-    borderRadius: borderRadius.full,
-    borderWidth: 3,
-    borderColor: colors.primaryLight,
-    backgroundColor: colors.surface,
-    ...shadows.md,
-  },
-  profileAvatarImage: {
-    borderRadius: borderRadius.full,
-  },
-  profileName: {
-    ...typography.h3,
-    color: colors.text,
-    textAlign: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  profileUsernamePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.infoLight,
-  },
-  profileUsername: {
-    ...typography.captionBold,
-    color: colors.primaryLight,
-  },
-  profileMeta: {
-    width: '100%',
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.md,
-    gap: spacing.sm,
-  },
-  profileMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  profileMetaIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.iconSurface,
-  },
-  profileMetaBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  profileMetaLabel: {
-    ...typography.small,
-    color: colors.textLight,
-  },
-  profileMetaValue: {
-    ...typography.bodySmallBold,
-    color: colors.text,
-    marginTop: 1,
-  },
-  profilePathRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.xs,
-  },
-  profilePath: {
-    ...typography.small,
-    color: colors.textLight,
-    flex: 1,
-  },
-  profileEditButton: {
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    minWidth: 180,
-  },
-  avatarWrapper: {
-    alignSelf: 'flex-start',
   },
   avatarEditBadge: {
     position: 'absolute',
@@ -2040,10 +1667,6 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: colors.surface,
-  },
-  profileInfo: {
-    flex: 1,
-    minWidth: 0,
   },
   infoRow: {
     paddingVertical: spacing.xs,
@@ -2070,333 +1693,6 @@ const createStyles = (colors) => StyleSheet.create({
   },
   infoValueSmall: {
     fontSize: 12,
-  },
-  inlineLoading: {
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-  },
-  currentKitchenRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.warningSurface,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.warningBorder,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  currentKitchenLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  currentKitchenValue: {
-    ...typography.captionBold,
-    color: colors.warningText,
-    flex: 1,
-  },
-  kitchenOptions: {
-    gap: spacing.sm,
-  },
-  kitchenOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.warningLight,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    gap: spacing.sm,
-    borderColor: colors.warningBorder,
-    padding: spacing.sm,
-  },
-  kitchenOptionSelected: {
-    borderColor: colors.warning,
-    borderWidth: 2,
-  },
-  kitchenRadio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: colors.warning,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kitchenRadioSelected: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.warning,
-  },
-  kitchenInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  kitchenName: {
-    ...typography.bodyBold,
-    color: colors.warningText,
-  },
-  kitchenNameSmall: {
-    fontSize: 12,
-  },
-  kitchenPath: {
-    ...typography.caption,
-    color: colors.warningTextMuted,
-    marginTop: 1,
-  },
-  contactsHeader: {
-    marginBottom: spacing.sm,
-  },
-  searchBar: {
-    marginBottom: spacing.sm,
-  },
-  contactsActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  actionButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-  },
-  actionButtonText: {
-    ...typography.buttonSmall,
-    color: colors.primaryLight,
-  },
-  actionButtonTextSmall: {
-    fontSize: 11,
-  },
-  contactsList: {
-    marginBottom: spacing.sm,
-  },
-  contactItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  contactItemSelected: {
-    borderColor: colors.primaryLight,
-    backgroundColor: colors.selectedSurface,
-  },
-  contactAvatar: {
-    flexShrink: 0,
-  },
-  contactInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  contactField: {
-    paddingVertical: 1,
-  },
-  contactNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  contactName: {
-    ...typography.bodyBold,
-    color: colors.text,
-    flex: 1,
-  },
-  contactNameSmall: {
-    fontSize: 13,
-  },
-  contactMeta: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 1,
-  },
-  contactMetaSmall: {
-    fontSize: 10,
-  },
-  contactUsername: {
-    ...typography.small,
-    color: colors.primaryLight,
-    marginTop: 1,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.borderDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  checkboxChecked: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primaryLight,
-  },
-  contactsFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  selectedCount: {
-    ...typography.bodyBold,
-    color: colors.primaryLight,
-  },
-  selectedCountSmall: {
-    fontSize: 12,
-  },
-  emptyText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    paddingVertical: spacing.md,
-  },
-  warningBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.warningLight,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.warningBorder,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  warningText: {
-    ...typography.caption,
-    color: colors.warningText,
-    flex: 1,
-    lineHeight: 18,
-  },
-  retryText: {
-    ...typography.captionBold,
-    color: colors.primaryLight,
-  },
-  mockNotice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    backgroundColor: colors.infoLight,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.infoBorder,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  mockNoticeText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    flex: 1,
-    lineHeight: 18,
-  },
-  themeOptions: {
-    gap: spacing.sm,
-  },
-  soundOptions: {
-    gap: spacing.sm,
-  },
-  soundOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  soundOptionSelected: {
-    borderColor: colors.primaryLight,
-    backgroundColor: colors.selectedSurface,
-  },
-  soundIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.iconSurface,
-  },
-  soundIconSelected: {
-    backgroundColor: colors.primaryLight,
-  },
-  soundInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  soundLabel: {
-    ...typography.bodyBold,
-    color: colors.text,
-  },
-  soundLabelSmall: {
-    fontSize: 13,
-  },
-  soundHint: {
-    ...typography.small,
-    color: colors.textSecondary,
-    marginTop: 1,
-  },
-  themeOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  themeOptionSelected: {
-    borderColor: colors.primaryLight,
-    backgroundColor: colors.selectedSurface,
-  },
-  themeOptionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.iconSurface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  themeOptionLabel: {
-    ...typography.bodyBold,
-    color: colors.text,
-    flex: 1,
-  },
-  themeOptionLabelSmall: {
-    fontSize: 13,
-  },
-  languageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  languageIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.iconSurface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  languageInfo: {
-    flex: 1,
-  },
-  languageValue: {
-    ...typography.bodyBold,
-    color: colors.text,
-  },
-  languageValueSmall: {
-    fontSize: 13,
-  },
-  logoutButton: {
-    marginTop: spacing.xs,
   },
   formModal: {
     maxWidth: 520,
@@ -2442,7 +1738,8 @@ const createStyles = (colors) => StyleSheet.create({
   photoCameraBadge: {
     position: 'absolute',
     bottom: 2,
-    end: 2,
+    // `right` (not `end`) so the RTL flip moves the badge to the left in Arabic.
+    right: 2,
     width: 32,
     height: 32,
     borderRadius: 16,

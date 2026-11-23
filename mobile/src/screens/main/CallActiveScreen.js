@@ -1,20 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  ScrollView,
-  useWindowDimensions,
-} from 'react-native';
+import { View, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { Text } from '../../components/AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
-import { spacing, borderRadius, shadows } from '../../constants/spacing';
+import { spacing, borderRadius } from '../../constants/spacing';
 import UserAvatar from '../../components/UserAvatar';
 import { useLanguage } from '../../context/LanguageContext';
-import { useCall } from '../../context/CallContext';
+import { useCall, useCallAudio } from '../../context/CallContext';
 import {
   PHASES,
   elapsedSeconds,
@@ -24,6 +18,22 @@ import {
 import { SECURITY_CODE_STATUS, formatSecurityCode } from '../../calls/securityCode';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { FadeInView, PulseRing } from '../../components/Motion';
+
+// The call screen keeps its own dark palette in both themes, like the phone's
+// own call screen, so it reads instantly as "you are in a call".
+const CALL = {
+  background: '#0b1b33',
+  surface: 'rgba(255, 255, 255, 0.10)',
+  surfaceStrong: 'rgba(255, 255, 255, 0.16)',
+  text: '#ffffff',
+  textMuted: 'rgba(255, 255, 255, 0.72)',
+  active: '#ffffff',
+  activeIcon: '#0b1b33',
+  end: '#e5484d',
+  success: '#4ade80',
+  danger: '#ff8a8a',
+};
 
 const formatDuration = (seconds) => {
   const mins = Math.floor(seconds / 60);
@@ -31,34 +41,90 @@ const formatDuration = (seconds) => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
+/** A round call button with its label underneath. */
+const RoundButton = ({ icon, label, onPress, active, disabled, variant, styles, accessibilityRole = 'button' }) => (
+  <View style={styles.controlItem}>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={6}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={label}
+      accessibilityState={accessibilityRole === 'switch' ? { checked: !!active, disabled } : { disabled }}
+      style={({ pressed }) => [
+        styles.roundButton,
+        variant === 'end' && styles.endButton,
+        active && styles.roundButtonActive,
+        pressed && styles.roundButtonPressed,
+        disabled && styles.roundButtonDisabled,
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={variant === 'end' ? 30 : 26}
+        color={active ? CALL.activeIcon : CALL.text}
+        style={variant === 'end' ? styles.endIcon : null}
+      />
+    </Pressable>
+    <Text style={styles.controlLabel} numberOfLines={1}>
+      {label}
+    </Text>
+  </View>
+);
+
+/**
+ * Speaker, mute and end. Mute and speaker read only the audio context, so a
+ * tap re-renders these buttons and nothing else (not the call timer).
+ */
+const CallControls = React.memo(function CallControls({ styles, t, endLabel, onEnd, ending }) {
+  const { muted, setMuted, speaker, setSpeaker, audioEnabled, speakerEnabled } = useCallAudio();
+  return (
+    <View style={styles.controlsRow}>
+      <RoundButton
+        styles={styles}
+        icon="volume-high"
+        label={t('callActive.speaker')}
+        active={speaker}
+        disabled={!speakerEnabled}
+        onPress={() => setSpeaker((value) => !value)}
+        accessibilityRole="switch"
+      />
+      <RoundButton
+        styles={styles}
+        icon={muted ? 'mic-off' : 'mic'}
+        label={muted ? t('callActive.unmute') : t('callActive.mute')}
+        active={muted}
+        disabled={!audioEnabled}
+        onPress={() => setMuted((value) => !value)}
+        accessibilityRole="switch"
+      />
+      <RoundButton
+        styles={styles}
+        icon="call"
+        variant="end"
+        label={endLabel}
+        disabled={ending}
+        onPress={onEnd}
+      />
+    </View>
+  );
+});
+
 /**
  * Outgoing, connecting, active and ended states of the live call. Rendered by
  * CallOverlay; everything comes from `useCall()` and the server's call view,
  * so a redacted leadership caller shows only the configured label.
+ *
+ * `onMinimize` shrinks the call into the bar at the top of the app, so the
+ * user can keep using the app during the call (like WhatsApp).
  */
-const CallActiveScreen = () => {
-  const { width, height } = useWindowDimensions();
+const CallActiveScreen = ({ onMinimize }) => {
+  const { width } = useWindowDimensions();
   const { t, isRTL } = useLanguage();
-  const { colors } = useTheme();
-  const {
-    state,
-    hangUp,
-    muted,
-    setMuted,
-    speaker,
-    setSpeaker,
-    audioEnabled,
-    speakerEnabled,
-    securityCode,
-  } = useCall();
-  const styles = useMemo(
-    () => flipStyles(createStyles(colors), isRTL),
-    [colors, isRTL]
-  );
+  const { state, hangUp, audioEnabled, securityCode } = useCall();
+  const styles = useMemo(() => flipStyles(createStyles(), isRTL), [isRTL]);
 
   const isSmallScreen = width < 375;
-  const isLargeScreen = width > 768;
-  const isLandscape = width > height;
 
   const { phase, call, endedReason } = state;
   const party = otherParty(call) || {};
@@ -85,306 +151,209 @@ const CallActiveScreen = () => {
   };
 
   const duration = elapsedSeconds(call, now);
+  const ended = phase === PHASES.ENDED;
 
-  // أحجام متجاوبة
-  const avatarSize = isSmallScreen ? 'medium' : isLargeScreen ? 'xlarge' : 'large';
-  const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
-  const controlIconSize = isSmallScreen ? 20 : isLargeScreen ? 28 : 24;
-
-  if (phase === PHASES.ENDED) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={[styles.summaryContainer, { padding: cardPadding }]}>
-          <View style={styles.summaryIcon}>
-            <Ionicons name="call" size={isSmallScreen ? 24 : 32} color={colors.primaryLight} />
-          </View>
-          <Text style={[styles.summaryTitle, isSmallScreen && styles.summaryTitleSmall]}>
-            {t(endedReasonKey(endedReason))}
-          </Text>
-
-          <View style={styles.summaryDetails}>
-            <Text style={[styles.summaryText, isSmallScreen && styles.summaryTextSmall]}>
-              <Text style={styles.summaryLabel}>{t('callActive.employeeLabel')}</Text>
-              {localizeText(party.name || '')}
-            </Text>
-            {duration > 0 ? (
-              <Text style={[styles.summaryText, isSmallScreen && styles.summaryTextSmall]}>
-                <Text style={styles.summaryLabel}>{t('callActive.durationLabel')}</Text>
-                {formatDuration(duration)}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const statusText =
-    phase === PHASES.OUTGOING
+  const statusText = ended
+    ? t(endedReasonKey(endedReason))
+    : phase === PHASES.OUTGOING
       ? t('callActive.outgoingRinging')
       : phase === PHASES.CONNECTING
-      ? t('callActive.connecting')
-      : formatDuration(duration);
+        ? t('callActive.connecting')
+        : formatDuration(duration);
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={[
-        styles.scrollContent,
-        isLandscape && styles.scrollContentLandscape,
-      ]}>
-        {/* معلومات المكالمة */}
-        <View style={[styles.callInfo, { padding: cardPadding }]}>
-          <View style={styles.callHeader}>
-            <UserAvatar person={person} size={avatarSize} />
-            <View style={styles.callHeaderText}>
-              <Text style={[styles.callLabel, isSmallScreen && styles.callLabelSmall]}>
-                {phase === PHASES.ACTIVE ? t('callActive.inCall') : t('callActive.callingEmployee')}
-              </Text>
-              <Text style={[styles.callName, isSmallScreen && styles.callNameSmall]}>
-                {localizeText(party.name || '')}
-              </Text>
-              {!redacted && party.unitName ? (
-                <Text style={[styles.callUnit, isSmallScreen && styles.callUnitSmall]}>
-                  {localizeText(party.unitName)}
-                </Text>
-              ) : null}
-            </View>
-          </View>
+      <StatusBar style="light" />
 
-          <View style={styles.callMeta}>
-            <View style={styles.durationContainer}>
-              <Text style={[styles.durationLabel, isSmallScreen && styles.durationLabelSmall]}>
-                {t('callActive.durationTitle')}
-              </Text>
-              <Text style={[styles.duration, isSmallScreen && styles.durationSmall]}>
-                {statusText}
-              </Text>
-            </View>
-            <View style={styles.secureBadge}>
-              <Ionicons name="shield" size={isSmallScreen ? 14 : 16} color={colors.primaryLight} />
-              <Text style={[styles.secureText, isSmallScreen && styles.secureTextSmall]}>
-                {t('callActive.secureCall')}
-              </Text>
-            </View>
-          </View>
-
-          {/* رمز الأمان: يقرؤه الطرفان لبعض؛ إن اختلف فهناك من يتنصّت */}
-          {phase === PHASES.ACTIVE && audioEnabled && securityCode ? (
-            securityCode.status === SECURITY_CODE_STATUS.READY ? (
-              <View style={styles.securityBox}>
-                <View style={styles.securityHeader}>
-                  <Ionicons name="key" size={isSmallScreen ? 14 : 16} color={colors.success} />
-                  <Text style={[styles.securityTitle, isSmallScreen && styles.securityTitleSmall]}>
-                    {t('callActive.securityCodeTitle')}
-                  </Text>
-                </View>
-                <Text
-                  style={[styles.securityCode, isSmallScreen && styles.securityCodeSmall]}
-                  accessibilityLabel={securityCode.code.split('').join(' ')}
-                >
-                  {formatSecurityCode(securityCode.code)}
-                </Text>
-                <Text style={[styles.securityHint, isSmallScreen && styles.securityHintSmall]}>
-                  {t('callActive.securityCodeHint')}
-                </Text>
-              </View>
-            ) : securityCode.status === SECURITY_CODE_STATUS.MISMATCH ? (
-              <View style={[styles.securityBox, styles.securityBoxDanger]}>
-                <View style={styles.securityHeader}>
-                  <Ionicons name="warning" size={isSmallScreen ? 16 : 18} color={colors.danger} />
-                  <Text style={[styles.securityTitle, styles.securityTitleDanger]}>
-                    {t('callActive.securityMismatchTitle')}
-                  </Text>
-                </View>
-                <Text style={[styles.securityHint, styles.securityHintDanger]}>
-                  {t('callActive.securityMismatch')}
-                </Text>
-              </View>
-            ) : (
-              <View style={[styles.securityBox, styles.securityBoxMuted]}>
-                <Text style={[styles.securityHint, isSmallScreen && styles.securityHintSmall]}>
-                  {t('callActive.securityUnavailable')}
-                </Text>
-              </View>
-            )
-          ) : null}
+      {/* الشريط العلوي: تصغير المكالمة، وأنها مكالمة آمنة */}
+      <View style={styles.topBar}>
+        {!ended && onMinimize ? (
+          <Pressable
+            onPress={onMinimize}
+            hitSlop={8}
+            style={({ pressed }) => [styles.topButton, pressed && styles.roundButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={t('callActive.minimize')}
+          >
+            <Ionicons name="chevron-down" size={24} color={CALL.text} />
+          </Pressable>
+        ) : (
+          <View style={styles.topButtonSpacer} />
+        )}
+        <View style={styles.secureBadge}>
+          <Ionicons name="lock-closed" size={12} color={CALL.textMuted} />
+          <Text style={styles.secureText}>{t('callActive.secureCall')}</Text>
         </View>
+        <View style={styles.topButtonSpacer} />
+      </View>
 
-        {/* التحكم بالمكالمة */}
-        <View style={[styles.controls, { padding: cardPadding }]}>
-          <Text style={[styles.controlsTitle, isSmallScreen && styles.controlsTitleSmall]}>
-            {t('callActive.controlsTitle')}
-          </Text>
-
-          <View style={styles.controlsGrid}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.controlButton,
-                muted && styles.controlButtonActive,
-                pressed && styles.controlButtonPressed,
-              ]}
-              onPress={() => setMuted((value) => !value)}
-              disabled={!audioEnabled}
-            >
-              <Ionicons
-                name={muted ? 'mic-off' : 'mic'}
-                size={controlIconSize}
-                color={muted ? colors.textWhite : colors.text}
-              />
-              <Text style={[styles.controlLabel, muted && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
-                {muted ? t('callActive.unmute') : t('callActive.mute')}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.controlButton,
-                speaker && styles.controlButtonActive,
-                pressed && styles.controlButtonPressed,
-              ]}
-              onPress={() => setSpeaker((value) => !value)}
-              disabled={!speakerEnabled}
-            >
-              <Ionicons
-                name="volume-high"
-                size={controlIconSize}
-                color={speaker ? colors.textWhite : colors.text}
-              />
-              <Text style={[styles.controlLabel, speaker && styles.controlLabelActive, isSmallScreen && styles.controlLabelSmall]}>
-                {speaker ? t('callActive.speakerOff') : t('callActive.speaker')}
-              </Text>
-            </Pressable>
+      {/* الطرف الآخر */}
+      <View style={styles.center}>
+        <PulseRing
+          size={(isSmallScreen ? 64 : 96) + 12}
+          active={phase === PHASES.OUTGOING || phase === PHASES.CONNECTING}
+          style={styles.avatarPulse}
+        >
+          <View style={styles.avatarRing}>
+            <UserAvatar person={person} size={isSmallScreen ? 'large' : 'xlarge'} />
           </View>
-
-          {/* زر إنهاء أو إلغاء المكالمة */}
-          <View style={styles.endCallContainer}>
-            <Pressable
-              style={[styles.endCallButton, hangingUp && { opacity: 0.6 }]}
-              onPress={handleHangUp}
-              disabled={hangingUp}
-            >
-              <Ionicons name="call" size={isSmallScreen ? 20 : 24} color={colors.textWhite} />
-              <Text style={[styles.endCallText, isSmallScreen && styles.endCallTextSmall]}>
-                {phase === PHASES.OUTGOING ? t('callActive.cancel') : t('callActive.endCall')}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {!audioEnabled ? (
-          <Text style={[styles.disclaimer, isSmallScreen && styles.disclaimerSmall]}>
-            {t('callActive.disclaimer')}
+        </PulseRing>
+        <Text style={styles.name} numberOfLines={2}>
+          {localizeText(party.name || '')}
+        </Text>
+        {!redacted && party.unitName ? (
+          <Text style={styles.unit} numberOfLines={1}>
+            {localizeText(party.unitName)}
           </Text>
         ) : null}
-      </ScrollView>
+        <Text
+          style={[styles.status, phase === PHASES.ACTIVE && styles.statusTimer]}
+          accessibilityLiveRegion="polite"
+        >
+          {statusText}
+        </Text>
+        {ended ? (
+          <Text style={styles.unit}>
+            {t('callActive.durationLabel')}
+            {formatDuration(duration)}
+          </Text>
+        ) : null}
+
+        {/* رمز الأمان: يقرؤه الطرفان لبعض؛ إن اختلف فهناك من يتنصّت */}
+        {phase === PHASES.ACTIVE && audioEnabled && securityCode ? (
+          securityCode.status === SECURITY_CODE_STATUS.READY ? (
+            <View style={styles.securityBox}>
+              <View style={styles.securityHeader}>
+                <Ionicons name="key" size={14} color={CALL.success} />
+                <Text style={styles.securityTitle}>{t('callActive.securityCodeTitle')}</Text>
+              </View>
+              <Text
+                style={styles.securityCode}
+                accessibilityLabel={securityCode.code.split('').join(' ')}
+              >
+                {formatSecurityCode(securityCode.code)}
+              </Text>
+              <Text style={styles.securityHint}>{t('callActive.securityCodeHint')}</Text>
+            </View>
+          ) : securityCode.status === SECURITY_CODE_STATUS.MISMATCH ? (
+            <View style={[styles.securityBox, styles.securityBoxDanger]}>
+              <View style={styles.securityHeader}>
+                <Ionicons name="warning" size={16} color={CALL.danger} />
+                <Text style={[styles.securityTitle, styles.securityTitleDanger]}>
+                  {t('callActive.securityMismatchTitle')}
+                </Text>
+              </View>
+              <Text style={styles.securityHint}>{t('callActive.securityMismatch')}</Text>
+            </View>
+          ) : (
+            <View style={styles.securityBox}>
+              <Text style={styles.securityHint}>{t('callActive.securityUnavailable')}</Text>
+            </View>
+          )
+        ) : null}
+      </View>
+
+      {/* أزرار المكالمة */}
+      {!ended ? (
+        <FadeInView delay={120} distance={24} style={styles.bottom}>
+          <CallControls
+            styles={styles}
+            t={t}
+            endLabel={phase === PHASES.OUTGOING ? t('callActive.cancel') : t('callActive.endCall')}
+            onEnd={handleHangUp}
+            ending={hangingUp}
+          />
+        </FadeInView>
+      ) : (
+        <View style={styles.bottom} />
+      )}
     </SafeAreaView>
   );
 };
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: CALL.background,
   },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  scrollContentLandscape: {
-    paddingHorizontal: '15%',
-  },
-  callInfo: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    margin: spacing.md,
-    ...shadows.sm,
-  },
-  callHeader: {
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  callHeaderText: {
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  callLabel: {
-    ...typography.bodySmall,
-    color: colors.textLight,
-  },
-  callLabelSmall: {
-    fontSize: 11,
-  },
-  callName: {
-    ...typography.h2,
-    color: colors.text,
-    marginTop: spacing.xs,
-  },
-  callNameSmall: {
-    fontSize: 18,
-  },
-  callUnit: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  callUnitSmall: {
-    fontSize: 12,
-  },
-  callMeta: {
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
-  durationContainer: {
+  topButton: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.full,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CALL.surface,
   },
-  durationLabel: {
-    ...typography.caption,
-    color: colors.textLight,
-  },
-  durationLabelSmall: {
-    fontSize: 10,
-  },
-  duration: {
-    ...typography.h1,
-    color: colors.text,
-    marginTop: spacing.xs,
-  },
-  durationSmall: {
-    fontSize: 24,
+  topButtonSpacer: {
+    width: 44,
+    height: 44,
   },
   secureBadge: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    backgroundColor: CALL.surface,
   },
   secureText: {
-    ...typography.captionBold,
-    color: colors.primaryLight,
+    ...typography.caption,
+    color: CALL.textMuted,
   },
-  secureTextSmall: {
-    fontSize: 10,
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  avatarPulse: {
+    marginBottom: spacing.lg,
+  },
+  avatarRing: {
+    padding: 6,
+    borderRadius: borderRadius.full,
+    backgroundColor: CALL.surface,
+  },
+  name: {
+    ...typography.h1,
+    color: CALL.text,
+    textAlign: 'center',
+  },
+  unit: {
+    ...typography.bodySmall,
+    color: CALL.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  status: {
+    ...typography.body,
+    color: CALL.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
+  statusTimer: {
+    ...typography.h3,
+    color: CALL.text,
+    fontVariant: ['tabular-nums'],
   },
   securityBox: {
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.successBorder,
-    backgroundColor: colors.successLight,
+    alignSelf: 'stretch',
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    backgroundColor: CALL.surface,
     alignItems: 'center',
   },
   securityBoxDanger: {
-    borderColor: colors.dangerBorder,
-    backgroundColor: colors.dangerLight,
-  },
-  securityBoxMuted: {
-    borderColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: 'rgba(229, 72, 77, 0.22)',
   },
   securityHeader: {
     flexDirection: 'row',
@@ -392,170 +361,73 @@ const createStyles = (colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   securityTitle: {
-    ...typography.captionBold,
-    color: colors.success,
-  },
-  securityTitleSmall: {
-    fontSize: 11,
+    ...typography.bodySmallBold,
+    color: CALL.text,
   },
   securityTitleDanger: {
-    color: colors.danger,
+    color: CALL.danger,
   },
   securityCode: {
-    ...typography.h1,
-    color: colors.text,
+    ...typography.h2,
+    color: CALL.text,
     letterSpacing: 4,
-    marginTop: spacing.xs,
-    writingDirection: 'ltr',
+    marginVertical: spacing.xs,
     fontVariant: ['tabular-nums'],
-  },
-  securityCodeSmall: {
-    fontSize: 24,
   },
   securityHint: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: CALL.textMuted,
     textAlign: 'center',
-    marginTop: spacing.xs,
   },
-  securityHintSmall: {
-    fontSize: 10,
+  bottom: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    minHeight: 140,
+    justifyContent: 'flex-end',
   },
-  securityHintDanger: {
-    color: colors.danger,
-  },
-  controls: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    margin: spacing.md,
-    ...shadows.sm,
-  },
-  controlsTitle: {
-    ...typography.h3,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  controlsTitleSmall: {
-    fontSize: 16,
-  },
-  controlsGrid: {
+  controlsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+    alignItems: 'flex-start',
+    justifyContent: 'space-evenly',
   },
-  controlButton: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    padding: spacing.sm,
+  controlItem: {
     alignItems: 'center',
+    gap: spacing.xs,
+    minWidth: 80,
   },
-  controlButtonActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primaryLight,
+  roundButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CALL.surfaceStrong,
   },
-  controlButtonPressed: {
-    opacity: 0.6,
-    transform: [{ scale: 0.96 }],
+  roundButtonActive: {
+    backgroundColor: CALL.active,
+  },
+  roundButtonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.94 }],
+  },
+  roundButtonDisabled: {
+    opacity: 0.4,
+  },
+  endButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: CALL.end,
+  },
+  endIcon: {
+    // The classic "hang up" handset.
+    transform: [{ rotate: '135deg' }],
   },
   controlLabel: {
-    ...typography.captionBold,
-    color: colors.text,
-    marginTop: spacing.xs,
-  },
-  controlLabelSmall: {
-    fontSize: 10,
-  },
-  controlLabelActive: {
-    color: colors.textWhite,
-  },
-  endCallContainer: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    alignItems: 'center',
-  },
-  endCallButton: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: spacing.sm,
-  backgroundColor: colors.danger,
-  borderRadius: borderRadius.md,
-  paddingHorizontal: spacing.xl,
-  paddingVertical: spacing.sm,
-},
-endCallText: {
-  ...typography.button,
-  color: colors.textWhite,
-},
-  endCallTextSmall: {
-    fontSize: 13,
-  },
-  disclaimer: {
     ...typography.caption,
-    color: colors.textLight,
+    color: CALL.textMuted,
     textAlign: 'center',
-    margin: spacing.md,
-  },
-  disclaimerSmall: {
-    fontSize: 10,
-  },
-  summaryContainer: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    margin: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.sm,
-  },
-  summaryIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#eaf1f7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  summaryTitle: {
-    ...typography.h2,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  summaryTitleSmall: {
-    fontSize: 18,
-  },
-  summaryDetails: {
-    width: '100%',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  summaryText: {
-    ...typography.body,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  summaryTextSmall: {
-    fontSize: 12,
-  },
-  summaryLabel: {
-    fontFamily: 'Cairo_700Bold',
-    color: colors.textSecondary,
   },
 });
 
 export default CallActiveScreen;
-
-

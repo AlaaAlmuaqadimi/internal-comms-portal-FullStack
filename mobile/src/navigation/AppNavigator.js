@@ -6,12 +6,13 @@ import {
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationsContext';
-import { spacing } from '../constants/spacing';
+import { spacing, borderRadius, shadows } from '../constants/spacing';
 
 // Auth Screens
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -26,6 +27,8 @@ import AddUserScreen from '../screens/main/AddUserScreen';
 import { hasRole } from '../utils/permissions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { fonts } from '../constants/typography';
+import { ScaleInView } from '../components/Motion';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator(); // تم تصحيح استدعاء الدالة هنا
 
@@ -66,17 +69,25 @@ const MainTabs = () => {
         headerShown: false,
         tabBarActiveTintColor: colors.primaryLight,
         tabBarInactiveTintColor: colors.textLight,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
-        backgroundColor: colors.surface,
-        borderTopColor: colors.border,
-        borderTopWidth: 1,
-        height: 60 + insets.bottom,
-        paddingBottom: Math.max(insets.bottom, spacing.sm),
-        paddingTop: spacing.sm,
-  },
+          backgroundColor: colors.surface,
+          borderTopWidth: 0,
+          height: 68 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, spacing.sm),
+          paddingTop: spacing.sm,
+          ...shadows.lg,
+          shadowOffset: { width: 0, height: -6 },
+          shadowOpacity: 0.06,
+        },
+        tabBarItemStyle: {
+          paddingTop: 2,
+        },
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
+          fontSize: 11,
+          lineHeight: 15,
+          fontFamily: fonts.semiBold,
+          marginTop: 2,
         },
       }}
     >
@@ -96,16 +107,36 @@ const MainTabs = () => {
                     backgroundColor: colors.danger,
                     color: colors.textWhite,
                     fontSize: 10,
-                    fontWeight: '700',
+                    fontFamily: fonts.bold,
                     minWidth: 18,
                     height: 18,
                     lineHeight: 18,
+                    borderWidth: 2,
+                    borderColor: colors.surface,
                   },
                 }
               : {}),
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name={tab.icon} size={size} color={color} />
-            ),
+            // Active tab: filled icon on a soft tinted pill; others outlined.
+            // The highlight pops in when the tab is selected.
+            tabBarIcon: ({ color, focused }) => {
+              const pill = {
+                width: 56,
+                height: 30,
+                borderRadius: borderRadius.full,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: focused ? colors.primarySoft : 'transparent',
+              };
+              return focused ? (
+                <ScaleInView from={0.55} fade={false} duration={240} style={pill}>
+                  <Ionicons name={tab.icon} size={22} color={color} />
+                </ScaleInView>
+              ) : (
+                <View style={pill}>
+                  <Ionicons name={`${tab.icon}-outline`} size={22} color={color} />
+                </View>
+              );
+            },
           }}
         />
       ))}

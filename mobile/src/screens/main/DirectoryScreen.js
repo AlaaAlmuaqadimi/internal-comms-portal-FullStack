@@ -7,7 +7,6 @@ import React, {
 } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   Pressable,
@@ -15,7 +14,8 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from '../../components/AppText';
+import SafeAreaView from '../../components/SafeAreaView';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -26,12 +26,15 @@ import Loading from '../../components/Loading';
 import EmptyState from '../../components/EmptyState';
 import CustomButton from '../../components/CustomButton';
 import SelectField from '../../components/SelectField';
+import UserAvatar from '../../components/UserAvatar';
 import EditEmployeeModal from './EditEmployeeModal';
 import { api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import useDebounce from '../../hooks/useDebounce';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { FadeInView, ScaleInView } from '../../components/Motion';
+import { listItemDelay } from '../../constants/motion';
 import { hasRole } from '../../utils/permissions';
 import { useStartCall } from '../../context/CallContext';
 
@@ -47,7 +50,6 @@ const DirectoryScreen = ({ navigation }) => {
 
   const isSmallScreen = width < 375;
   const isLargeScreen = width > 768;
-  const isWideScreen = width >= 700;
   const isLandscape = width > height;
   const isAdmin = hasRole(user, 'admin');
 
@@ -57,11 +59,11 @@ const DirectoryScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
+  // Only the filters people actually use: who (search), where (department,
+  // which includes its offices and sections) and who is reachable now.
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
   const [departmentId, setDepartmentId] = useState('');
-  const [unitId, setUnitId] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [onlineOnly, setOnlineOnly] = useState(false);
 
   const [orgTree, setOrgTree] = useState([]);
 
@@ -90,14 +92,9 @@ const DirectoryScreen = ({ navigation }) => {
   const loadEmployees = useCallback(
     async (overrides = {}) => {
       const q = overrides.q ?? debouncedSearch;
-      const roleCode = overrides.roleCode ?? roleFilter;
-      const department = overrides.departmentId ?? departmentId;
-      const unit = overrides.unitId ?? unitId;
-      // A unit always lives inside the selected department, so the unit id
-      // alone narrows the SQL query enough. The department dropdown only scopes
-      // which units are offered.
-      const orgUnitId = overrides.orgUnitId ?? (unit || department);
-      const status = overrides.status ?? statusFilter;
+      // The server matches the whole subtree of the selected department.
+      const orgUnitId = overrides.departmentId ?? departmentId;
+      const status = (overrides.onlineOnly ?? onlineOnly) ? 'online' : '';
 
       const requestId = requestRef.current + 1;
       requestRef.current = requestId;
@@ -106,12 +103,7 @@ const DirectoryScreen = ({ navigation }) => {
       else setFetching(true);
 
       try {
-        const list = await api.employees.list({
-          q: q.trim(),
-          roleCode,
-          orgUnitId,
-          status,
-        });
+        const list = await api.employees.list({ q: q.trim(), orgUnitId, status });
         if (requestRef.current !== requestId) return;
         setEmployees(Array.isArray(list) ? list : []);
         setError(null);
@@ -127,7 +119,7 @@ const DirectoryScreen = ({ navigation }) => {
         }
       }
     },
-    [debouncedSearch, roleFilter, departmentId, unitId, statusFilter, t]
+    [debouncedSearch, departmentId, onlineOnly, t]
   );
 
   // Re-query whenever the debounced search or a filter changes.
@@ -162,25 +154,10 @@ const DirectoryScreen = ({ navigation }) => {
   // instead of waiting for the search debounce to settle.
   const resetFilters = useCallback(() => {
     setSearchQuery('');
-    setRoleFilter('');
     setDepartmentId('');
-    setUnitId('');
-    setStatusFilter('');
-    loadEmployees({
-      q: '',
-      roleCode: '',
-      departmentId: '',
-      unitId: '',
-      orgUnitId: '',
-      status: '',
-    });
+    setOnlineOnly(false);
+    loadEmployees({ q: '', departmentId: '', onlineOnly: false });
   }, [loadEmployees]);
-
-  const handleDepartmentChange = useCallback((value) => {
-    setDepartmentId(value);
-    // Units are scoped to the selected department, so clear a stale unit.
-    setUnitId('');
-  }, []);
 
   const startCall = useStartCall();
   const handleCallPress = useCallback(
@@ -206,15 +183,6 @@ const DirectoryScreen = ({ navigation }) => {
     showToast(t('editEmployee.saveSuccess'));
     await loadEmployees();
   }, [loadEmployees, showToast, t]);
-
-  const roleFilterOptions = useMemo(
-    () => [
-      { value: '', label: t('directory.allRoles') },
-      { value: 'admin', label: t('directory.admin') },
-      { value: 'employee', label: t('directory.employee') },
-    ],
-    [t]
-  );
 
   const departmentOptions = useMemo(() => {
     const options = [{ value: '', label: t('directory.allDepartments') }];
@@ -244,59 +212,12 @@ const DirectoryScreen = ({ navigation }) => {
     return options;
   }, [orgTree, isRTL, language, t]);
 
-  const unitOptions = useMemo(() => {
-    const options = [{ value: '', label: t('directory.allUnits') }];
-    const arrow = isRTL ? '\u2190' : '\u2192';
-
-    const findUnit = (nodes) => {
-      for (const unit of nodes || []) {
-        if (unit.id === departmentId) return unit;
-        const match = findUnit(unit.children);
-        if (match) return match;
-      }
-      return null;
-    };
-
-    // With a department selected the unit list is scoped to its descendants;
-    // otherwise every section in the tree is offered.
-    const roots = departmentId ? findUnit(orgTree)?.children || [] : orgTree;
-
-    const visit = (nodes, parentPath) => {
-      for (const unit of nodes || []) {
-        const name = localizeText(unit.nameAr || unit.nameEn || unit.code);
-        if (unit.kind === 'section') {
-          options.push({
-            value: unit.id,
-            label: name,
-            description: parentPath || undefined,
-          });
-        }
-        visit(unit.children, parentPath ? `${parentPath} ${arrow} ${name}` : name);
-      }
-    };
-
-    visit(roots, '');
-    return options;
-  }, [orgTree, departmentId, isRTL, language, t]);
-
-  const statusOptions = useMemo(
-    () => [
-      { value: '', label: t('directory.allStatuses') },
-      { value: 'active', label: t('directory.statusActive') },
-      { value: 'inactive', label: t('directory.statusInactive') },
-      { value: 'online', label: t('directory.statusOnline') },
-      { value: 'offline', label: t('directory.statusOffline') },
-    ],
-    [t]
-  );
-
   // أحجام متجاوبة
-  const cardPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.lg : spacing.md;
   const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
 
   const notAvailable = t('directory.notAvailable');
 
-  const renderEmployee = ({ item }) => {
+  const renderEmployee = ({ item, index }) => {
     // Employees attached to a section show both the parent administration and
     // the section; employees attached directly to an administration show only
     // that administration.
@@ -312,52 +233,48 @@ const DirectoryScreen = ({ navigation }) => {
         : '';
 
     return (
-      <View style={[styles.employeeCard, { padding: cardPadding }]}>
+      <FadeInView delay={listItemDelay(index)} style={styles.employeeRow}>
+        <UserAvatar person={{ name: item.fullNameAr, avatarUrl: item.avatarUrl }} size="medium" />
         <View style={styles.employeeInfo}>
-          <Text
-            style={[styles.employeeName, isSmallScreen && styles.employeeNameSmall]}
-            numberOfLines={2}
-          >
+          <Text style={styles.employeeName} numberOfLines={1}>
             {item.fullNameAr}
           </Text>
-
-          <Text style={styles.employeeOrg} numberOfLines={2}>
+          <Text style={styles.employeeOrg} numberOfLines={1}>
             {unitName ? `${departmentName} \u00b7 ${unitName}` : departmentName}
           </Text>
         </View>
 
-        <View style={styles.cardActions}>
-          <Pressable
-            onPress={() => handleCallPress(item)}
-            style={({ pressed }) => [
-              styles.iconButton,
-              styles.callButton,
-              pressed && styles.iconButtonPressed,
-            ]}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel={t('directory.callButton')}
-          >
-            <Ionicons name="call" size={18} color={colors.textWhite} />
-          </Pressable>
-
+        <View style={styles.rowActions}>
           {isAdmin ? (
             <Pressable
               onPress={() => openEdit(item)}
               style={({ pressed }) => [
-                styles.iconButton,
+                styles.roundButton,
                 styles.editButton,
-                pressed && styles.iconButtonPressed,
+                pressed && styles.roundButtonPressed,
               ]}
               hitSlop={6}
               accessibilityRole="button"
               accessibilityLabel={t('directory.editEmployee')}
             >
-              <Ionicons name="create-outline" size={18} color={colors.primaryLight} />
+              <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
             </Pressable>
           ) : null}
+          <Pressable
+            onPress={() => handleCallPress(item)}
+            style={({ pressed }) => [
+              styles.roundButton,
+              styles.callButton,
+              pressed && styles.roundButtonPressed,
+            ]}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t('directory.callButton')}
+          >
+            <Ionicons name="call" size={18} color={colors.primaryLight} />
+          </Pressable>
         </View>
-      </View>
+      </FadeInView>
     );
   };
 
@@ -366,106 +283,73 @@ const DirectoryScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} animated>
       {/* الهيدر */}
-      <View style={[styles.header, { padding: headerPadding }]}>
-        <View style={styles.headerTop}>
-          <View style={styles.headerTitle}>
-            <View style={styles.titleBorder} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
-                {t('directory.title')}
-              </Text>
-              <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
-                {t('directory.subtitle')}
-              </Text>
-            </View>
-          </View>
-          {isAdmin && (
-            <Pressable
-              onPress={() => navigation.navigate('AddUser')}
-              style={[styles.addButton, { alignSelf: isRTL ? 'flex-start' : 'flex-end' }]}
-            >
-              <Ionicons name="person-add" size={isSmallScreen ? 16 : 20} color={colors.textWhite} />
-              <Text style={[styles.addButtonText, isSmallScreen && styles.addButtonTextSmall]}>
-                {t('addUser.entry')}
-              </Text>
-            </Pressable>
-          )}
+      <View style={[styles.header, { paddingHorizontal: headerPadding }]}>
+        <View style={styles.headerTitle}>
+          <View style={styles.titleBorder} />
+          <Text
+            style={[styles.title, isSmallScreen && styles.titleSmall]}
+            accessibilityRole="header"
+            numberOfLines={1}
+          >
+            {t('directory.title')}
+          </Text>
         </View>
+        {isAdmin && (
+          <Pressable
+            onPress={() => navigation.navigate('AddUser')}
+            hitSlop={6}
+            style={({ pressed }) => [
+              styles.addButton,
+              isSmallScreen && styles.addButtonCompact,
+              pressed && styles.roundButtonPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t('addUser.entry')}
+          >
+            <Ionicons name="person-add" size={18} color={colors.textWhite} />
+            {!isSmallScreen && <Text style={styles.addButtonText}>{t('addUser.entry')}</Text>}
+          </Pressable>
+        )}
       </View>
 
-      {/* البحث والتصفية — بلا عناوين، صف واحد مرن */}
-      <View style={[styles.filtersContainer, { padding: headerPadding }]}>
-        <View style={styles.filterGrid}>
-          <SearchBar
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder={t('directory.searchPlaceholder')}
-            onClear={() => setSearchQuery('')}
-            style={[styles.searchBar, isWideScreen && styles.searchBarWide]}
-          />
-
-          <Pressable
-            onPress={resetFilters}
-            style={({ pressed }) => [
-              styles.resetIconButton,
-              pressed && styles.resetIconButtonPressed,
-            ]}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel={t('directory.resetFilters')}
-          >
-            <Ionicons name="refresh" size={20} color={colors.textWhite} />
-          </Pressable>
-
+      {/* البحث والتصفية: بحث، إدارة، والمتصلون الآن */}
+      <View style={[styles.filtersContainer, { paddingHorizontal: headerPadding }]}>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder={t('directory.searchPlaceholder')}
+          onClear={() => setSearchQuery('')}
+        />
+        <View style={styles.filterRow}>
           <SelectField
             value={departmentId}
             options={departmentOptions}
-            onSelect={handleDepartmentChange}
+            onSelect={setDepartmentId}
             placeholder={t('directory.allDepartments')}
             compact
-            style={[styles.filterField, isWideScreen && styles.filterFieldWide]}
-            maxListHeight={240}
+            presentation="sheet"
+            sheetTitle={t('directory.allDepartments')}
+            style={styles.departmentField}
             emptyText={t('org.noOptions')}
           />
-          <SelectField
-            value={unitId}
-            options={unitOptions}
-            onSelect={setUnitId}
-            placeholder={t('directory.allUnits')}
-            compact
-            style={[styles.filterField, isWideScreen && styles.filterFieldWide]}
-            maxListHeight={220}
-            emptyText={t('org.noOptions')}
-          />
-          <SelectField
-            value={statusFilter}
-            options={statusOptions}
-            onSelect={setStatusFilter}
-            placeholder={t('directory.allStatuses')}
-            compact
-            style={[styles.filterField, isWideScreen && styles.filterFieldWide]}
-            maxListHeight={220}
-          />
-          <SelectField
-            value={roleFilter}
-            options={roleFilterOptions}
-            onSelect={setRoleFilter}
-            placeholder={t('directory.allRoles')}
-            compact
-            style={[styles.filterField, isWideScreen && styles.filterFieldWide]}
-            maxListHeight={180}
-          />
-        </View>
-
-        <View style={styles.filterFooter}>
-          {fetching ? (
-            <ActivityIndicator size="small" color={colors.primaryLight} />
-          ) : null}
-          <Text style={[styles.resultsCount, isSmallScreen && styles.resultsCountSmall]}>
-            {t('directory.resultsCount', { count: employees.length })}
-          </Text>
+          <Pressable
+            onPress={() => setOnlineOnly((value) => !value)}
+            style={({ pressed }) => [
+              styles.onlineChip,
+              onlineOnly && styles.onlineChipActive,
+              pressed && styles.roundButtonPressed,
+            ]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: onlineOnly }}
+          >
+            <View style={[styles.onlineDot, onlineOnly && styles.onlineDotActive]} />
+            <Text style={[styles.onlineChipText, onlineOnly && styles.onlineChipTextActive]}>
+              {t('directory.onlineNow')}
+            </Text>
+          </Pressable>
+          {fetching ? <ActivityIndicator size="small" color={colors.primaryLight} /> : null}
         </View>
       </View>
 
@@ -491,6 +375,7 @@ const DirectoryScreen = ({ navigation }) => {
         />
       ) : (
         <FlatList
+          keyboardDismissMode="on-drag"
           data={employees}
           renderItem={renderEmployee}
           keyExtractor={(item) => item.id}
@@ -532,22 +417,25 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerTop: {
-    flexDirection: 'column',
+    // Blends into the page: a modern large-title header without a divider.
+    backgroundColor: colors.background,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
   },
   headerTitle: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    width: '100%',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 1,
   },
   titleBorder: {
+    // A short brand accent beside the title.
     width: 4,
-    height: 50,
+    height: 22,
     backgroundColor: colors.accent,
     borderRadius: 2,
   },
@@ -558,145 +446,125 @@ const createStyles = (colors) => StyleSheet.create({
   titleSmall: {
     fontSize: 18,
   },
-  subtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    lineHeight: 18,
-  },
-  subtitleSmall: {
-    fontSize: 11,
-  },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    marginTop: spacing.sm,
+    gap: 6,
+    height: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
     backgroundColor: colors.primaryLight,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    shadowColor: colors.primaryLight,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  addButtonCompact: {
+    width: 40,
+    paddingHorizontal: 0,
+    justifyContent: 'center',
   },
   addButtonText: {
     ...typography.buttonSmall,
     color: colors.textWhite,
   },
-  addButtonTextSmall: {
-    fontSize: 11,
-  },
   filtersContainer: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    zIndex: 10,
-  },
-  // Compact, label-free filter row. Items wrap into a tidy grid on phones and
-  // sit on a single line on tablets; flexDirection is mirrored for RTL.
-  filterGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
+    backgroundColor: colors.background,
+    paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
-  searchBar: {
-    flexGrow: 2,
-    flexBasis: 200,
-    minHeight: 44,
-  },
-  searchBarWide: {
-    flexBasis: 220,
-  },
-  resetIconButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primaryLight,
-    ...shadows.sm,
-  },
-  resetIconButtonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.97 }],
-  },
-  filterField: {
-    flexGrow: 1,
-    flexBasis: 140,
-    marginBottom: 0,
-    minWidth: 130,
-  },
-  filterFieldWide: {
-    flexBasis: 150,
-  },
-  filterFooter: {
+  filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  departmentField: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  onlineChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.xs,
-    marginTop: spacing.sm,
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  resultsCount: {
-    ...typography.bodyBold,
-    color: colors.text,
+  onlineChipActive: {
+    backgroundColor: colors.successLight,
+    borderColor: colors.success,
   },
-  resultsCountSmall: {
-    fontSize: 12,
+  onlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.textLight,
+  },
+  onlineDotActive: {
+    backgroundColor: colors.success,
+  },
+  onlineChipText: {
+    ...typography.captionBold,
+    color: colors.textSecondary,
+  },
+  onlineChipTextActive: {
+    color: colors.success,
   },
   listContent: {
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
   },
   listContentLandscape: {
     paddingHorizontal: '15%',
   },
-  employeeCard: {
+  employeeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
     ...shadows.sm,
   },
   employeeInfo: {
     flex: 1,
   },
   employeeName: {
-    ...typography.h4,
+    ...typography.bodyBold,
     color: colors.text,
-    fontFamily: 'Cairo_700Bold',
-  },
-  employeeNameSmall: {
-    fontSize: 14,
   },
   employeeOrg: {
-    ...typography.bodySmall,
+    ...typography.caption,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  cardActions: {
+  rowActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
-  iconButton: {
+  roundButton: {
     width: 40,
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.full,
   },
   callButton: {
-    backgroundColor: colors.primaryLight,
+    backgroundColor: colors.primarySoft,
   },
   editButton: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
+    backgroundColor: colors.background,
   },
-  iconButtonPressed: {
-    opacity: 0.8,
+  roundButtonPressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.95 }],
   },
   errorState: {
     flex: 1,

@@ -1,26 +1,26 @@
 import React, { useState, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  Image,
 } from 'react-native';
+import { Text } from '../../components/AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
-import { spacing, borderRadius } from '../../constants/spacing';
+import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
 import CustomButton from '../../components/CustomButton';
 import Loading from '../../components/Loading';
 import Logo from '../../components/Logo';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { FadeInView, ScaleInView } from '../../components/Motion';
 
 const LoginScreen = ({ navigation }) => {
   const { login } = useAuth();
@@ -44,12 +44,20 @@ const LoginScreen = ({ navigation }) => {
       newErrors.username = t('validation.usernameRequired');
     }
 
-    if (!formData.password.trim()) {
+    if (!formData.password) {
       newErrors.password = t('validation.passwordRequired');
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  // Typing in a field clears its own error and the general banner.
+  const updateField = (field) => (text) => {
+    setFormData((prev) => ({ ...prev, [field]: text }));
+    setErrors((prev) =>
+      prev[field] || prev.general ? { ...prev, [field]: undefined, general: undefined } : prev
+    );
   };
 
   const handleLogin = async () => {
@@ -66,10 +74,13 @@ const LoginScreen = ({ navigation }) => {
             ? t(result.error)
             : result.error || t('login.error');
         setErrors({ general: message });
+        // Never leave a rejected password sitting in the field.
+        setFormData((prev) => ({ ...prev, password: '' }));
       }
       // On success, AppNavigator re-renders off isAuthenticated in AuthContext.
     } catch (error) {
       setErrors({ general: t('login.error') });
+      setFormData((prev) => ({ ...prev, password: '' }));
     } finally {
       setLoading(false);
     }
@@ -82,48 +93,49 @@ const LoginScreen = ({ navigation }) => {
         style={styles.keyboardView}
       >
         <ScrollView
+          keyboardDismissMode="on-drag"
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* الهيدر */}
-          <View style={styles.header}>
-            <View style={styles.headerContent}>
-              <View style={styles.logoContainer}>
-                <Image
-                  source={require('../../../assets/logo.png')}
-                  style={styles.logoImage}
-                  resizeMode="contain"
-                />
-              </View>
-              <View style={styles.headerText}>
-                <Text style={styles.headerTitle}>{t('common.appName')}</Text>
-                <Text style={styles.headerSubtitle}>{t('common.appTagline')}</Text>
-              </View>
-            </View>
+          {/* اللغة */}
+          <View style={styles.topBar}>
+            <Pressable
+              onPress={toggleLanguage}
+              style={({ pressed }) => [styles.langPill, pressed && styles.langPillPressed]}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
+              <Ionicons name="globe-outline" size={16} color={colors.primaryLight} />
+              <Text style={styles.langButtonText}>
+                {language === 'ar' ? 'English' : 'العربية'}
+              </Text>
+            </Pressable>
           </View>
 
-          {/* شعار مركزي */}
-          <View style={styles.heroLogoContainer}>
-            <Logo size={110} style={styles.heroLogo} />
-            <Text style={styles.heroLogoTitle}>{t('common.appName')}</Text>
-            <Text style={styles.heroLogoSubtitle}>{t('common.appTagline')}</Text>
+          {/* الشعار */}
+          <View style={styles.hero}>
+            <ScaleInView style={styles.heroLogoRing} from={0.7} duration={420}>
+              <Logo size={88} />
+            </ScaleInView>
+            <Text style={styles.heroTitle} accessibilityRole="header">
+              {t('common.appName')}
+            </Text>
+            <Text style={styles.heroSubtitle}>{t('common.appTagline')}</Text>
           </View>
 
           {/* المحتوى */}
           <View style={styles.content}>
-            <View style={styles.titleContainer}>
-              <View style={styles.titleBorder} />
-              <View style={styles.titleText}>
-                <Text style={styles.title}>{t('login.title')}</Text>
-                <Text style={styles.subtitle}>
-                  {t('login.subtitle')}
-                </Text>
-              </View>
-            </View>
+            <FadeInView delay={150} distance={20} style={styles.form}>
+              <Text style={styles.title}>{t('login.title')}</Text>
+              <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
 
-            <View style={styles.form}>
-              {errors.general && (
-                <View style={styles.errorContainer}>
+              {!!errors.general && (
+                <View
+                  style={styles.errorContainer}
+                  accessibilityRole="alert"
+                  accessibilityLiveRegion="assertive"
+                >
+                  <Ionicons name="alert-circle" size={20} color={colors.dangerStrong} />
                   <Text style={styles.errorText}>{errors.general}</Text>
                 </View>
               )}
@@ -131,10 +143,14 @@ const LoginScreen = ({ navigation }) => {
               <CustomInput
                 label={t('login.username')}
                 value={formData.username}
-                onChangeText={(text) => setFormData({ ...formData, username: text })}
+                onChangeText={updateField('username')}
                 placeholder={t('login.usernamePlaceholder')}
                 keyboardType="default"
                 autoCapitalize="none"
+                autoComplete="username"
+                textContentType="username"
+                returnKeyType="next"
+                maxLength={64}
                 required
                 error={errors.username}
                 icon="person"
@@ -143,9 +159,14 @@ const LoginScreen = ({ navigation }) => {
               <CustomInput
                 label={t('login.password')}
                 value={formData.password}
-                onChangeText={(text) => setFormData({ ...formData, password: text })}
+                onChangeText={updateField('password')}
                 placeholder={t('login.passwordPlaceholder')}
                 secureTextEntry
+                autoComplete="password"
+                textContentType="password"
+                returnKeyType="go"
+                onSubmitEditing={handleLogin}
+                maxLength={200}
                 required
                 error={errors.password}
                 icon="lock-closed"
@@ -155,20 +176,17 @@ const LoginScreen = ({ navigation }) => {
                 title={t('login.submit')}
                 onPress={handleLogin}
                 loading={loading}
+                size="large"
+                icon={isRTL ? 'arrow-back' : 'arrow-forward'}
+                iconPosition="end"
                 style={styles.loginButton}
               />
-            </View>
+            </FadeInView>
 
-            <Pressable onPress={toggleLanguage} style={styles.langButton}>
-              <Ionicons name="language" size={18} color={colors.primaryLight} />
-              <Text style={styles.langButtonText}>
-                {language === 'ar' ? 'English' : 'العربية'}
-              </Text>
-            </Pressable>
-
-            <View style={styles.footer}>
+            <FadeInView delay={260} from="none" style={styles.footer}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.textLight} />
               <Text style={styles.footerText}>{t('login.contactAdmin')}</Text>
-            </View>
+            </FadeInView>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -186,147 +204,116 @@ const createStyles = (colors) => StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    justifyContent: 'center',
+    paddingBottom: spacing.xl,
   },
-  header: {
-    backgroundColor: colors.surfaceDark,
-    borderBottomWidth: 4,
-    borderBottomColor: colors.accent,
-    paddingVertical: spacing.lg,
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
     paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
-  headerContent: {
+  langPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-
-  },
-  logoContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.md,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    borderColor: colors.border,
   },
-  logoImage: {
-    width: '100%',
-    height: '100%',
+  langPillPressed: {
+    backgroundColor: colors.primarySoft,
   },
-  heroLogoContainer: {
+  langButtonText: {
+    ...typography.captionBold,
+    color: colors.primaryLight,
+  },
+  hero: {
     alignItems: 'center',
     marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  heroLogo: {
-    marginBottom: spacing.sm,
+  heroLogoRing: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    ...shadows.md,
   },
-  heroLogoTitle: {
-    ...typography.h3,
+  heroTitle: {
+    ...typography.h2,
     color: colors.text,
-  },
-  heroLogoSubtitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
     textAlign: 'center',
   },
-  headerText: {
-    flex: 1,
-  },
-  headerTitle: {
-    ...typography.h3,
-    color: colors.textWhite,
-  },
-  headerSubtitle: {
-    ...typography.caption,
-    color: colors.textGold,
-    marginTop: 2,
+  heroSubtitle: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.xxs,
+    textAlign: 'center',
   },
   content: {
-    flex: 1,
-    padding: spacing.md,
-  },
-  titleContainer: {
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-  gap: spacing.md,
-  marginBottom: spacing.lg,
-  marginTop: spacing.lg,
-},
-  titleBorder: {
-    width: 4,
-    height: 60,
-    backgroundColor: colors.accent,
-    borderRadius: 2,
-  },
-  titleText: {
-    flex: 1,
+    paddingHorizontal: spacing.md,
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
   title: {
-    ...typography.h1,
+    ...typography.h3,
     color: colors.text,
   },
   subtitle: {
-    ...typography.body,
+    ...typography.bodySmall,
     color: colors.textSecondary,
-    marginTop: spacing.xs,
-    lineHeight: 24,
+    marginTop: spacing.xxs,
+    marginBottom: spacing.lg,
   },
   form: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.lg,
     marginBottom: spacing.lg,
+    ...shadows.md,
   },
   errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     backgroundColor: colors.dangerLight,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: '#e5b3a6',
-    padding: spacing.sm,
+    borderColor: colors.dangerBorder,
+    padding: spacing.sm + 2,
     marginBottom: spacing.md,
   },
   errorText: {
     ...typography.bodySmall,
-    color: '#8a3a24',
-    textAlign: 'center',
+    color: colors.dangerStrong,
+    flex: 1,
   },
   loginButton: {
-    marginTop: spacing.md,
-  },
-  langButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    marginBottom: spacing.sm,
-    gap: spacing.xs,
-  },
-  langButtonText: {
-    ...typography.bodyBold,
-    color: colors.primaryLight,
+    marginTop: spacing.sm,
   },
   footer: {
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
-    marginTop: spacing.lg,
   },
   footerText: {
-    ...typography.body,
-    color: colors.textSecondary,
+    ...typography.caption,
+    color: colors.textLight,
     textAlign: 'center',
-    lineHeight: 22,
     flexShrink: 1,
-  },
-  footerLink: {
-    ...typography.bodyBold,
-    color: colors.primaryLight,
-    textDecorationLine: 'underline',
   },
 });
 

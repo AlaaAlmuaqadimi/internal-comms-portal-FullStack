@@ -20,12 +20,20 @@ export const flipStyles = (rawStyles, isRTL) => {
       if (s.flexDirection === 'row') flipped.flexDirection = 'row-reverse';
       if (s.flexDirection === 'row-reverse') flipped.flexDirection = 'row';
 
-      // عكس محاذاة الـ Flex
-      if (s.alignItems === 'flex-start') flipped.alignItems = 'flex-end';
-      else if (s.alignItems === 'flex-end') flipped.alignItems = 'flex-start';
+      // عكس محاذاة الـ Flex — المحور الأفقي فقط. في الصف يكون alignItems
+      // رأسياً، وفي العمود يكون justifyContent رأسياً؛ والاتجاه الرأسي لا
+      // يُعكس أبداً (وإلا فتحت النوافذ السفلية من أعلى الشاشة بالعربية).
+      const isRow = s.flexDirection === 'row' || s.flexDirection === 'row-reverse';
 
-      if (s.justifyContent === 'flex-start') flipped.justifyContent = 'flex-end';
-      else if (s.justifyContent === 'flex-end') flipped.justifyContent = 'flex-start';
+      if (!isRow) {
+        if (s.alignItems === 'flex-start') flipped.alignItems = 'flex-end';
+        else if (s.alignItems === 'flex-end') flipped.alignItems = 'flex-start';
+      }
+
+      if (isRow) {
+        if (s.justifyContent === 'flex-start') flipped.justifyContent = 'flex-end';
+        else if (s.justifyContent === 'flex-end') flipped.justifyContent = 'flex-start';
+      }
 
       if (s.alignSelf === 'flex-start') flipped.alignSelf = 'flex-end';
       else if (s.alignSelf === 'flex-end') flipped.alignSelf = 'flex-start';

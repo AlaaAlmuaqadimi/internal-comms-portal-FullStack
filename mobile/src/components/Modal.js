@@ -1,15 +1,17 @@
 import React, { useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Pressable,
   Platform,
   KeyboardAvoidingView,
   Modal as RNModal,
 } from 'react-native';
+import { Text } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
+import { ScaleInView } from './Motion';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius, shadows } from '../constants/spacing';
 
@@ -23,6 +25,7 @@ const Modal = ({
   style,
 }) => {
   const { colors } = useTheme();
+  const { t, isRTL, align } = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const getSizeStyle = () => {
@@ -51,18 +54,32 @@ const Modal = ({
       >
         {/* The backdrop is a sibling of the card, not a parent: a Pressable
             wrapping the content steals touches from nested scroll views. */}
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.container, getSizeStyle(), style]}>
-          <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessible={false}
+          importantForAccessibility="no"
+        />
+        <ScaleInView style={[styles.container, getSizeStyle(), style]} accessibilityViewIsModal>
+          {/* Title at the start and the close button at the end, mirrored in Arabic. */}
+          <View style={[styles.header, isRTL && styles.headerRtl]}>
+            <Text style={[styles.title, { textAlign: align }]} accessibilityRole="header">
+              {title}
+            </Text>
             {showClose && (
-              <Pressable onPress={onClose} style={styles.closeButton}>
+              <Pressable
+                onPress={onClose}
+                style={({ pressed }) => [styles.closeButton, pressed && styles.closePressed]}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.close')}
+              >
                 <Ionicons name="close" size={24} color={colors.text} />
               </Pressable>
             )}
           </View>
           <View style={styles.content}>{children}</View>
-        </View>
+        </ScaleInView>
       </KeyboardAvoidingView>
     </RNModal>
   );
@@ -90,6 +107,9 @@ const createStyles = (colors) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  headerRtl: {
+    flexDirection: 'row-reverse',
+  },
   title: {
     ...typography.h3,
     color: colors.text,
@@ -97,6 +117,10 @@ const createStyles = (colors) => StyleSheet.create({
   },
   closeButton: {
     padding: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  closePressed: {
+    backgroundColor: colors.border,
   },
   content: {
     padding: spacing.md,

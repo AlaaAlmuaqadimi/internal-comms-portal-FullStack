@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
+import { Text } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
-import { spacing, borderRadius } from '../constants/spacing';
+import { spacing, borderRadius, shadows } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
 import { flipStyles } from '../i18n/rtlStyles';
 
@@ -71,13 +72,15 @@ const ListItem = ({
 const createStyles = (colors) => StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.sm,
+    ...shadows.sm,
   },
   pressed: {
-    opacity: 0.8,
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
   content: {
     flexDirection: 'row',
@@ -85,9 +88,9 @@ const createStyles = (colors) => StyleSheet.create({
     padding: spacing.md,
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.md,
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: spacing.md,
