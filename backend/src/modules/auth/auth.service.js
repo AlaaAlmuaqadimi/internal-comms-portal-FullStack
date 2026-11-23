@@ -4,6 +4,7 @@ import { env } from '../../config/env.js';
 import { AppError, ErrorCodes } from '../../lib/errors.js';
 import { dummyVerify, hashPassword, verifyPasswordForUser } from '../../lib/password.js';
 import crypto from 'node:crypto';
+import { clearHeadForEmployee } from '../org/unitHead.service.js';
 import {
   accessTokenTtlSeconds,
   generateRefreshToken,
@@ -349,6 +350,65 @@ export async function logout({ refreshToken, ip, userAgent }) {
   await writeAudit({ actorUserId: null, action: 'auth.logout', ip, userAgent });
 }
 
+/**
+ * Changes the signed-in user's own password; the current one must be given
+ * again. Every refresh token of the account is revoked, so the account's other
+ * phones are signed out at their next refresh, and this device gets a new
+ * token pair so it stays signed in.
+ */
+export async function changeMyPassword({ userId, currentPassword, newPassword, ip, userAgent }) {
+  const user = await findUserById(userId);
+  if (!user || !isActive(user.is_active)) {
+    throw new AppError(401, ErrorCodes.UNAUTHORIZED, 'الجلسة غير صالحة');
+  }
+
+  const { ok } = await verifyPasswordForUser(user, currentPassword);
+  if (!ok) {
+    await writeAudit({
+      actorUserId: user.id,
+      action: 'auth.password_change.failed',
+      entityType: 'user',
+      entityId: user.id,
+      ip,
+      userAgent,
+    });
+    throw new AppError(400, ErrorCodes.INVALID_CURRENT_PASSWORD, 'كلمة المرور الحالية غير صحيحة', [
+      { field: 'currentPassword', message: 'كلمة المرور الحالية غير صحيحة' },
+    ]);
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await withTransaction(async (conn) => {
+    await conn.execute(
+      `UPDATE users
+       SET password_hash = ?, password_algo = 'argon2id', password_changed_at = UTC_TIMESTAMP(3),
+           failed_login_count = 0, locked_until = NULL
+       WHERE id = ?`,
+      [passwordHash, user.id]
+    );
+    await conn.execute(
+      `UPDATE refresh_tokens
+       SET revoked_at = UTC_TIMESTAMP(3)
+       WHERE user_id = ? AND revoked_at IS NULL`,
+      [user.id]
+    );
+  });
+
+  const { accessToken, expiresIn } = await issueAccessToken(user);
+  const refreshToken = await issueRefreshToken({ userId: user.id, ip, userAgent });
+
+  await writeAudit({
+    actorUserId: user.id,
+    action: 'auth.password_change',
+    entityType: 'user',
+    entityId: user.id,
+    ip,
+    userAgent,
+  });
+
+  return { accessToken, refreshToken, expiresIn };
+}
+
 export async function getMe(userId) {
   const user = await findUserById(userId);
   if (!user || !isActive(user.is_active)) {
@@ -376,6 +436,7 @@ export async function updateMyProfile({
   language,
   theme,
   kitchenChoice,
+  canChangeOrgUnit = false,
   ip,
   userAgent,
 }) {
@@ -400,7 +461,13 @@ export async function updateMyProfile({
   }
 
   let resolvedOrgUnitId = user.org_unit_id;
-  if (orgUnitId !== undefined && orgUnitId !== null && orgUnitId !== '') {
+  if (orgUnitId !== undefined && orgUnitId !== null && orgUnitId !== '' && orgUnitId !== user.org_unit_id) {
+    // The org unit decides call rights (the Director's and the Deputy's units
+    // are leadership), so an employee must never move themselves: only an
+    // admin may change it (here for their own account, or via PATCH /employees).
+    if (!canChangeOrgUnit) {
+      throw new AppError(403, ErrorCodes.FORBIDDEN, 'تغيير الوحدة التنظيمية متاح للمسؤول فقط');
+    }
     const [units] = await pool.execute(
       `SELECT id FROM org_units WHERE id = ? AND deleted_at IS NULL AND is_active = 1 LIMIT 1`,
       [orgUnitId]
@@ -458,6 +525,8 @@ export async function updateMyProfile({
     }
 
     if (resolvedOrgUnitId !== user.org_unit_id) {
+      // A unit head must belong to the unit they head: moving frees that unit.
+      await clearHeadForEmployee(conn, user.employee_id);
       await conn.execute(`UPDATE employees SET org_unit_id = ? WHERE id = ?`, [
         resolvedOrgUnitId,
         user.employee_id,

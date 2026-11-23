@@ -1,4 +1,5 @@
 import * as authService from './auth.service.js';
+import { isAdmin } from '../../lib/roles.js';
 
 function requestContext(req) {
   return { ip: req.ip, userAgent: req.headers['user-agent'] };
@@ -41,11 +42,26 @@ export async function logout(req, res, next) {
   }
 }
 
+export async function changePassword(req, res, next) {
+  try {
+    const result = await authService.changeMyPassword({
+      userId: req.user.id,
+      currentPassword: req.body.currentPassword,
+      newPassword: req.body.newPassword,
+      ...requestContext(req),
+    });
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function updateProfile(req, res, next) {
   try {
     const result = await authService.updateMyProfile({
-      userId: req.user.id,
       ...req.body,
+      userId: req.user.id,
+      canChangeOrgUnit: isAdmin(req.user),
       ...requestContext(req),
     });
     res.status(200).json({ success: true, ...result });

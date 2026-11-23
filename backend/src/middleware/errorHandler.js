@@ -21,6 +21,16 @@ export function errorHandler(err, _req, res, _next) {
     return res.status(400).json({ success: false, error: 'بيانات JSON غير صالحة', code: 'BAD_REQUEST' });
   }
 
+  // Body too large (413) and other client errors raised by body-parser: answer
+  // with their own 4xx status instead of a misleading 500 and a logged stack.
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ success: false, error: 'حجم الطلب كبير جداً', code: 'PAYLOAD_TOO_LARGE' });
+  }
+  const clientStatus = Number(err?.status || err?.statusCode);
+  if (err?.expose && clientStatus >= 400 && clientStatus < 500) {
+    return res.status(clientStatus).json({ success: false, error: 'طلب غير صالح', code: 'BAD_REQUEST' });
+  }
+
   if (env.nodeEnv !== 'test') {
     console.error('[error]', err);
   }

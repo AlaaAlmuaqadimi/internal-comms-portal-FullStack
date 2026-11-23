@@ -37,6 +37,27 @@ export const refreshRateLimiter = rateLimit({
 });
 
 /**
+ * Changing one's own password. Keyed by the signed-in user (`authenticate`
+ * runs first), and only failed attempts count, so a stolen session cannot be
+ * used to guess the current password while a normal change is never blocked.
+ */
+export const passwordChangeRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `password-change:${req.user?.id || 'anonymous'}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many attempts. Please try again later.',
+      code: 'RATE_LIMITED',
+    });
+  },
+});
+
+/**
  * Per-user limiter for call invitations. `authenticate` must run first so the
  * key is the signed-in user rather than an IP shared by an office NAT.
  *
