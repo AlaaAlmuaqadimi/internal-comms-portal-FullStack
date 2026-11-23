@@ -91,6 +91,10 @@ const CallContext = createContext(null);
 // Mute and speaker live in their own context: toggling them re-renders only
 // the call controls, not every screen that reads the call state.
 const CallAudioContext = createContext(null);
+// startCall alone, with a value that never changes: screens that only start
+// calls (the Directory) must not re-render on every mute / speaker / state
+// change of a live call.
+const StartCallContext = createContext(null);
 
 export const useCall = () => {
   const context = useContext(CallContext);
@@ -128,7 +132,8 @@ function useRingtone(active) {
  * Directory and Calls screens so both behave the same.
  */
 export function useStartCall() {
-  const { startCall } = useCall();
+  const startCall = useContext(StartCallContext);
+  if (!startCall) throw new Error('useStartCall must be used inside CallProvider');
   const { t } = useLanguage();
   return useCallback(
     async (calleeEmployeeId) => {
@@ -528,6 +533,10 @@ export const CallProvider = ({ children }) => {
 
   actionsRef.current = { accept, reject, hangUp };
 
+  const startCallRef = useRef(startCall);
+  startCallRef.current = startCall;
+  const stableStartCall = useCallback((...args) => startCallRef.current(...args), []);
+
   const value = useMemo(
     () => ({
       state,
@@ -564,7 +573,9 @@ export const CallProvider = ({ children }) => {
 
   return (
     <CallContext.Provider value={value}>
-      <CallAudioContext.Provider value={audioValue}>{children}</CallAudioContext.Provider>
+      <CallAudioContext.Provider value={audioValue}>
+        <StartCallContext.Provider value={stableStartCall}>{children}</StartCallContext.Provider>
+      </CallAudioContext.Provider>
     </CallContext.Provider>
   );
 };
