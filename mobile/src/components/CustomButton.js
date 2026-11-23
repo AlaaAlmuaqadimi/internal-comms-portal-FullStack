@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
-import { Pressable, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
+import { Pressable, StyleSheet, ActivityIndicator, View } from 'react-native';
+import { Text } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import { typography } from '../constants/typography';
 import { spacing, borderRadius } from '../constants/spacing';
 
@@ -11,18 +13,25 @@ const CustomButton = ({
   variant = 'primary', // primary, secondary, outline, danger
   size = 'medium', // small, medium, large
   icon,
-  iconPosition = 'right',
+  // In reading order: 'start' = before the title (right of it in Arabic, left
+  // in English), 'end' = after it. The row mirrors itself with the language.
+  iconPosition = 'start',
   disabled = false,
   loading = false,
   style,
   textStyle,
+  accessibilityLabel,
+  accessibilityHint,
+  testID,
 }) => {
   const { colors } = useTheme();
+  const { isRTL } = useLanguage();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const iconAtEnd = iconPosition === 'end';
 
   const getButtonStyle = () => {
     const baseStyle = [styles.button, styles[size]];
-    
+
     switch (variant) {
       case 'primary':
         baseStyle.push(styles.primary);
@@ -39,17 +48,27 @@ const CustomButton = ({
       default:
         baseStyle.push(styles.primary);
     }
-    
+
     if (disabled || loading) {
       baseStyle.push(styles.disabled);
     }
-    
+
     return baseStyle;
   };
 
+  // Icon and spinner follow the text colour of the variant (a white icon on the
+  // light `secondary` surface used to be invisible).
+  const contentColor =
+    variant === 'outline'
+      ? colors.primaryLight
+      : variant === 'secondary'
+        ? colors.text
+        : colors.textWhite;
+  const isInactive = disabled || loading;
+
   const getTextStyle = () => {
     const baseStyle = [styles.buttonText, styles[`${size}Text`]];
-    
+
     switch (variant) {
       case 'primary':
       case 'danger':
@@ -64,35 +83,36 @@ const CustomButton = ({
       default:
         baseStyle.push(styles.primaryText);
     }
-    
+
     return baseStyle;
   };
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={isInactive}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel || title}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: isInactive, busy: loading }}
+      testID={testID}
+      hitSlop={size === 'small' ? 6 : undefined}
       style={({ pressed }) => [
         ...getButtonStyle(),
-        pressed && !disabled && !loading && styles.pressed,
+        pressed && !isInactive && styles.pressed,
         style,
       ]}
     >
-      <View style={styles.content}>
+      <View style={[styles.content, isRTL && styles.contentRtl]}>
         {loading ? (
-          <ActivityIndicator 
-            size="small" 
-            color={variant === 'outline' ? colors.primaryLight : colors.textWhite} 
-          />
+          <ActivityIndicator size="small" color={contentColor} />
         ) : (
           <>
-            {icon && iconPosition === 'right' && (
-              <Ionicons name={icon} size={20} color={variant === 'outline' ? colors.primaryLight : colors.textWhite}  />
-            )}
-            <Text style={[...getTextStyle(), textStyle]}>{title}</Text>
-            {icon && iconPosition === 'left' && (
-              <Ionicons name={icon} size={20} color={variant === 'outline' ? colors.primaryLight : colors.textWhite}  />
-            )}
+            {icon && !iconAtEnd && <Ionicons name={icon} size={20} color={contentColor} />}
+            <Text style={[...getTextStyle(), textStyle]} numberOfLines={2}>
+              {title}
+            </Text>
+            {icon && iconAtEnd && <Ionicons name={icon} size={20} color={contentColor} />}
           </>
         )}
       </View>
@@ -110,32 +130,46 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   content: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: spacing.xs,
-},
-  
-  // Sizes
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  contentRtl: {
+    flexDirection: 'row-reverse',
+  },
+
+  // Sizes (minimum heights keep every button an easy touch target)
   small: {
+    minHeight: 36,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
   medium: {
+    minHeight: 48,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
   large: {
+    minHeight: 56,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  
+
   // Variants
   primary: {
     backgroundColor: colors.primaryLight,
+    // Tinted glow gives the main action depth without a hard border.
+    shadowColor: colors.primaryLight,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 3,
   },
   secondary: {
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   outline: {
     backgroundColor: 'transparent',
@@ -145,7 +179,7 @@ const createStyles = (colors) => StyleSheet.create({
   danger: {
     backgroundColor: colors.danger,
   },
-  
+
   // Text styles
   buttonText: {
     ...typography.button,
@@ -168,15 +202,16 @@ const createStyles = (colors) => StyleSheet.create({
   outlineText: {
     color: colors.primaryLight,
   },
-  
+
   // States
   pressed: {
-    opacity: 0.8,
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
   disabled: {
     opacity: 0.5,
   },
-  
+
 
 });
 

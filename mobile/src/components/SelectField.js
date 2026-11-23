@@ -1,17 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import {
   View,
-  Text,
   Pressable,
   StyleSheet,
   ScrollView,
   Modal as RNModal,
   useWindowDimensions,
 } from 'react-native';
+import { Text } from './AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { typography } from '../constants/typography';
+import { typography, fonts } from '../constants/typography';
 import { spacing, borderRadius, shadows } from '../constants/spacing';
 import { useLanguage } from '../context/LanguageContext';
 import { flipStyles } from '../i18n/rtlStyles';
@@ -41,6 +41,10 @@ const SelectField = ({
   compact = false,
   presentation = 'inline',
   sheetTitle,
+  // Optional custom trigger: ({ onPress, selected, disabled, open }) => node.
+  renderTrigger,
+  // false keeps the list open after a choice (e.g. to hear several tones).
+  closeOnSelect = true,
 }) => {
   const [open, setOpen] = useState(false);
   const { height } = useWindowDimensions();
@@ -60,7 +64,7 @@ const SelectField = ({
   const handleSelect = (option) => {
     if (option.disabled) return;
     onSelect(option.value);
-    close();
+    if (closeOnSelect) close();
   };
 
   const optionRows =
@@ -84,6 +88,15 @@ const SelectField = ({
               option.disabled && styles.optionDisabled,
             ]}
           >
+            {option.icon ? (
+              <View style={[styles.optionIcon, isSelected && styles.optionIconSelected]}>
+                <Ionicons
+                  name={option.icon}
+                  size={16}
+                  color={isSelected ? colors.textWhite : colors.primaryLight}
+                />
+              </View>
+            ) : null}
             <View style={styles.optionTextWrap}>
               <Text
                 style={[
@@ -110,55 +123,64 @@ const SelectField = ({
 
   return (
     <View style={[styles.container, style]}>
-      {label && (
+      {!!label && !renderTrigger && (
         <Text style={styles.label}>
           {label}
           {required && <Text style={styles.required}> *</Text>}
         </Text>
       )}
 
-      <Pressable
-        onPress={() => !isDisabled && setOpen((prev) => !prev)}
-        disabled={isDisabled}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open, disabled: isDisabled }}
-        style={[
-          styles.field,
-          compact && styles.fieldCompact,
-          open && styles.fieldOpen,
-          error && styles.fieldError,
-          isDisabled && styles.fieldDisabled,
-        ]}
-      >
-        <Text
-          numberOfLines={compact ? 1 : 2}
+      {renderTrigger ? (
+        renderTrigger({
+          onPress: () => !isDisabled && setOpen((prev) => !prev),
+          selected,
+          disabled: isDisabled,
+          open,
+        })
+      ) : (
+        <Pressable
+          onPress={() => !isDisabled && setOpen((prev) => !prev)}
+          disabled={isDisabled}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open, disabled: isDisabled }}
           style={[
-            styles.value,
-            compact && styles.valueCompact,
-            { textAlign: align },
-            !selected && styles.placeholder,
-            isDisabled && styles.valueDisabled,
+            styles.field,
+            compact && styles.fieldCompact,
+            open && styles.fieldOpen,
+            !!error && styles.fieldError,
+            isDisabled && styles.fieldDisabled,
           ]}
         >
-          {selected ? selected.label : placeholder || t('common.select')}
-        </Text>
-        <Ionicons
-          name={!isSheet && open ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color={isDisabled ? colors.textLight : colors.textSecondary}
-        />
-      </Pressable>
+          <Text
+            numberOfLines={compact ? 1 : 2}
+            style={[
+              styles.value,
+              compact && styles.valueCompact,
+              { textAlign: align },
+              !selected && styles.placeholder,
+              isDisabled && styles.valueDisabled,
+            ]}
+          >
+            {selected ? selected.label : placeholder || t('common.select')}
+          </Text>
+          <Ionicons
+            name={!isSheet && open ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={isDisabled ? colors.textLight : colors.textSecondary}
+          />
+        </Pressable>
+      )}
 
       {!isSheet && open && !isDisabled && (
         <View style={styles.optionsContainer}>
-          <ScrollView style={{ maxHeight: maxListHeight }} nestedScrollEnabled>
+          <ScrollView keyboardDismissMode="on-drag" style={{ maxHeight: maxListHeight }} nestedScrollEnabled>
             {optionRows}
           </ScrollView>
         </View>
       )}
 
-      {error && <Text style={styles.error}>{error}</Text>}
-      {hint && !error && <Text style={styles.hint}>{hint}</Text>}
+      {!!error && <Text style={styles.error}>{error}</Text>}
+      {!!hint && !error && <Text style={styles.hint}>{hint}</Text>}
 
       {isSheet && (
         <RNModal
@@ -196,6 +218,7 @@ const SelectField = ({
                 </View>
 
                 <ScrollView
+                  keyboardDismissMode="on-drag"
                   style={[
                     styles.sheetList,
                     { maxHeight: Math.max(200, Math.round(height * 0.55)) },
@@ -283,12 +306,23 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   optionSelected: {
-    backgroundColor: '#f5f9fc',
+    backgroundColor: colors.selectedSurface,
+  },
+  optionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+  },
+  optionIconSelected: {
+    backgroundColor: colors.primaryLight,
   },
   optionDisabled: {
     opacity: 0.45,
@@ -302,7 +336,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   optionTextSelected: {
     color: colors.primaryLight,
-    fontFamily: 'Cairo_700Bold',
+    fontFamily: fonts.bold,
   },
   optionDescription: {
     ...typography.caption,

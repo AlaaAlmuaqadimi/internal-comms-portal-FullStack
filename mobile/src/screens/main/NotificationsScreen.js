@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   RefreshControl,
@@ -10,12 +9,13 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from '../../components/AppText';
+import SafeAreaView from '../../components/SafeAreaView';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useNotifications } from '../../context/NotificationsContext';
-import { typography } from '../../constants/typography';
-import { spacing, borderRadius } from '../../constants/spacing';
+import { typography, fonts } from '../../constants/typography';
+import { spacing, borderRadius, shadows } from '../../constants/spacing';
 import Loading from '../../components/Loading';
 import EmptyState from '../../components/EmptyState';
 import NotificationItem from '../../components/NotificationItem';
@@ -25,14 +25,18 @@ import CustomButton from '../../components/CustomButton';
 import SearchBar from '../../components/SearchBar';
 import UserAvatar from '../../components/UserAvatar';
 import DurationPickerBody from '../../components/DurationPickerBody';
+import PickerField from '../../components/PickerField';
 import { mockData } from '../../utils/mockData';
 import { api, isBackendConfigured } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { FadeInView, ScaleInView } from '../../components/Motion';
+import { listItemDelay } from '../../constants/motion';
 import { useAuth } from '../../context/AuthContext';
 import { clampDurationHours, formatDurationHours } from '../../utils/duration';
 import { isSameEmployee } from '../../utils/isSameEmployee';
+import { notificationText } from '../../utils/notificationText';
 
 const formatExpiry = (timestamp) => {
   const date = new Date(timestamp);
@@ -424,18 +428,26 @@ const NotificationsScreen = () => {
 
   // أحجام متجاوبة
   const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
-  const iconSize = isSmallScreen ? 24 : isLargeScreen ? 40 : 32;
 
-  const renderNotification = ({ item }) => (
-    <NotificationItem
-      notification={item}
-      expired={isExpired(item, clock)}
-      onPress={() => handleNotificationPress(item)}
-    />
+  const renderNotification = ({ item, index }) => (
+    <FadeInView delay={listItemDelay(index)}>
+      <NotificationItem
+        notification={item}
+        expired={isExpired(item, clock)}
+        onPress={() => handleNotificationPress(item)}
+      />
+    </FadeInView>
   );
 
   const selectedExpired =
     !!selectedNotification && isExpired(selectedNotification, clock);
+  const readCount = receipts && !receipts.error
+    ? receipts.readCount || 0
+    : selectedNotification?.readCount || 0;
+  const selectedText = notificationText(
+    localizeText(selectedNotification?.title || ''),
+    localizeText(selectedNotification?.body || '')
+  );
   const selectedDurationLabel = selectedNotification?.durationHours
     ? formatDurationHours(selectedNotification.durationHours, t)
     : '';
@@ -445,49 +457,42 @@ const NotificationsScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} animated>
       {/* الهيدر */}
-      <View style={[styles.header, { padding: headerPadding }]}>
+      <View style={[styles.header, { paddingHorizontal: headerPadding }]}>
         <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
-          <View>
-            <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
-              {t('notifications.title')}
-            </Text>
-            <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
-              {t('notifications.subtitle')}
-            </Text>
-          </View>
+          <Text
+            style={[styles.title, isSmallScreen && styles.titleSmall]}
+            accessibilityRole="header"
+            numberOfLines={1}
+          >
+            {t('notifications.title')}
+          </Text>
         </View>
-        <View style={[styles.headerActions, { alignItems: 'flex-start' }]}>
+        <View style={styles.headerActions}>
+          {unreadCount > 0 && (
+            <Pressable
+              onPress={markAllRead}
+              hitSlop={6}
+              style={({ pressed }) => [styles.headerIconButton, pressed && styles.headerButtonPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t('notifications.markAllRead')}
+            >
+              <Ionicons name="checkmark-done" size={20} color={colors.primaryLight} />
+            </Pressable>
+          )}
           {/* Any employee can send a notification or message. Only the people
               they select receive it, so there is no admin-only gate here. */}
-          <Pressable style={styles.createButton} onPress={openCreateModal}>
-            <Ionicons name="add" size={18} color={colors.textWhite} />
-            <Text style={styles.createButtonText}>{t('notifications.create')}</Text>
+          <Pressable
+            onPress={openCreateModal}
+            hitSlop={6}
+            style={({ pressed }) => [styles.createButton, pressed && styles.headerButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={t('notifications.create')}
+          >
+            <Ionicons name="add" size={24} color={colors.textWhite} />
           </Pressable>
-          <View style={styles.badgeRow}>
-            <View style={styles.badge}>
-              <Text style={[styles.badgeText, isSmallScreen && styles.badgeTextSmall]}>
-                {unreadCount > 0
-                  ? t('notifications.unreadBadge', { count: unreadCount })
-                  : t('notifications.allRead')}
-              </Text>
-            </View>
-            {unreadCount > 0 && (
-              <Pressable
-                onPress={markAllRead}
-                style={styles.markAllButton}
-                accessibilityRole="button"
-                accessibilityLabel={t('notifications.markAllRead')}
-              >
-                <Ionicons name="checkmark-done" size={14} color={colors.primaryLight} />
-                <Text style={styles.markAllText}>
-                  {t('notifications.markAllRead')}
-                </Text>
-              </Pressable>
-            )}
-          </View>
         </View>
       </View>
 
@@ -554,6 +559,7 @@ const NotificationsScreen = () => {
         />
       ) : (
         <FlatList
+          keyboardDismissMode="on-drag"
           data={displayedNotifications}
           renderItem={renderNotification}
           keyExtractor={(item) => String(item.id)}
@@ -577,82 +583,118 @@ const NotificationsScreen = () => {
       >
         {selectedNotification && (
           <ScrollView
+            keyboardDismissMode="on-drag"
             style={{ maxHeight: height * 0.7 }}
             contentContainerStyle={styles.modalContent}
             nestedScrollEnabled
           >
-            <View style={styles.modalHeader}>
-              <View style={[styles.modalIcon, { width: iconSize, height: iconSize, borderRadius: iconSize / 2 }]}>
+            {/* الرأس: أيقونة كبيرة وشارات */}
+            <View style={styles.detailHero}>
+              <ScaleInView style={styles.detailIcon} from={0.6} duration={320}>
                 <Ionicons
                   name={getIconName(selectedNotification.icon)}
-                  size={iconSize / 2}
+                  size={28}
                   color={getIconColor(selectedNotification)}
                 />
+              </ScaleInView>
+              <View style={styles.chipRow}>
+                <View style={styles.chip}>
+                  <Text style={styles.chipText}>{t('notifications.typeAnnouncement')}</Text>
+                </View>
+                {selectedNotification.isSender && (
+                  <View style={[styles.chip, styles.chipPrimary]}>
+                    <Ionicons name="send" size={11} color={colors.primaryLight} />
+                    <Text style={[styles.chipText, styles.chipTextPrimary]}>
+                      {t('notifications.senderBadge')}
+                    </Text>
+                  </View>
+                )}
+                {selectedNotification.isSender && selectedExpired && (
+                  <View style={[styles.chip, styles.chipWarning]}>
+                    <Ionicons name="archive-outline" size={11} color={colors.warning} />
+                    <Text style={[styles.chipText, styles.chipTextWarning]}>
+                      {t('notifications.detailsArchived')}
+                    </Text>
+                  </View>
+                )}
               </View>
-              <Text style={[styles.modalType, isSmallScreen && styles.modalTypeSmall]}>
-                {t('notifications.typeAnnouncement')}
+            </View>
+
+            {/* الرسالة — يظهر نصها مرة واحدة */}
+            <View style={styles.messageCard}>
+              <Text style={[styles.messageHeading, { textAlign: align }]} selectable>
+                {selectedText.heading}
               </Text>
-              {selectedNotification.isSender && (
-                <View style={styles.senderBadge}>
-                  <Ionicons name="send" size={11} color={colors.primaryLight} />
-                  <Text style={styles.senderBadgeText}>
-                    {t('notifications.senderBadge')}
+              {!!selectedText.text && (
+                <Text style={[styles.messageBody, { textAlign: align }]} selectable>
+                  {selectedText.text}
+                </Text>
+              )}
+            </View>
+
+            {/* التوقيت */}
+            <View style={styles.infoList}>
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+                </View>
+                <Text style={styles.infoText}>
+                  {selectedNotification.date} · {selectedNotification.time}
+                </Text>
+              </View>
+              {selectedNotification.isSender && !!selectedDurationLabel && (
+                <View style={styles.infoRow}>
+                  <View style={styles.infoIcon}>
+                    <Ionicons name="hourglass-outline" size={16} color={colors.textSecondary} />
+                  </View>
+                  <Text style={styles.infoText}>
+                    {t('notifications.detailsDuration', { duration: selectedDurationLabel })}
+                  </Text>
+                </View>
+              )}
+              {!!selectedNotification.expiresAt && (
+                <View style={styles.infoRow}>
+                  <View style={styles.infoIcon}>
+                    <Ionicons name="eye-off-outline" size={16} color={colors.textSecondary} />
+                  </View>
+                  <Text style={styles.infoText}>
+                    {t('notifications.detailsExpires', {
+                      date: formatExpiry(selectedNotification.expiresAt),
+                    })}
                   </Text>
                 </View>
               )}
             </View>
 
-            <Text style={[styles.modalTitle, isSmallScreen && styles.modalTitleSmall]}>
-              {localizeText(selectedNotification.title)}
-            </Text>
-            <Text style={[styles.modalBody, { textAlign: align }, isSmallScreen && styles.modalBodySmall]}>
-              {localizeText(selectedNotification.body)}
-            </Text>
-
-            {/* Recipient counts and read state are for the sender only. */}
-            {selectedNotification.isSender &&
-              !!selectedNotification.recipientCount && (
-                <Text style={styles.modalMeta}>
-                  {t('notifications.readSummary', {
-                    read: receipts
-                      ? receipts.readCount
-                      : selectedNotification.readCount || 0,
-                    total: selectedNotification.recipientCount,
-                  })}
-                </Text>
-              )}
-
-            {selectedNotification.isSender && !!selectedDurationLabel && (
-              <Text style={styles.modalMeta}>
-                {t('notifications.detailsDuration', {
-                  duration: selectedDurationLabel,
-                })}
-              </Text>
-            )}
-
-            {!!selectedNotification.expiresAt && (
-              <Text style={styles.modalMeta}>
-                {t('notifications.detailsExpires', {
-                  date: formatExpiry(selectedNotification.expiresAt),
-                })}
-              </Text>
-            )}
-
-            {selectedNotification.isSender && selectedExpired && (
-              <Text style={styles.modalArchived}>
-                {t('notifications.detailsArchived')}
-              </Text>
-            )}
-
-            <Text style={[styles.modalDate, isSmallScreen && styles.modalDateSmall]}>
-              {selectedNotification.date} · {selectedNotification.time}
-            </Text>
-
+            {/* حالة القراءة — للمرسل فقط */}
             {selectedNotification.isSender && (
               <View style={styles.receiptsSection}>
-                <Text style={styles.receiptsTitle}>
-                  {t('notifications.receiptsTitle')}
-                </Text>
+                {!!selectedNotification.recipientCount && (
+                  <View style={styles.progressBlock}>
+                    <View style={styles.progressHeader}>
+                      <Text style={styles.receiptsTitle}>{t('notifications.receiptsTitle')}</Text>
+                      <Text style={styles.progressText}>
+                        {t('notifications.readSummary', {
+                          read: readCount,
+                          total: selectedNotification.recipientCount,
+                        })}
+                      </Text>
+                    </View>
+                    <View style={styles.progressTrack}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          {
+                            width: `${Math.min(
+                              100,
+                              Math.round((readCount / selectedNotification.recipientCount) * 100)
+                            )}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                )}
 
                 {receiptsLoading ? (
                   <View style={styles.receiptsLoading}>
@@ -667,48 +709,36 @@ const NotificationsScreen = () => {
                     onPress={() => loadReceipts(selectedNotification.id)}
                   >
                     <Ionicons name="refresh" size={14} color={colors.primaryLight} />
-                    <Text style={styles.receiptsRetryText}>
-                      {t('common.retry')}
-                    </Text>
+                    <Text style={styles.receiptsRetryText}>{t('common.retry')}</Text>
                   </Pressable>
                 ) : receipts?.recipients?.length ? (
                   receipts.recipients.map((recipient) => (
                     <View key={recipient.employeeId} style={styles.receiptRow}>
                       <UserAvatar
-                        person={{
-                          name: recipient.name,
-                          avatarUrl: recipient.avatarUrl,
-                        }}
+                        person={{ name: recipient.name, avatarUrl: recipient.avatarUrl }}
                         size="small"
                       />
                       <View style={styles.receiptBody}>
                         <Text style={styles.receiptName} numberOfLines={1}>
                           {localizeText(recipient.name)}
                         </Text>
-                        <Text
-                          style={[
-                            styles.receiptStatus,
-                            recipient.read && styles.receiptStatusRead,
-                          ]}
-                        >
+                        <Text style={[styles.receiptStatus, recipient.read && styles.receiptStatusRead]}>
                           {recipient.read
-                            ? t('notifications.receiptReadAt', {
-                                date: formatExpiry(recipient.readAt),
-                              })
+                            ? t('notifications.receiptReadAt', { date: formatExpiry(recipient.readAt) })
                             : t('notifications.receiptUnread')}
                         </Text>
                       </View>
-                      <Ionicons
-                        name={recipient.read ? 'checkmark-done' : 'time-outline'}
-                        size={18}
-                        color={recipient.read ? colors.success : colors.textSecondary}
-                      />
+                      <View style={[styles.receiptBadge, recipient.read && styles.receiptBadgeRead]}>
+                        <Ionicons
+                          name={recipient.read ? 'checkmark-done' : 'time-outline'}
+                          size={16}
+                          color={recipient.read ? colors.success : colors.textLight}
+                        />
+                      </View>
                     </View>
                   ))
                 ) : (
-                  <Text style={styles.receiptsEmpty}>
-                    {t('notifications.receiptsEmpty')}
-                  </Text>
+                  <Text style={styles.receiptsEmpty}>{t('notifications.receiptsEmpty')}</Text>
                 )}
               </View>
             )}
@@ -736,13 +766,12 @@ const NotificationsScreen = () => {
           />
         ) : (
         <ScrollView
+          keyboardDismissMode="on-drag"
           style={[styles.createScroll, { maxHeight: height * 0.72 }]}
           contentContainerStyle={styles.createContent}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled
         >
-          <Text style={styles.createSubtitle}>{t('notifications.createSubtitle')}</Text>
-
           {/* المستهدفون */}
           <View style={styles.labelRow}>
             <Text style={styles.createLabel}>{t('notifications.recipientLabel')}</Text>
@@ -784,6 +813,7 @@ const NotificationsScreen = () => {
             />
 
             <ScrollView
+              keyboardDismissMode="on-drag"
               style={styles.recipientScroll}
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
@@ -850,53 +880,25 @@ const NotificationsScreen = () => {
           />
 
           {/* مدة العرض - تُفتح كبكرة دوّارة بداخل نافذة مستقلة */}
-          <View style={styles.durationHeader}>
-            <Text style={styles.createLabel}>{t('notifications.durationLabel')}</Text>
-            <View style={styles.durationPill}>
-              <Ionicons name="time-outline" size={14} color={colors.primaryLight} />
-              <Text style={styles.durationPillText}>{durationLabel}</Text>
-            </View>
-          </View>
-          <Text style={styles.durationHint}>{t('notifications.durationHint')}</Text>
-
-          <Pressable
-            style={styles.durationTrigger}
+          <PickerField
+            label={t('notifications.durationLabel')}
+            value={durationLabel}
             onPress={openDurationPicker}
-            accessibilityRole="button"
-            accessibilityLabel={t('notifications.durationPick')}
-          >
-            <View style={styles.durationTriggerIcon}>
-              <Ionicons name="timer-outline" size={20} color={colors.primaryLight} />
-            </View>
-            <View style={styles.durationTriggerBody}>
-              <Text style={styles.durationTriggerCaption}>
-                {t('notifications.durationPick')}
-              </Text>
-              <Text style={styles.durationTriggerValue}>{durationLabel}</Text>
-            </View>
-            <Ionicons
-              name="chevron-down"
-              size={18}
-              color={colors.textSecondary}
-            />
-          </Pressable>
+            hint={t('notifications.durationHint')}
+            icon="timer-outline"
+          />
 
           <CustomButton
             title={t('notifications.submit')}
             onPress={handleCreateNotification}
             icon="send"
+            size="large"
             style={styles.createSubmit}
           />
         </ScrollView>
         )}
       </Modal>
 
-      {/* الفوتر */}
-      <View style={styles.footer}>
-        <Text style={[styles.footerText, isSmallScreen && styles.footerTextSmall]}>
-          {t('notifications.footer')}
-        </Text>
-      </View>
     </SafeAreaView>
   );
 };
@@ -907,19 +909,25 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    // Blends into the page: a modern large-title header without a divider.
+    backgroundColor: colors.background,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
   },
   headerTitle: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 1,
   },
   titleBorder: {
+    // A short brand accent beside the title.
     width: 4,
-    height: 50,
+    height: 22,
     backgroundColor: colors.accent,
     borderRadius: 2,
   },
@@ -930,42 +938,20 @@ const createStyles = (colors) => StyleSheet.create({
   titleSmall: {
     fontSize: 18,
   },
-  subtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    lineHeight: 18,
-  },
-  subtitleSmall: {
-    fontSize: 11,
-  },
-  badge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#f6f0e4',
+  headerIconButton: {
+    width: 42,
+    height: 42,
     borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  badgeRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
-  },
-  markAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.infoBorder,
-    backgroundColor: colors.infoLight,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    borderColor: colors.border,
+    ...shadows.sm,
   },
-  markAllText: {
-    ...typography.captionBold,
-    color: colors.primaryLight,
+  headerButtonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.94 }],
   },
   noticeBar: {
     flexDirection: 'row',
@@ -986,20 +972,22 @@ const createStyles = (colors) => StyleSheet.create({
     flex: 1,
   },
   headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
   },
   createButton: {
-    flexDirection: 'row',
+    width: 42,
+    height: 42,
+    borderRadius: borderRadius.full,
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
     backgroundColor: colors.primaryLight,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  createButtonText: {
-    ...typography.captionBold,
-    color: colors.textWhite,
+    shadowColor: colors.primaryLight,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 3,
   },
   createScroll: {
     maxHeight: 480,
@@ -1007,12 +995,6 @@ const createStyles = (colors) => StyleSheet.create({
   createContent: {
     paddingVertical: spacing.sm,
     gap: spacing.sm,
-  },
-  createSubtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
   },
   createLabel: {
     ...typography.bodyBold,
@@ -1107,81 +1089,22 @@ const createStyles = (colors) => StyleSheet.create({
   bodyField: {
     marginTop: spacing.xs,
   },
-  durationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  durationPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.infoLight,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  durationPillText: {
-    ...typography.captionBold,
-    color: colors.primaryLight,
-  },
-  durationHint: {
-    ...typography.caption,
-    color: colors.textLight,
-    textAlign: 'center',
-    marginTop: -spacing.xs,
-  },
-  durationTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.surface,
-    padding: spacing.sm,
-  },
-  durationTriggerIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.iconSurface,
-  },
-  durationTriggerBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  durationTriggerCaption: {
-    ...typography.small,
-    color: colors.textLight,
-  },
-  durationTriggerValue: {
-    ...typography.bodyBold,
-    color: colors.text,
-  },
   tabsBar: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingBottom: spacing.sm,
   },
+  // Segmented switch: the selected side is a white pill on a soft track.
   directionTabs: {
     flexDirection: 'row',
-    padding: 3,
+    padding: 4,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 3,
+    backgroundColor: colors.border,
+    gap: 4,
   },
   directionTab: {
     flex: 1,
     flexDirection: 'row',
-    paddingVertical: spacing.xs,
+    minHeight: 38,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.full,
     alignItems: 'center',
@@ -1189,15 +1112,16 @@ const createStyles = (colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   directionTabActive: {
-    backgroundColor: colors.primaryLight,
+    backgroundColor: colors.surface,
+    ...shadows.sm,
   },
   directionTabText: {
-    ...typography.captionBold,
+    ...typography.bodySmallBold,
     color: colors.textSecondary,
     textAlign: 'center',
   },
   directionTabTextActive: {
-    color: colors.textWhite,
+    color: colors.primaryLight,
   },
   tabBadge: {
     minWidth: 18,
@@ -1214,24 +1138,12 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 10,
     textAlign: 'center',
   },
-  modalArchived: {
-    ...typography.captionBold,
-    color: colors.warning,
-    marginBottom: spacing.xs,
-  },
   createError: {
     ...typography.caption,
     color: colors.danger || '#d33',
   },
   createSubmit: {
     marginTop: spacing.lg,
-  },
-  badgeText: {
-    ...typography.captionBold,
-    color: '#785e30',
-  },
-  badgeTextSmall: {
-    fontSize: 10,
   },
   listContent: {
     padding: spacing.md,
@@ -1240,76 +1152,131 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: '15%',
   },
   modalContent: {
+    // Full-width rows: the message card, timing rows and receipts stretch
+    // across the window (only the icon block is centered, in detailHero).
+    alignItems: 'stretch',
+    paddingBottom: spacing.sm,
+  },
+  detailHero: {
     alignItems: 'center',
-  },
-  modalHeader: {
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  modalIcon: {
-    backgroundColor: colors.infoLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xs,
-  },
-  modalType: {
-    ...typography.bodyBold,
-    color: colors.primaryLight,
-  },
-  modalTypeSmall: {
-    fontSize: 13,
-  },
-  modalTitle: {
-    ...typography.h3,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  modalTitleSmall: {
-    fontSize: 16,
-  },
-  modalBody: {
-    ...typography.body,
-    color: colors.textSecondary,
-    lineHeight: 24,
+    gap: spacing.sm,
     marginBottom: spacing.md,
   },
-  modalBodySmall: {
-    fontSize: 13,
+  detailIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
   },
-  modalMeta: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: spacing.xs,
   },
-  modalDate: {
-    ...typography.caption,
-    color: colors.textLight,
-  },
-  modalDateSmall: {
-    fontSize: 10,
-  },
-  senderBadge: {
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: spacing.xs,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.infoLight,
+    backgroundColor: colors.background,
   },
-  senderBadgeText: {
+  chipPrimary: {
+    backgroundColor: colors.primarySoft,
+  },
+  chipWarning: {
+    backgroundColor: colors.warningLight,
+  },
+  chipText: {
     ...typography.captionBold,
+    color: colors.textSecondary,
+  },
+  chipTextPrimary: {
     color: colors.primaryLight,
-    fontSize: 10,
+  },
+  chipTextWarning: {
+    color: colors.warning,
+  },
+  messageCard: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  messageHeading: {
+    ...typography.h4,
+    color: colors.text,
+  },
+  messageBody: {
+    ...typography.body,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  infoList: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  infoIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  infoText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  progressBlock: {
+    marginBottom: spacing.sm,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  progressText: {
+    ...typography.captionBold,
+    color: colors.success,
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.background,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+  },
+  receiptBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  receiptBadgeRead: {
+    backgroundColor: colors.successLight,
   },
   receiptsSection: {
-    width: '100%',
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+    paddingTop: spacing.md,
   },
   receiptsTitle: {
     ...typography.bodyBold,
@@ -1349,7 +1316,9 @@ const createStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   receiptBody: {
     flex: 1,
@@ -1357,7 +1326,7 @@ const createStyles = (colors) => StyleSheet.create({
   receiptName: {
     ...typography.bodySmall,
     color: colors.text,
-    fontFamily: 'Cairo_700Bold',
+    fontFamily: fonts.bold,
   },
   receiptStatus: {
     ...typography.caption,
@@ -1366,17 +1335,6 @@ const createStyles = (colors) => StyleSheet.create({
   },
   receiptStatusRead: {
     color: colors.success,
-  },
-  footer: {
-    padding: spacing.sm,
-    alignItems: 'center',
-  },
-  footerText: {
-    ...typography.small,
-    color: '#78889a',
-  },
-  footerTextSmall: {
-    fontSize: 10,
   },
 });
 

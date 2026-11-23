@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
+import { Text } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
@@ -27,19 +28,36 @@ const AppHeader = ({
       <View style={styles.headerContent}>
         <View style={styles.headerLeft}>
           {showBack && (
-            <Pressable onPress={onBackPress} style={styles.backButton}>
+            <Pressable
+              onPress={onBackPress}
+              style={styles.backButton}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.back')}
+            >
               <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} color={colors.textWhite} />
             </Pressable>
           )}
           <View style={styles.titleContainer}>
-            <Text style={styles.title}>{title}</Text>
-            {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+            <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+              {title}
+            </Text>
+            {!!subtitle && (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            )}
           </View>
         </View>
         <View style={styles.headerRight}>
           {rightComponent}
           {showLogout && (
-            <Pressable onPress={onLogoutPress} style={styles.logoutButton}>
+            <Pressable
+              onPress={onLogoutPress}
+              style={styles.logoutButton}
+              hitSlop={6}
+              accessibilityRole="button"
+            >
               <Text style={styles.logoutText}>{t('header.logout')}</Text>
             </Pressable>
           )}

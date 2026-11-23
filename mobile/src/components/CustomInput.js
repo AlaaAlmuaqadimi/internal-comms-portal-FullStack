@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
+import { Text, TextInput } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { typography } from '../constants/typography';
@@ -29,10 +30,15 @@ const CustomInput = ({
   onFocus,
   autoCorrect = false,
   textContentType,
+  autoComplete,
+  returnKeyType,
+  onSubmitEditing,
+  blurOnSubmit,
+  testID,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [isSecure, setIsSecure] = useState(secureTextEntry);
-  const { align, isRTL } = useLanguage();
+  const { align, isRTL, t } = useLanguage();
   const { colors } = useTheme();
   const styles = useMemo(
     () => flipStyles(createStyles(colors), isRTL),
@@ -41,7 +47,7 @@ const CustomInput = ({
 
   return (
     <View style={[styles.container, style]}>
-      {label && (
+      {!!label && (
         <Text style={styles.label}>
           {label}
           {required && <Text style={styles.required}> *</Text>}
@@ -53,11 +59,13 @@ const CustomInput = ({
         error && styles.inputContainerError,
         disabled && styles.inputContainerDisabled,
       ]}>
-        {icon && (
-          <Ionicons 
-            name={icon} 
-            size={20} 
-            color={isFocused ? colors.primaryLight : colors.textLight} 
+        {!!icon && (
+          <Ionicons
+            name={icon}
+            size={20}
+            color={error ? colors.dangerStrong : isFocused ? colors.primaryLight : colors.textLight}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
           />
         )}
         <TextInput
@@ -80,6 +88,14 @@ const CustomInput = ({
           numberOfLines={numberOfLines}
           autoCorrect={autoCorrect}
           textContentType={textContentType}
+          autoComplete={autoComplete}
+          returnKeyType={returnKeyType}
+          onSubmitEditing={onSubmitEditing}
+          blurOnSubmit={blurOnSubmit}
+          testID={testID}
+          accessibilityLabel={label || placeholder}
+          accessibilityHint={error || hint || undefined}
+          accessibilityState={{ disabled }}
           onFocus={() => {
             setIsFocused(true);
             if (onFocus) onFocus();
@@ -90,19 +106,27 @@ const CustomInput = ({
           }}
         />
         {secureTextEntry && (
-          <Pressable onPress={() => setIsSecure(!isSecure)} style={styles.eyeIcon}>
-            <Ionicons 
-              name={isSecure ? 'eye-off' : 'eye'} 
-              size={20} 
-              color={colors.textLight} 
+          <Pressable
+            onPress={() => setIsSecure((prev) => !prev)}
+            style={styles.eyeIcon}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={isSecure ? t('common.showPassword') : t('common.hidePassword')}
+          >
+            <Ionicons
+              name={isSecure ? 'eye-off' : 'eye'}
+              size={20}
+              color={colors.textLight}
             />
           </Pressable>
         )}
       </View>
-      {error && (
-        <Text style={styles.error}>{error}</Text>
+      {!!error && (
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          {error}
+        </Text>
       )}
-      {hint && !error && (
+      {!!hint && !error && (
         <Text style={styles.hint}>{hint}</Text>
       )}
     </View>
@@ -114,9 +138,9 @@ const createStyles = (colors) => StyleSheet.create({
     marginBottom: spacing.md,
   },
   label: {
-    ...typography.bodyBold,
-    color: colors.text,
-    marginBottom: spacing.xs,
+    ...typography.bodySmallBold,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs + 2,
   },
   required: {
     color: colors.danger,
@@ -125,23 +149,28 @@ const createStyles = (colors) => StyleSheet.create({
   flexDirection: 'row',
   alignItems: 'center',
   gap: spacing.sm,
-  backgroundColor: colors.surface,
+  // Soft filled field that turns white with a coloured outline on focus.
+  backgroundColor: colors.background,
   borderWidth: 1,
   borderColor: colors.border,
   borderRadius: borderRadius.md,
   paddingHorizontal: spacing.md,
+  minHeight: 50,
 },
   inputContainerFocused: {
+    backgroundColor: colors.surface,
     borderColor: colors.primaryLight,
+    borderWidth: 1.5,
   },
   inputContainerError: {
     borderColor: colors.dangerStrong,
+    borderWidth: 1.5,
   },
   inputContainerDisabled: {
     backgroundColor: colors.background,
     opacity: 0.6,
   },
-  
+
   input: {
     flex: 1,
     ...typography.body,

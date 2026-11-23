@@ -99,6 +99,9 @@ function candidateType(candidate) {
 
 /** Diagnostics only: counts and states, never addresses, SDP or ICE strings. */
 function logDiag(...args) {
+  // Development builds only: release builds keep call diagnostics off the
+  // device log, which other apps and adb can read.
+  if (typeof __DEV__ !== 'undefined' && !__DEV__) return;
   // eslint-disable-next-line no-console
   console.log('[call]', ...args);
 }

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
-  Text,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,10 +9,11 @@ import {
   Platform,
   useWindowDimensions,
 } from 'react-native';
+import { Text } from './AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { typography } from '../constants/typography';
+import { typography, fonts } from '../constants/typography';
 import { spacing, borderRadius, shadows } from '../constants/spacing';
 import CustomInput from './CustomInput';
 import { useLanguage } from '../context/LanguageContext';
@@ -175,6 +175,7 @@ const OrgUnitPicker = ({
             />
 
             <ScrollView
+              keyboardDismissMode="on-drag"
               style={[styles.treeScroll, { maxHeight: Math.max(160, Math.round(height * 0.55)) }]}
               keyboardShouldPersistTaps="handled"
             >
@@ -214,7 +215,8 @@ const OrgUnitPicker = ({
                       key={row.id}
                       style={[
                         styles.row,
-                        { paddingStart: spacing.sm + row.depth * spacing.md },
+                        // Nested units are indented from the start side: the right in Arabic.
+                        { [isRTL ? 'paddingRight' : 'paddingLeft']: spacing.sm + row.depth * spacing.md },
                         isSelected && styles.rowSelected,
                       ]}
                     >
@@ -350,12 +352,12 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
     paddingVertical: spacing.sm,
-    paddingEnd: spacing.sm,
+    paddingRight: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   rowSelected: {
-    backgroundColor: '#f5f9fc',
+    backgroundColor: colors.selectedSurface,
   },
   toggle: {
     width: 24,
@@ -369,7 +371,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   rowBody: {
     flex: 1,
-    marginStart: spacing.xs,
+    marginLeft: spacing.xs,
   },
   rowName: {
     ...typography.bodySmall,
@@ -377,7 +379,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   rowNameSelected: {
     color: colors.primaryLight,
-    fontFamily: 'Cairo_700Bold',
+    fontFamily: fonts.bold,
   },
   rowPath: {
     ...typography.caption,

@@ -1,26 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
-  ActivityIndicator,
   Modal,
   Switch,
   useWindowDimensions,
 } from 'react-native';
+import { Text } from '../../components/AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../constants/typography';
-import { spacing, borderRadius, shadows } from '../../constants/spacing';
+import { spacing, borderRadius } from '../../constants/spacing';
 import CustomInput from '../../components/CustomInput';
 import CustomButton from '../../components/CustomButton';
 import SelectField from '../../components/SelectField';
 import OrgUnitPicker from '../../components/OrgUnitPicker';
+import ScreenHeader from '../../components/ScreenHeader';
+import FormSection from '../../components/FormSection';
+import PickerField from '../../components/PickerField';
+import FormAlert from '../../components/FormAlert';
 import { api, ApiError } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { localizeText } from '../../i18n/localize';
@@ -56,7 +58,6 @@ const EditEmployeeModal = ({
     [colors, isRTL]
   );
 
-  const isSmallScreen = width < 375;
   const isLandscape = width > height;
 
   const passwordOptional = !!employee?.hasAccount;
@@ -381,25 +382,15 @@ const EditEmployeeModal = ({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}
         >
-          <View style={styles.header}>
-            <Pressable
-              onPress={close}
-              style={styles.closeButton}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel={t('common.close')}
-            >
-              <Ionicons name="close" size={24} color={colors.textWhite} />
-            </Pressable>
-            <View style={styles.headerText}>
-              <Text style={styles.headerTitle}>{t('editEmployee.title')}</Text>
-              <Text style={styles.headerSubtitle} numberOfLines={1}>
-                {employee?.fullNameAr || t('editEmployee.subtitle')}
-              </Text>
-            </View>
-          </View>
+          <ScreenHeader
+            title={t('editEmployee.title')}
+            subtitle={employee?.fullNameAr || t('editEmployee.subtitle')}
+            onBack={close}
+            variant="close"
+          />
 
           <ScrollView
+            keyboardDismissMode="on-drag"
             ref={scrollRef}
             contentContainerStyle={[
               styles.scrollContent,
@@ -411,18 +402,10 @@ const EditEmployeeModal = ({
             }}
             scrollEventThrottle={16}
           >
-            <View style={styles.form}>
-              {errors.general && (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{errors.general}</Text>
-                </View>
-              )}
+            <View>
+              <FormAlert message={errors.general} />
 
-              <View style={styles.section}>
-                <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
-                  {t('addUser.accountInfo')}
-                </Text>
-
+              <FormSection delay={0} icon="person-outline" title={t('addUser.personalInfo')}>
                 <View ref={fieldRef('fullNameAr')} collapsable={false}>
                   <CustomInput
                     label={t('addUser.fullName')}
@@ -450,7 +433,9 @@ const EditEmployeeModal = ({
                     icon="text"
                   />
                 </View>
+              </FormSection>
 
+              <FormSection delay={70} icon="key-outline" title={t('addUser.loginInfo')}>
                 <View ref={fieldRef('username')} collapsable={false}>
                   <CustomInput
                     label={t('addUser.username')}
@@ -515,12 +500,9 @@ const EditEmployeeModal = ({
                     icon="mail"
                   />
                 </View>
-              </View>
+              </FormSection>
 
-              <View style={styles.section}>
-                <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
-                  {t('addUser.orgInfo')}
-                </Text>
+              <FormSection delay={140} icon="briefcase-outline" title={t('addUser.orgInfo')}>
 
                 <View ref={fieldRef('jobTitleAr')} collapsable={false}>
                   <CustomInput
@@ -569,51 +551,21 @@ const EditEmployeeModal = ({
                   />
                 </View>
 
-                <View ref={fieldRef('orgUnitId')} collapsable={false} style={styles.orgUnitField}>
-                  <Text style={styles.orgUnitLabel}>
-                    {t('addUser.orgUnit')}
-                    <Text style={styles.orgUnitRequired}> *</Text>
-                  </Text>
-
-                  <Pressable
+                <View ref={fieldRef('orgUnitId')} collapsable={false}>
+                  <PickerField
+                    label={t('addUser.orgUnit')}
+                    required
+                    value={selectedOrgUnitName}
+                    placeholder={t('addUser.orgUnitPlaceholder')}
                     onPress={() => {
                       if (!orgTree.length) return;
                       setOrgPickerVisible(true);
                     }}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: orgPickerVisible }}
-                    style={[
-                      styles.orgUnitTrigger,
-                      errors.orgUnitId && styles.orgUnitTriggerError,
-                    ]}
-                  >
-                    {orgTree.length === 0 ? (
-                      <ActivityIndicator size="small" color={colors.primaryLight} />
-                    ) : null}
-                    <Text
-                      numberOfLines={2}
-                      style={[
-                        styles.orgUnitValue,
-                        { textAlign: align },
-                        !selectedOrgUnitName && styles.orgUnitPlaceholder,
-                      ]}
-                    >
-                      {selectedOrgUnitName || t('addUser.orgUnitPlaceholder')}
-                    </Text>
-                    <Ionicons
-                      name="chevron-down"
-                      size={18}
-                      color={colors.textSecondary}
-                    />
-                  </Pressable>
-
-                  {errors.orgUnitId ? (
-                    <Text style={styles.orgUnitError}>{errors.orgUnitId}</Text>
-                  ) : selectedOrgPathLabel ? (
-                    <Text style={[styles.orgUnitHint, { textAlign: align }]}>
-                      {selectedOrgPathLabel}
-                    </Text>
-                  ) : null}
+                    loading={orgTree.length === 0}
+                    error={errors.orgUnitId}
+                    hint={selectedOrgPathLabel}
+                    expanded={orgPickerVisible}
+                  />
 
                   <UnitHeadToggle
                     unit={selectedOrgUnit}
@@ -625,13 +577,9 @@ const EditEmployeeModal = ({
                     }}
                   />
                 </View>
-              </View>
+              </FormSection>
 
-              <View style={[styles.section, styles.sectionLast]}>
-                <Text style={[styles.sectionTitle, isSmallScreen && styles.sectionTitleSmall]}>
-                  {t('editEmployee.accountStatus')}
-                </Text>
-
+              <FormSection delay={210} icon="shield-checkmark-outline" title={t('editEmployee.accountStatus')}>
                 <View style={styles.statusCard}>
                   <View
                     style={[
@@ -683,7 +631,7 @@ const EditEmployeeModal = ({
                     </Text>
                   </View>
                 ) : null}
-              </View>
+              </FormSection>
             </View>
           </ScrollView>
 
@@ -701,7 +649,6 @@ const EditEmployeeModal = ({
               loading={saving}
               disabled={saving}
               icon="save"
-              iconPosition="left"
               style={styles.footerButton}
             />
           </View>
@@ -737,133 +684,27 @@ const createStyles = (colors) => StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surfaceDark,
-    borderBottomWidth: 4,
-    borderBottomColor: colors.accent,
-    padding: spacing.md,
-  },
-  closeButton: {
-    padding: spacing.xs,
-  },
-  headerText: {
-    flex: 1,
-  },
-  headerTitle: {
-    ...typography.h3,
-    color: colors.textWhite,
-  },
-  headerSubtitle: {
-    ...typography.caption,
-    color: colors.textGold,
-    marginTop: 2,
-  },
   scrollContent: {
     flexGrow: 1,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
   },
   scrollContentLandscape: {
     paddingHorizontal: '15%',
-  },
-  form: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    ...shadows.sm,
-  },
-  errorContainer: {
-    backgroundColor: colors.dangerLight,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: '#e5b3a6',
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  errorText: {
-    ...typography.bodySmall,
-    color: colors.dangerStrong,
-    textAlign: 'center',
-  },
-  section: {
-    marginBottom: spacing.lg,
-  },
-  sectionLast: {
-    marginBottom: 0,
-  },
-  sectionTitle: {
-    ...typography.h4,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  sectionTitleSmall: {
-    fontSize: 16,
-  },
-  orgUnitField: {
-    marginBottom: spacing.md,
-  },
-  orgUnitLabel: {
-    ...typography.bodyBold,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  orgUnitRequired: {
-    color: colors.dangerStrong,
-  },
-  orgUnitTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 44,
-  },
-  orgUnitTriggerError: {
-    borderColor: colors.dangerStrong,
-  },
-  orgUnitValue: {
-    ...typography.body,
-    color: colors.text,
-    flex: 1,
-    paddingVertical: spacing.xs,
-  },
-  orgUnitPlaceholder: {
-    color: colors.textLight,
-  },
-  orgUnitError: {
-    ...typography.caption,
-    color: colors.dangerStrong,
-    marginTop: spacing.xs,
-  },
-  orgUnitHint: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
   },
   statusCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.lg,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
     padding: spacing.md,
-    ...shadows.sm,
+    marginBottom: spacing.md,
   },
   statusIcon: {
     width: 40,
     height: 40,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -890,11 +731,11 @@ const createStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    marginTop: spacing.sm,
+    marginBottom: spacing.md,
     padding: spacing.sm,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: '#f0c4c4',
+    borderColor: colors.dangerBorder,
     backgroundColor: colors.dangerLight,
   },
   deactivateNoticeText: {
@@ -906,9 +747,10 @@ const createStyles = (colors) => StyleSheet.create({
   footer: {
     flexDirection: 'row',
     gap: spacing.sm,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
   footerButton: {

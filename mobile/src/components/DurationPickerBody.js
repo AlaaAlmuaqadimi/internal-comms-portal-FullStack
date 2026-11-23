@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import WheelPicker from './WheelPicker';

@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { Text } from '../../components/AppText';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -9,6 +11,7 @@ import { otherParty } from '../../calls/callMachine';
 import { typography } from '../../constants/typography';
 import { spacing } from '../../constants/spacing';
 import UserAvatar from '../../components/UserAvatar';
+import { PulseRing } from '../../components/Motion';
 import { localizeText } from '../../i18n/localize';
 
 /**
@@ -19,7 +22,7 @@ import { localizeText } from '../../i18n/localize';
  */
 const IncomingCallScreen = () => {
   const { width } = useWindowDimensions();
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const { colors } = useTheme();
   const { state, accept, reject } = useCall();
   const [busy, setBusy] = useState(false);
@@ -42,12 +45,17 @@ const IncomingCallScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style="light" />
       <View style={styles.top}>
         <Text style={styles.title}>{t('callActive.incomingTitle')}</Text>
-        <UserAvatar
-          person={{ name: caller.name, avatarUrl: redacted ? null : caller.avatarUrl }}
-          size={isSmall ? 'large' : 'xlarge'}
-        />
+        <PulseRing size={(isSmall ? 64 : 96) + 12} active>
+          <View style={styles.avatarRing}>
+            <UserAvatar
+              person={{ name: caller.name, avatarUrl: redacted ? null : caller.avatarUrl }}
+              size={isSmall ? 'large' : 'xlarge'}
+            />
+          </View>
+        </PulseRing>
         <Text style={[styles.name, isSmall && styles.nameSmall]}>
           {localizeText(caller.name || '')}
         </Text>
@@ -56,7 +64,8 @@ const IncomingCallScreen = () => {
         ) : null}
       </View>
 
-      <View style={styles.actions}>
+      {/* Decline at the start, answer at the end: mirrored in Arabic. */}
+      <View style={[styles.actions, isRTL && styles.actionsRtl]}>
         <View style={styles.action}>
           <Pressable
             accessibilityRole="button"
@@ -91,8 +100,14 @@ const createStyles = (colors) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.surfaceDark,
+      // Same dark call palette as CallActiveScreen, in both themes.
+      backgroundColor: '#0b1b33',
       justifyContent: 'space-between',
+    },
+    avatarRing: {
+      padding: 6,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255, 255, 255, 0.10)',
     },
     top: {
       alignItems: 'center',
@@ -124,6 +139,9 @@ const createStyles = (colors) =>
       flexDirection: 'row',
       justifyContent: 'space-around',
       paddingBottom: spacing.xl * 2,
+    },
+    actionsRtl: {
+      flexDirection: 'row-reverse',
     },
     action: {
       alignItems: 'center',

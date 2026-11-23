@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Pressable, StyleSheet } from 'react-native';
+import { Text } from './AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
@@ -37,7 +38,7 @@ const TEXT = {
  * for directorates, offices and sections.
  */
 export default function UnitHeadToggle({ unit, value, onChange, employeeId = null }) {
-  const { language, align } = useLanguage();
+  const { language, align, isRTL } = useLanguage();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   if (!canHaveHead(unit)) return null;
@@ -51,7 +52,7 @@ export default function UnitHeadToggle({ unit, value, onChange, employeeId = nul
         onPress={() => onChange(!value)}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: Boolean(value) }}
-        style={styles.row}
+        style={[styles.row, isRTL && styles.rowRtl]}
       >
         <Ionicons
           name={value ? 'checkbox' : 'square-outline'}
@@ -80,6 +81,8 @@ const createStyles = (colors) =>
       backgroundColor: colors.surface,
     },
     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    // Checkbox at the start of the line: on the right in Arabic.
+    rowRtl: { flexDirection: 'row-reverse' },
     label: { ...typography.bodyBold, color: colors.text, flex: 1 },
     hint: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
     warning: { ...typography.caption, color: colors.warning || colors.textSecondary, marginTop: spacing.xs },

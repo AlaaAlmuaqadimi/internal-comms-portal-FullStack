@@ -245,6 +245,39 @@ check('mute: both directions, no echo loop; speaker sent only on change', async 
   assert.deepEqual(calls.log.filter(([n]) => n === 'speaker'), [['speaker', true], ['speaker', false]]);
 });
 
+check('mute: the OS echo of quick taps never flips the button back', async () => {
+  const { calls, bridge, events } = setup();
+  calls.pushRing('call-7');
+  bridge.setMuted('call-7', true);
+  bridge.setMuted('call-7', false); // second tap before the OS answered the first
+  assert.deepEqual(calls.log.filter(([n]) => n === 'setMuted'), [['setMuted', 's1', true], ['setMuted', 's1', false]]);
+  calls.userMutes(true); // late echo of the first tap
+  calls.userMutes(false); // echo of the second
+  assert.deepEqual(events.muted, [], 'echoes of our own requests are not reported');
+  calls.userMutes(true); // a real mute from the system call screen
+  assert.deepEqual(events.muted, [true]);
+});
+
+check('mute: an echo that never came does not swallow a later system change', async () => {
+  const calls = fakeModule();
+  const events = [];
+  let clock = 0;
+  const bridge = createSystemCallBridge({
+    calls,
+    onAnswer() {},
+    onEnd() {},
+    onMuted: (muted) => events.push(muted),
+    now: () => clock,
+  });
+  bridge.attach();
+  calls.pushRing('call-8');
+  bridge.setMuted('call-8', true); // the OS never reports this one back
+  clock += 5000;
+  calls.userMutes(false);
+  calls.userMutes(true); // the user mutes from the lock screen
+  assert.deepEqual(events, [false, true]);
+});
+
 check('push token: register, read, follow updates', () => {
   const { calls, bridge } = setup();
   bridge.registerPush();

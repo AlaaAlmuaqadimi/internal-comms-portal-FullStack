@@ -1,13 +1,13 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   Pressable,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from '../../components/AppText';
+import SafeAreaView from '../../components/SafeAreaView';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../context/ThemeContext';
@@ -20,11 +20,14 @@ import SelectField from '../../components/SelectField';
 import Modal from '../../components/Modal';
 import ErrorState from '../../components/ErrorState';
 import EmptyState from '../../components/EmptyState';
+import FormAlert from '../../components/FormAlert';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { api, ApiError } from '../../services/api';
 import { hasRole } from '../../utils/permissions';
 import { flipStyles } from '../../i18n/rtlStyles';
+import { FadeInView, ScaleInView } from '../../components/Motion';
+import { listItemDelay } from '../../constants/motion';
 
 // Mirrors the backend ALLOWED_PARENT_KINDS matrix in org.service.js. Keeping it
 // here lets the form offer only structurally valid choices; the server still
@@ -67,7 +70,7 @@ const generateCode = () => {
 
 const OrgScreen = () => {
   const { width, height } = useWindowDimensions();
-  const { t, isRTL, language, align } = useLanguage();
+  const { t, isRTL, language } = useLanguage();
   const { user } = useAuth();
   const { colors } = useTheme();
   const styles = useMemo(
@@ -191,20 +194,45 @@ const OrgScreen = () => {
   const getKindIcon = (kind) => {
     switch (kind) {
       case 'root':
-      case 'directorate':
         return 'business';
       case 'deputy':
-        return 'star';
+        return 'ribbon';
+      case 'directorate':
+        return 'layers';
       case 'office':
-        return 'mail';
+        return 'briefcase';
       case 'section':
-        return 'document-text';
+        return 'grid';
       case 'group':
         return 'albums';
       default:
         return 'ellipse';
     }
   };
+
+  // Leadership in gold, directorates in blue, offices in green, sections grey.
+  const kindTone = (kind) => {
+    switch (kind) {
+      case 'root':
+      case 'deputy':
+        return { fg: colors.warning, bg: colors.warningLight };
+      case 'directorate':
+        return { fg: colors.primaryLight, bg: colors.primarySoft };
+      case 'office':
+        return { fg: colors.success, bg: colors.successLight };
+      default:
+        return { fg: colors.textSecondary, bg: colors.iconSurface };
+    }
+  };
+
+  const stats = useMemo(() => {
+    const count = (kind) => flatUnits.filter((entry) => entry.unit.kind === kind).length;
+    return [
+      { key: 'directorate', label: t('org.statDirectorates'), value: count('directorate') },
+      { key: 'office', label: t('org.statOffices'), value: count('office') },
+      { key: 'section', label: t('org.statSections'), value: count('section') },
+    ];
+  }, [flatUnits, t]);
 
   const canHaveChildren = (kind) => (CHILD_KINDS_BY_PARENT[kind] || []).length > 0;
   const canEdit = (kind) => kind !== 'root';
@@ -375,79 +403,96 @@ const OrgScreen = () => {
   };
 
   const headerPadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.xl : spacing.md;
-  const nodePadding = isSmallScreen ? spacing.sm : isLargeScreen ? spacing.lg : spacing.md;
-  const iconSize = isSmallScreen ? 16 : isLargeScreen ? 24 : 20;
 
-  const renderNode = (node, level = 0) => {
+  const renderNode = (node, level = 0, index = 0) => {
     const isExpanded = expandedNodes.has(node.id);
     const hasChildren = node.children && node.children.length > 0;
+    const tone = kindTone(node.kind);
+    const headName =
+      (language === 'ar' ? node.headNameAr : node.headNameEn) || node.headNameAr || node.headNameEn || '';
+    const meta = [
+      kindLabel(node.kind),
+      hasChildren ? t('org.subUnits', { count: node.children.length }) : null,
+    ]
+      .filter(Boolean)
+      .join(' \u00b7 ');
 
     return (
-      <View
-        key={node.id}
-        style={[
-          styles.nodeContainer,
-          { [isRTL ? 'marginRight' : 'marginLeft']: level * (isSmallScreen ? 12 : 20) },
-        ]}
-      >
-        <View style={[styles.nodeRow, { padding: nodePadding }]}>
-          <Pressable
-            style={styles.nodeToggle}
-            onPress={() => hasChildren && toggleNode(node.id)}
-            disabled={!hasChildren}
-          >
-            {hasChildren && (
-              <Ionicons
-                name={isExpanded ? 'chevron-down' : isRTL ? 'chevron-back' : 'chevron-forward'}
-                size={iconSize}
-                color={colors.textSecondary}
-              />
-            )}
-          </Pressable>
-
-          <View style={styles.nodeIcon}>
-            <Ionicons name={getKindIcon(node.kind)} size={iconSize} color={colors.primaryLight} />
+      <FadeInView key={node.id} delay={listItemDelay(index)} style={styles.node}>
+        <Pressable
+          onPress={() => hasChildren && toggleNode(node.id)}
+          disabled={!hasChildren}
+          style={({ pressed }) => [
+            styles.nodeRow,
+            level === 0 && styles.nodeRowRoot,
+            pressed && styles.nodeRowPressed,
+          ]}
+          accessibilityRole={hasChildren ? 'button' : undefined}
+          accessibilityState={hasChildren ? { expanded: isExpanded } : undefined}
+        >
+          <View style={[styles.kindIcon, { backgroundColor: tone.bg }]}>
+            <Ionicons name={getKindIcon(node.kind)} size={18} color={tone.fg} />
           </View>
 
           <View style={styles.nodeTextWrap}>
-            <Text style={[styles.nodeName, isSmallScreen && styles.nodeNameSmall]}>
+            <Text style={[styles.nodeName, isSmallScreen && styles.nodeNameSmall]} numberOfLines={2}>
               {textFor(node)}
             </Text>
-            <Text style={styles.nodeKind}>{kindLabel(node.kind)}</Text>
-            {node.headEmployeeId ? (
-              <Text style={styles.nodeKind} numberOfLines={1}>
-                {(language === 'ar' ? 'المدير: ' : 'Head: ')
-                  + ((language === 'ar' ? node.headNameAr : node.headNameEn) || node.headNameAr || node.headNameEn || '')}
-              </Text>
+            <Text style={styles.nodeMeta} numberOfLines={1}>
+              {meta}
+            </Text>
+            {node.headEmployeeId && headName ? (
+              <View style={styles.headRow}>
+                <Ionicons name="person-circle-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.nodeMeta} numberOfLines={1}>
+                  {t('org.headLabel', { name: headName })}
+                </Text>
+              </View>
             ) : null}
           </View>
 
           {canManage && (
             <View style={styles.nodeActions}>
               {canHaveChildren(node.kind) && (
-                <Pressable onPress={() => openAdd(node)} style={styles.actionButton}>
-                  <Text style={[styles.actionText, isSmallScreen && styles.actionTextSmall]}>
-                    {t('org.addChild')}
-                  </Text>
+                <Pressable
+                  onPress={() => openAdd(node)}
+                  hitSlop={6}
+                  style={({ pressed }) => [styles.iconAction, styles.iconActionAdd, pressed && styles.iconActionPressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('org.addChildA11y')}
+                >
+                  <Ionicons name="add" size={18} color={colors.primaryLight} />
                 </Pressable>
               )}
               {canEdit(node.kind) && (
-                <Pressable onPress={() => openEdit(node)} style={styles.actionButton}>
-                  <Text style={[styles.actionText, isSmallScreen && styles.actionTextSmall]}>
-                    {t('org.edit')}
-                  </Text>
+                <Pressable
+                  onPress={() => openEdit(node)}
+                  hitSlop={6}
+                  style={({ pressed }) => [styles.iconAction, pressed && styles.iconActionPressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('org.edit')}
+                >
+                  <Ionicons name="create-outline" size={17} color={colors.textSecondary} />
                 </Pressable>
               )}
             </View>
           )}
-        </View>
+
+          {hasChildren ? (
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.textLight}
+            />
+          ) : null}
+        </Pressable>
 
         {isExpanded && hasChildren && (
-          <View style={styles.childrenContainer}>
-            {node.children.map((child) => renderNode(child, level + 1))}
+          <View style={styles.children}>
+            {node.children.map((child, childIndex) => renderNode(child, level + 1, childIndex))}
           </View>
         )}
-      </View>
+      </FadeInView>
     );
   };
 
@@ -456,33 +501,25 @@ const OrgScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={[styles.header, { padding: headerPadding }]}>
+    <SafeAreaView style={styles.container} animated>
+      <View style={[styles.header, { paddingHorizontal: headerPadding }]}>
         <View style={styles.headerTitle}>
           <View style={styles.titleBorder} />
-          <View style={styles.headerText}>
-            <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>{t('org.title')}</Text>
-            <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
-              {t('org.subtitle')}
-            </Text>
-          </View>
+          <Text
+            style={[styles.title, isSmallScreen && styles.titleSmall]}
+            accessibilityRole="header"
+            numberOfLines={1}
+          >
+            {t('org.title')}
+          </Text>
         </View>
 
-        {canManage && (
-          <CustomButton
-            title={t('org.addUnit')}
-            onPress={() => openAdd()}
-            icon="add"
-            iconPosition="left"
-            size="small"
-            style={styles.addButton}
-          />
-        )}
       </View>
 
       <ScrollView
+        keyboardDismissMode="on-drag"
         style={styles.content}
-        contentContainerStyle={isLandscape && styles.contentLandscape}
+        contentContainerStyle={[styles.contentInner, isLandscape && styles.contentLandscape]}
         keyboardShouldPersistTaps="handled"
       >
         {loadError ? (
@@ -500,7 +537,20 @@ const OrgScreen = () => {
             onAction={canManage ? () => openAdd() : undefined}
           />
         ) : (
-          tree.map((root) => renderNode(root))
+          <>
+            <View style={styles.statsRow}>
+              {stats.map((stat, statIndex) => (
+                <ScaleInView key={stat.key} delay={statIndex * 70} style={styles.statCard}>
+                  <View style={[styles.statDot, { backgroundColor: kindTone(stat.key).fg }]} />
+                  <Text style={styles.statValue}>{stat.value}</Text>
+                  <Text style={styles.statLabel} numberOfLines={1}>
+                    {stat.label}
+                  </Text>
+                </ScaleInView>
+              ))}
+            </View>
+            {tree.map((root, rootIndex) => renderNode(root, 0, rootIndex))}
+          </>
         )}
       </ScrollView>
 
@@ -512,15 +562,12 @@ const OrgScreen = () => {
         style={styles.formModal}
       >
         <ScrollView
+          keyboardDismissMode="on-drag"
           style={{ maxHeight: height * 0.65 }}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled
         >
-          {formError && (
-            <View style={styles.formErrorBox}>
-              <Text style={[styles.formErrorText, { textAlign: align }]}>{formError}</Text>
-            </View>
-          )}
+          <FormAlert message={formError} />
 
           <CustomInput
             label={formMode === 'edit' ? t('org.name') : t('org.newUnitName')}
@@ -529,7 +576,6 @@ const OrgScreen = () => {
             placeholder={t('org.newUnitPlaceholder')}
             required
             error={formErrors.nameAr}
-            size="small"
           />
 
           <CustomInput
@@ -537,7 +583,6 @@ const OrgScreen = () => {
             value={form.nameEn}
             onChangeText={(value) => setForm((prev) => ({ ...prev, nameEn: value }))}
             placeholder={t('org.nameEnPlaceholder')}
-            size="small"
           />
 
           <CustomInput
@@ -547,7 +592,6 @@ const OrgScreen = () => {
             placeholder={t('org.codePlaceholder')}
             hint={t('org.codeHint')}
             error={formErrors.code}
-            size="small"
           />
 
           <SelectField
@@ -579,14 +623,12 @@ const OrgScreen = () => {
               onPress={handleSubmit}
               loading={saving}
               disabled={saving}
-              size="small"
               style={styles.formButton}
             />
             <CustomButton
               title={t('common.cancel')}
               onPress={closeForm}
               variant="outline"
-              size="small"
               style={styles.formButton}
             />
           </View>
@@ -602,22 +644,25 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    // Blends into the page: a modern large-title header without a divider.
+    backgroundColor: colors.background,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
   },
   headerTitle: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  headerText: {
-    flex: 1,
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 1,
   },
   titleBorder: {
+    // A short brand accent beside the title.
     width: 4,
-    height: 50,
+    height: 22,
     backgroundColor: colors.accent,
     borderRadius: 2,
   },
@@ -628,26 +673,47 @@ const createStyles = (colors) => StyleSheet.create({
   titleSmall: {
     fontSize: 18,
   },
-  subtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    lineHeight: 18,
-  },
-  subtitleSmall: {
-    fontSize: 11,
-  },
-  addButton: {
-    alignSelf: 'flex-start',
-  },
   content: {
     flex: 1,
-    padding: spacing.md,
+  },
+  contentInner: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xl,
   },
   contentLandscape: {
     paddingHorizontal: '15%',
   },
-  nodeContainer: {
+  statsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    ...shadows.sm,
+  },
+  statDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginBottom: spacing.xs,
+  },
+  statValue: {
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  statLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  node: {
     marginBottom: spacing.sm,
   },
   nodeRow: {
@@ -655,12 +721,25 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.sm + 4,
     ...shadows.sm,
   },
-  nodeIcon: {},
+  nodeRowRoot: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  nodeRowPressed: {
+    opacity: 0.9,
+  },
+  kindIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   nodeTextWrap: {
     flex: 1,
   },
@@ -671,31 +750,44 @@ const createStyles = (colors) => StyleSheet.create({
   nodeNameSmall: {
     fontSize: 13,
   },
-  nodeKind: {
+  nodeMeta: {
     ...typography.caption,
-    color: colors.textLight,
-    marginTop: 2,
+    color: colors.textSecondary,
+    marginTop: 1,
   },
-  nodeToggle: {
-    padding: spacing.xs,
+  headRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
   },
   nodeActions: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    alignItems: 'center',
+    gap: spacing.xs,
   },
-  actionButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+  iconAction: {
+    width: 34,
+    height: 34,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
   },
-  actionText: {
-    ...typography.captionBold,
-    color: colors.primaryLight,
+  iconActionAdd: {
+    backgroundColor: colors.primarySoft,
   },
-  actionTextSmall: {
-    fontSize: 10,
+  iconActionPressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.95 }],
   },
-  childrenContainer: {
+  // Children hang from a thin guide line, so the hierarchy reads at a glance.
+  children: {
     marginTop: spacing.sm,
+    marginLeft: 18,
+    paddingLeft: spacing.sm + 2,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.border,
   },
   formModal: {
     maxWidth: 460,
@@ -707,18 +799,6 @@ const createStyles = (colors) => StyleSheet.create({
   },
   formButton: {
     flex: 1,
-  },
-  formErrorBox: {
-    backgroundColor: colors.dangerLight,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: '#e5b3a6',
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  formErrorText: {
-    ...typography.bodySmall,
-    color: '#8a3a24',
   },
 });
 
