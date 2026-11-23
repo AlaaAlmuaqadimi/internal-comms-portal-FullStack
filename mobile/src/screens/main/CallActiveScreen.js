@@ -218,8 +218,12 @@ const CallActiveScreen = () => {
 
           <View style={styles.controlsGrid}>
             <Pressable
-              style={[styles.controlButton, muted && styles.controlButtonActive]}
-              onPress={() => setMuted(!muted)}
+              style={({ pressed }) => [
+                styles.controlButton,
+                muted && styles.controlButtonActive,
+                pressed && styles.controlButtonPressed,
+              ]}
+              onPress={() => setMuted((value) => !value)}
               disabled={!audioEnabled}
             >
               <Ionicons
@@ -233,8 +237,12 @@ const CallActiveScreen = () => {
             </Pressable>
 
             <Pressable
-              style={[styles.controlButton, speaker && styles.controlButtonActive]}
-              onPress={() => setSpeaker(!speaker)}
+              style={({ pressed }) => [
+                styles.controlButton,
+                speaker && styles.controlButtonActive,
+                pressed && styles.controlButtonPressed,
+              ]}
+              onPress={() => setSpeaker((value) => !value)}
               disabled={!speakerEnabled}
             >
               <Ionicons
@@ -450,6 +458,10 @@ const createStyles = (colors) => StyleSheet.create({
   controlButtonActive: {
     backgroundColor: colors.primaryLight,
     borderColor: colors.primaryLight,
+  },
+  controlButtonPressed: {
+    opacity: 0.6,
+    transform: [{ scale: 0.96 }],
   },
   controlLabel: {
     ...typography.captionBold,

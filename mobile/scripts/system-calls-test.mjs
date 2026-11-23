@@ -245,6 +245,18 @@ check('mute: both directions, no echo loop; speaker sent only on change', async 
   assert.deepEqual(calls.log.filter(([n]) => n === 'speaker'), [['speaker', true], ['speaker', false]]);
 });
 
+check('mute: quick taps are not undone by the OS echoes of our own requests', () => {
+  const { calls, bridge, events } = setup();
+  calls.pushRing('call-7');
+  bridge.setMuted('call-7', true);
+  bridge.setMuted('call-7', false); // tapped twice quickly
+  calls.userMutes(true); // late echo of the first tap
+  calls.userMutes(false); // echo of the second tap
+  assert.deepEqual(events.muted, []);
+  calls.userMutes(true); // a real mute from the system UI still reaches the app
+  assert.deepEqual(events.muted, [true]);
+});
+
 check('push token: register, read, follow updates', () => {
   const { calls, bridge } = setup();
   bridge.registerPush();

@@ -87,6 +87,12 @@ export function createSystemCallBridge({
   const answeredInApp = new Set(); // callIds answered from our own screen
   const endedByUs = new Set(); // sessionIds we ended (ignore their end event)
   const mutedBySession = new Map();
+  // Mute values we sent to the OS and whose echo has not come back yet
+  // (sessionId -> [{ value, at }]). Telecom answers each setMuted with a
+  // mute event; replaying those late echoes would flip the button back when
+  // the user taps quickly.
+  const pendingMuteEchoes = new Map();
+  const MUTE_ECHO_MS = 2000;
   const subscriptions = [];
   let speakerOn = null;
 
@@ -110,6 +116,7 @@ export function createSystemCallBridge({
     outgoingSessions.delete(sessionId);
     answerRequests.delete(sessionId);
     mutedBySession.delete(sessionId);
+    pendingMuteEchoes.delete(sessionId);
     endedByUs.delete(sessionId);
   }
 
@@ -172,8 +179,20 @@ export function createSystemCallBridge({
 
     on('addSetMutedActionListener', (event) => {
       if (!event?.id) return;
-      mutedBySession.set(event.id, Boolean(event.isMuted));
-      onMuted?.(Boolean(event.isMuted));
+      const value = Boolean(event.isMuted);
+      const now = Date.now();
+      const pending = (pendingMuteEchoes.get(event.id) || []).filter(
+        (entry) => now - entry.at < MUTE_ECHO_MS
+      );
+      if (pending.length && pending[0].value === value) {
+        // Our own request coming back: the app already shows it.
+        pending.shift();
+        pendingMuteEchoes.set(event.id, pending);
+        return;
+      }
+      pendingMuteEchoes.delete(event.id);
+      mutedBySession.set(event.id, value);
+      onMuted?.(value);
     });
   }
 
@@ -252,6 +271,9 @@ export function createSystemCallBridge({
       const sessionId = sessionByCall.get(callId);
       if (!sessionId || mutedBySession.get(sessionId) === Boolean(muted)) return;
       mutedBySession.set(sessionId, Boolean(muted));
+      const pending = pendingMuteEchoes.get(sessionId) || [];
+      pending.push({ value: Boolean(muted), at: Date.now() });
+      pendingMuteEchoes.set(sessionId, pending);
       quiet(calls.setMuted(sessionId, Boolean(muted)));
     },
 
