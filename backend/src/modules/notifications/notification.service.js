@@ -117,11 +117,17 @@ const LIST_COLUMNS = `
     WHERE c.notification_id = n.id) AS last_read_at
 `;
 
+// Missed calls are listed in the call log only: the notifications inbox and
+// its unread badge are for announcements, circulars and messages. The
+// missed_call rows are still written (see callNotifications.service.js).
+const INBOX_ONLY = `n.type <> 'missed_call'`;
+
 const RECEIVED_SELECT = `
   SELECT ${LIST_COLUMNS}, nr.read_at, 0 AS sent_only
   FROM notification_recipients nr
   JOIN notifications n ON n.id = nr.notification_id
   WHERE nr.employee_id = ?
+    AND ${INBOX_ONLY}
     AND n.deleted_at IS NULL
     AND (n.published_at IS NULL OR n.published_at <= UTC_TIMESTAMP(3))
     AND (n.expires_at IS NULL OR n.expires_at > UTC_TIMESTAMP(3))
@@ -176,6 +182,7 @@ export async function countUnread(employeeId) {
        JOIN notifications n ON n.id = nr.notification_id
       WHERE nr.employee_id = ?
         AND nr.read_at IS NULL
+        AND ${INBOX_ONLY}
         AND n.deleted_at IS NULL
         AND (n.published_at IS NULL OR n.published_at <= UTC_TIMESTAMP(3))
         AND (n.expires_at IS NULL OR n.expires_at > UTC_TIMESTAMP(3))`,
